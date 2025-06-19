@@ -1,0 +1,293 @@
+{% extends 'admin_panel/dashboard.html' %}
+{% load static %}
+{% block content %}
+
+<!-- Upload Alert -->
+<div id="upload-alert" class="fixed top-5 right-5 p-4 rounded-lg text-white z-50 hidden transition-opacity duration-300"></div>
+
+<!-- Upload Page Container -->
+<div class="max-w-4xl mx-auto py-10 px-4">
+    <h1 class="text-2xl font-bold mb-6">Upload Products</h1>
+
+    <!-- Drop Zone -->
+    <div id="drop-zone" class="border-4 border-dashed border-gray-300 rounded-lg bg-white text-center transition-colors cursor-pointer hover:border-blue-500 py-16 px-6 sm:py-24 lg:py-32 mb-6">
+        <p id="drop-zone-text" class="text-gray-500 text-sm sm:text-base">Drag & drop files here or click to upload</p>
+        <input type="file" id="file-input" class="hidden" multiple accept="image/*,.txt" />
+    </div>
+
+    <!-- Upload Form -->
+    <form method="POST" enctype="multipart/form-data" id="upload-form">
+        {% csrf_token %}
+        <div class="hidden">{{ form.as_p }}</div>
+        <div class="flex flex-col sm:flex-row justify-between gap-4 mt-4">
+            <button type="button" onclick="openModal()" class="w-full sm:w-auto bg-yellow-500 hover:bg-yellow-600 text-white font-semibold px-4 py-2 rounded">
+                Preview
+            </button>
+            <button type="submit" id="upload-button" class="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded">
+                Upload
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- Preview Modal -->
+<div id="preview-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center px-4">
+    <div class="bg-white p-6 rounded-lg w-full max-w-5xl max-h-[85vh] overflow-y-auto relative">
+        <button onclick="closeModal()" class="absolute top-2 right-2 text-gray-500 hover:text-black text-xl">&times;</button>
+        <h2 class="text-xl font-bold mb-4">Preview Files</h2>
+        <div class="flex justify-end mb-4">
+            <button onclick="saveImageOrder()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded">Save Order</button>
+        </div>
+        <div id="preview-content" class="space-y-8"></div>
+    </div>
+</div>
+
+<!-- Scripts -->
+<script>
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const previewContent = document.getElementById('preview-content');
+    const uploadForm = document.getElementById('upload-form');
+    const uploadButton = document.getElementById('upload-button');
+    const dropZoneText = document.getElementById('drop-zone-text');
+
+    let imagesArray = [];
+    let textFile = null;
+    let productDetails = [];
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('border-blue-500');
+    });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('border-blue-500'));
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('border-blue-500');
+        handleFiles(e.dataTransfer.files);
+    });
+
+    function handleFiles(fileList) {
+        for (let file of fileList) {
+            if (file.type.startsWith('image/')) {
+                imagesArray.push(file);
+            } else if (file.name.endsWith('.txt')) {
+                textFile = file;
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    const text = e.target.result;
+                    const rawProducts = text.split(/(?:\r?\n){2,}/); // Split by double newlines
+                    productDetails = rawProducts.map(block => {
+                        const lines = block.split('\n').map(line => line.trim());
+                        const product = {};
+                        lines.forEach(line => {
+                            if (line.startsWith('Name:')) product.name = line.replace('Name:', '').trim();
+                        });
+                        return product;
+                    });
+                };
+                reader.readAsText(file);
+            }
+        }
+        const numImages = imagesArray.length;
+        const txtFileStatus = textFile ? `1 text file` : `0 text files`;
+        dropZoneText.textContent = `${numImages} image(s) and ${txtFileStatus} selected.`;
+    }
+
+    function updatePreview() {
+        previewContent.innerHTML = '';
+
+        if (textFile) {
+            const container = document.createElement('div');
+            container.classList.add("border", "rounded", "p-2", "bg-gray-50");
+            const icon = document.createElement('img');
+            icon.src = "https://cdn-icons-png.flaticon.com/512/3022/3022253.png";
+            icon.classList.add("w-16", "h-16", "mx-auto");
+            const name = document.createElement('p');
+            name.textContent = textFile.name;
+            name.classList.add("text-center", "text-sm", "text-gray-600", "mt-2");
+            container.appendChild(icon);
+            container.appendChild(name);
+            previewContent.appendChild(container);
+        }
+
+        for (let i = 0; i < imagesArray.length; i += 3) {
+            const modelDiv = document.createElement('div');
+            modelDiv.classList.add("p-2", "border", "rounded", "bg-gray-100");
+
+            const title = document.createElement('p');
+            const productIndex = Math.floor(i / 3);
+            const product = productDetails[productIndex];
+            title.textContent = product ? product.name : `Product ${productIndex + 1}`;
+            title.classList.add("font-semibold", "mb-2", "text-lg");
+            modelDiv.appendChild(title);
+
+            const row = document.createElement('div');
+            row.classList.add("grid", "grid-cols-3", "gap-4");
+
+            for (let j = i; j < i + 3 && j < imagesArray.length; j++) {
+                const file = imagesArray[j];
+                const reader = new FileReader();
+
+                const container = document.createElement('div');
+                container.classList.add("border", "rounded", "p-1", "bg-white", "relative");
+                container.setAttribute('draggable', 'true');
+                container.dataset.index = j;
+
+                reader.onload = function (e) {
+                    container.innerHTML = `
+                        <img src="${e.target.result}" class="w-full h-32 object-cover rounded pointer-events-none">
+                        <button class="absolute top-1 right-1 bg-red-600 text-white text-xs px-2 py-1 rounded" onclick="removeImageFromPreview(${j})">X</button>
+                    `;
+                };
+                reader.readAsDataURL(file);
+                row.appendChild(container);
+            }
+
+            modelDiv.appendChild(row);
+            previewContent.appendChild(modelDiv);
+        }
+
+        enablePreviewDragSort();
+    }
+
+    function enablePreviewDragSort() {
+        let draggedItem = null;
+
+        previewContent.querySelectorAll('div[draggable]').forEach(item => {
+            item.addEventListener('dragstart', () => {
+                draggedItem = item;
+                setTimeout(() => item.classList.add('opacity-50'), 0);
+            });
+
+            item.addEventListener('dragend', () => {
+                item.classList.remove('opacity-50');
+                draggedItem = null;
+            });
+
+            item.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                const target = e.target.closest('div[draggable]');
+                if (target && target !== draggedItem) {
+                    const draggedIndex = [...previewContent.querySelectorAll('div[draggable]')].indexOf(draggedItem);
+                    const targetIndex = [...previewContent.querySelectorAll('div[draggable]')].indexOf(target);
+
+                    if (draggedIndex < targetIndex) {
+                        target.parentNode.insertBefore(draggedItem, target.nextSibling);
+                    } else {
+                        target.parentNode.insertBefore(draggedItem, target);
+                    }
+                }
+            });
+        });
+    }
+
+    function saveImageOrder() {
+        const newOrder = [];
+        previewContent.querySelectorAll('div[draggable]').forEach(div => {
+            const originalIndex = parseInt(div.dataset.index);
+            newOrder.push(imagesArray[originalIndex]);
+        });
+        imagesArray = newOrder;
+        updatePreview();
+        showAlert("Image order saved!", true);
+    }
+
+    function removeImageFromPreview(index) {
+        imagesArray.splice(index, 1);
+        updatePreview();
+        handleFiles([]);
+    }
+
+    function openModal() {
+        if (!textFile && imagesArray.length === 0) {
+            alert("Please add files to preview.");
+            return;
+        }
+        updatePreview();
+        document.getElementById('preview-modal').classList.remove('hidden');
+    }
+
+    function closeModal() {
+        document.getElementById('preview-modal').classList.add('hidden');
+    }
+
+    function resetUploader() {
+        imagesArray = [];
+        textFile = null;
+        productDetails = [];
+        fileInput.value = '';
+        dropZoneText.textContent = 'Drag & drop files here or click to upload';
+    }
+
+    function showAlert(message, isSuccess = true) {
+        const alertBox = document.getElementById('upload-alert');
+        alertBox.textContent = message;
+        alertBox.className = 'fixed top-5 right-5 p-4 rounded-lg text-white z-50 transition-opacity duration-300';
+
+        if (isSuccess) {
+            alertBox.classList.add('bg-green-500');
+        } else {
+            alertBox.classList.add('bg-red-500');
+        }
+
+        alertBox.classList.remove('hidden');
+        setTimeout(() => alertBox.classList.add('hidden'), 5000);
+    }
+
+    uploadForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        uploadButton.disabled = true;
+        uploadButton.textContent = 'Uploading...';
+
+        const formData = new FormData();
+        formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+
+        if (!textFile) {
+            showAlert('Please select .txt file and product images', false);
+            uploadButton.disabled = false;
+            uploadButton.textContent = 'Upload';
+            return;
+        }
+        formData.append('product_file', textFile);
+
+        if (imagesArray.length === 0) {
+            showAlert('Please select product images.', false);
+            uploadButton.disabled = false;
+            uploadButton.textContent = 'Upload';
+            return;
+        }
+
+        imagesArray.forEach((img, index) => {
+            formData.append('images', img);
+            formData.append('image_order[]', index);
+        });
+
+        try {
+            const response = await fetch("{% url 'admin_upload_page' %}", {
+                method: 'POST',
+                body: formData,
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.status === 'success') {
+                showAlert(data.message, true);
+                resetUploader();
+            } else {
+                showAlert(data.message || 'An unknown error occurred.', false);
+            }
+
+        } catch (error) {
+            console.error('Upload failed:', error);
+            showAlert('A network error occurred. Please try again.', false);
+        } finally {
+            uploadButton.disabled = false;
+            uploadButton.textContent = 'Upload';
+        }
+    });
+</script>
+
+
+{% endblock %}

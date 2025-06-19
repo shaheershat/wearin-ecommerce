@@ -1,0 +1,124 @@
+{% extends 'user/base.html' %}
+{% load static %}
+
+
+{% block title %}Product Details{% endblock %}
+
+{% block content %}
+<style>
+    .active-thumb {
+        border: 2px solid black;
+    }
+</style>
+
+<div class="container mx-auto py-10 px-4">
+    <div class="p-6 flex flex-col md:flex-row gap-10">
+        <!-- Image Section -->
+        <div class="flex gap-4 w-full md:w-1/2 items-start">
+            <!-- Thumbnails Vertical -->
+            <div class="flex flex-col gap-2" id="thumbnails">
+                {% for img in product.images.all %}
+                <img 
+                    src="{{ img.image.url }}" 
+                    alt="thumb" 
+                    class="thumb w-20 h-28 object-cover rounded-md cursor-pointer border"
+                    onclick="changePreview(this)">
+                {% endfor %}
+            </div>
+
+            <!-- Main Big Preview Image -->
+            <div class="w-[600px] h-[800px] border rounded-md overflow-hidden">
+                <img id="mainImage" src="{{ product.images.first.image.url }}" alt="{{ product.name }}" class="w-full h-full object-cover rounded-md">
+            </div>
+        </div>
+
+        <!-- Product Details -->
+        <div class="w-full md:w-1/2">
+            <h1 class="text-3xl font-bold mb-2">{{ product.name }}</h1>
+            <p class="text-gray-500 text-sm mb-2">{{ product.category }}</p>
+            <p class="text-2xl font-bold text-green-600 mb-4">₹{{ product.price }}</p>
+            <p class="text-sm mb-1"><strong>Size:</strong> {{ product.size }}</p>
+            <p class="text-sm mb-6"><strong>Description:</strong> {{ product.description }}</p>
+
+            <div class="flex gap-4 mt-6">
+                <form method="POST" action="{% url 'add_to_cart' product.id %}">
+                    {% csrf_token %}
+                    <button type="submit" class="bg-black text-white px-6 py-3 rounded hover:bg-gray-800 transition">
+                        Add to Cart
+                    </button>
+                </form>
+                <form method="POST" action="{% url 'buy_now' product.id %}">
+                    {% csrf_token %}
+                    <button type="submit" class="bg-yellow-400 text-black px-6 py-3 rounded hover:bg-yellow-500 transition">
+                        Buy Now
+                    </button>
+                </form>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- People Also Loved Section -->
+<section class="bg-gray-100 py-16 px-6 flex flex-col md:flex-row items-center justify-between gap-10">
+    <!-- Left Text Content -->
+    <div class="md:w-1/2 md:pl-12">  <!-- Added left padding -->
+        <h2 class="text-4xl font-semibold text-gray-900 mb-4">People Also Loved</h2>
+        <p class="text-gray-600 mb-6">
+            Lorem ipsum dolor sit amet, consectetur adipiscing elit. Scelerisque duis ultrices
+            sollicitudin aliquam sem. Scelerisque duis ultrices sollicitudin.
+        </p>
+        <a href="#" class="inline-block bg-black text-white px-6 py-3 rounded-lg shadow hover:bg-gray-800 transition">
+            Buy Now
+        </a>
+    </div>
+
+    <!-- Right Images -->
+    <div class="flex gap-2">
+        <div class="w-40 md:w-60 lg:w-72 h-auto">
+            <img src="{% static 'images/Loved-2.jpg' %}" alt="Loved Product 1" class="object-cover w-full h-full">
+        </div>
+        <div class="w-40 md:w-60 lg:w-72 h-[370px]">  <!-- Reduced height -->
+            <img src="{% static 'images/Loved-1.jpg' %}" alt="Loved Product 2" class="object-cover w-full h-full">
+        </div>
+    </div>
+</section>
+
+
+
+
+<!-- Newsletter Section -->
+<section class="relative h-[747px] md:h-[900px] bg-cover bg-center bg-no-repeat" style="background-image: url('{% static 'images/newsletter.png' %}');">
+    <div class="absolute inset-0"></div>
+    <div class="relative z-10 flex flex-col items-center justify-center h-full text-center px-4">
+        <h3 class="text-3xl font-bold text-black mb-4">Subscribe To Our Newsletter</h3>
+        <p class="text-black mb-6">Get the latest updates and exclusive offers directly to your inbox.</p>
+
+        <form class="flex flex-col sm:flex-row justify-center items-center max-w-lg mx-auto space-y-3 sm:space-y-0 sm:space-x-4 w-full px-2">
+            <input type="email" placeholder="email@gmail.com"
+                   class="flex-grow px-5 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400 w-full sm:w-auto">
+            <button type="submit"
+                    class="bg-white text-black px-8 py-3 rounded-lg font-medium hover:bg-gray-200 transition-colors shadow">
+                Subscribe
+            </button>
+        </form>
+    </div>
+</section>
+
+<script>
+    const mainImage = document.getElementById('mainImage');
+    const thumbs = document.querySelectorAll('.thumb');
+
+    function changePreview(clickedThumb) {
+        mainImage.src = clickedThumb.src;
+        thumbs.forEach(img => img.classList.remove('active-thumb'));
+        clickedThumb.classList.add('active-thumb');
+    }
+
+    window.onload = () => {
+        if (thumbs.length > 0) {
+            thumbs[0].classList.add('active-thumb');
+        }
+    }
+</script>
+{% endblock %}

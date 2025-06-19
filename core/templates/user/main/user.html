@@ -1,0 +1,25 @@
+{% extends 'user/base.html' %}
+{% block title %}My Profile{% endblock %}
+{% load static %}
+
+<div class="max-w-6xl mx-auto mt-10 px-4">
+    <div class="flex flex-col md:flex-row gap-6">
+        <!-- Sidebar Menu -->
+        <div class="w-full md:w-1/4">
+            <div class="bg-white rounded-lg shadow-md p-4">
+                <ul class="space-y-4 text-gray-700 font-medium">
+                    <li><a href="{% url 'my_profile' %}" class="hover:text-blue-600">👤 My Profile</a></li>
+                    <li><a href="{% url 'my_address' %}" class="hover:text-blue-600">🏠 My Address</a></li>
+                    <li><a href="{% url 'my_orders' %}" class="hover:text-blue-600">📦 My Orders</a></li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Content Area -->
+        <div class="w-full md:w-3/4">
+            {% block profile_content %}
+            <!-- You can dynamically inject each page here -->
+            {% endblock %}
+        </div>
+    </div>
+</div>

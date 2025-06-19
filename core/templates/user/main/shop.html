@@ -1,0 +1,176 @@
+{% extends 'user/base.html' %} {# This must be the very first line #}
+{% load static %} {# This must be the second line, exactly like this #}
+
+{% block title %}Shop{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <section class="mb-12">
+        <div class="relative bg-gray-100 rounded-xl overflow-hidden shadow-sm">
+            {# Corrected image source using {% static %} tag #}
+            <img src="{% static 'images/Banner-2.png' %}" alt="Shop Banner" class="w-full h-full md:h- object-cover">
+        </div>
+    </section>
+
+    <div class="flex flex-col md:flex-row gap-8">
+        <aside class="w-full md:w-1/4 bg-white p-6 rounded-xl shadow-sm sticky top-24 h-fit">
+            <h3 class="text-xl font-semibold mb-4">Filters</h3>
+
+            <div class="mb-6">
+                <h4 class="font-medium text-gray-800 mb-3">Category</h4>
+                <ul class="space-y-2 text-sm text-gray-600">
+                    {% for category in categories %}
+                        <li><label><input type="checkbox" class="mr-2 rounded"> {{ category.name }}</label></li>
+                    {% endfor %}
+                </ul>
+            </div>
+
+            <div class="mb-6">
+                <h4 class="font-medium text-gray-800 mb-3">Price Range</h4>
+                <input type="range" min="0" max="1000" value="500" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                <div class="flex justify-between text-sm text-gray-600 mt-2">
+                    <span>₹0</span>
+                    <span>₹1000</span>
+                </div>
+            </div>
+
+            <div class="mb-6">
+                <h4 class="font-medium text-gray-800 mb-3">Size</h4>
+                <div class="grid grid-cols-3 gap-2">
+                    <button class="border border-gray-300 rounded-lg px-3 py-1 text-sm hover:bg-gray-100 focus:bg-blue-500 focus:text-white focus:border-blue-500">XS</button>
+                    <button class="border border-gray-300 rounded-lg px-3 py-1 text-sm hover:bg-gray-100 focus:bg-blue-500 focus:text-white focus:border-blue-500">S</button>
+                    <button class="border border-gray-300 rounded-lg px-3 py-1 text-sm hover:bg-gray-100 focus:bg-blue-500 focus:text-white focus:border-blue-500">M</button>
+                    <button class="border border-gray-300 rounded-lg px-3 py-1 text-sm hover:bg-gray-100 focus:bg-blue-500 focus:text-white focus:border-blue-500">L</button>
+                    <button class="border border-gray-300 rounded-lg px-3 py-1 text-sm hover:bg-gray-100 focus:bg-blue-500 focus:text-white focus:border-blue-500">XL</button>
+                    <button class="border border-gray-300 rounded-lg px-3 py-1 text-sm hover:bg-gray-100 focus:bg-blue-500 focus:text-white focus:border-blue-500">XXL</button>
+                </div>
+            </div>
+        </aside>
+
+        <section class="flex-1">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                {% for product in products %} {# Loop through the 'products' passed from the view #}
+                <div class="bg-white rounded-xl shadow-sm overflow-hidden group">
+                    <div class="relative overflow-hidden">
+                        {% if product.images.first %}
+                            <img src="{{ product.images.first.image.url }}" alt="{{ product.name }}" class="w-full h-72 object-cover transform transition-transform duration-300 group-hover:scale-105">
+                        {% else %}
+                            <img src="https://placehold.co/400x500/E2E8F0/A0AEC0?text=No+Image" alt="No Image" class="w-full h-72 object-cover transform transition-transform duration-300 group-hover:scale-105">
+                        {% endif %}
+
+                        {# Wishlist Heart Icon #}
+                        <button class="absolute top-3 right-3 bg-white p-2 rounded-full shadow-md z-10 hover:scale-110 transition-transform duration-200"
+                                onclick="toggleWishlist(this, {{ product.id }})">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 {% if product.id in wishlisted_product_ids %}text-red-500{% else %}text-gray-400{% endif %} hover:text-red-500 transition-colors duration-200" fill="{% if product.id in wishlisted_product_ids %}currentColor{% else %}none{% endif %}" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                            </svg>
+                        </button>
+
+                        <div class="absolute inset-0 bg-black bg-opacity-25 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                            <a href="{% url 'product_detail' product.id %}" class="bg-white text-gray-800 px-6 py-2 rounded-full font-medium hover:bg-gray-100 transition-colors">View Product</a>
+                        </div>
+                    </div>
+                    <div class="p-4 text-center">
+                        <h4 class="font-semibold text-lg mb-1">{{ product.name }}</h4>
+                        <p class="text-gray-600">₹{{ product.price }}</p>
+                        {# You might want to display colors dynamically here if your Product model supports it #}
+                        <div class="flex justify-center mt-2 space-x-1">
+                            {# {% for color in product.colors.all %} #}
+                            {# <div class="w-4 h-4 rounded-full" style="background-color: {{ color.hex_code }};"></div> #}
+                            {# {% endfor %} #}
+                        </div>
+                    </div>
+                </div>
+                {% empty %}
+                <p class="col-span-full text-center text-gray-500">No products available at the moment.</p>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+
+    <section class="relative h-[747px] bg-cover bg-center bg-no-repeat mt-12" style="background-image: url('{% static 'images/newsletter.png' %}');">
+        <div class="absolute inset-0 "></div>
+
+        <div class="relative z-10 flex flex-col items-center justify-center h-full text-center px-4">
+            <h3 class="text-3xl font-bold text-black mb-4">Subscribe To Our Newsletter</h3>
+            <p class="text-black mb-6">Get the latest updates and exclusive offers directly to your inbox.</p>
+
+            <form class="flex flex-col sm:flex-row justify-center items-center max-w-lg mx-auto space-y-3 sm:space-y-0 sm:space-x-4 w-full px-2">
+            <input type="email" placeholder="email@gmail.com"
+                    class="flex-grow px-5 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400 w-full sm:w-auto">
+            <button type="submit"
+                    class="bg-white text-black px-8 py-3 rounded-lg font-medium hover:bg-gray-200 transition-colors shadow">
+                Subscribe
+            </button>
+            </form>
+        </div>
+    </section>
+
+</div>
+<script>
+    // This function can be defined here or in a global script included in base.html
+    function toggleWishlist(buttonElement, productId) {
+        const svgElement = buttonElement.querySelector('svg');
+        const isCurrentlyWishlisted = svgElement.classList.contains('text-red-500');
+
+        fetch(`{% url 'toggle_wishlist' 0 %}`.replace('0', productId), {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'X-Requested-With': 'XMLHttpRequest',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ product_id: productId }),
+        })
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(errorData => { throw new Error(errorData.message || 'Network response was not ok'); });
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.status === 'added') {
+                svgElement.classList.remove('text-gray-400');
+                svgElement.classList.add('text-red-500');
+                svgElement.setAttribute('fill', 'currentColor');
+                console.log(data.message);
+            } else if (data.status === 'removed') {
+                svgElement.classList.remove('text-red-500');
+                svgElement.classList.add('text-gray-400');
+                svgElement.setAttribute('fill', 'none');
+                console.log(data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error toggling wishlist:', error);
+            alert('Error updating wishlist: ' + error.message);
+            // Revert UI state if there was an error
+            if (isCurrentlyWishlisted) {
+                svgElement.classList.remove('text-gray-400');
+                svgElement.classList.add('text-red-500');
+                svgElement.setAttribute('fill', 'currentColor');
+            } else {
+                svgElement.classList.remove('text-red-500');
+                svgElement.classList.add('text-gray-400');
+                svgElement.setAttribute('fill', 'none');
+            }
+        });
+    }
+
+    // Helper function to get CSRF token (copied from previous response)
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+</script>
+{% endblock %}

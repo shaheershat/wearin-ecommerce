@@ -1,0 +1,282 @@
+{% extends 'user/base.html' %}
+{% load static %}
+{% block title %}Home{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
+
+<div class="container mx-auto px-4 py-8">
+
+    <section class="p-6">
+        <div class="relative">
+            <img src="{% static 'images/Banner.png' %}" alt="Banner"
+                 class="w-full hidden md:block" />
+
+            <img src="{% static 'images/banner1_on_mobile.png' %}" alt="Mobile Banner"
+                 class="w-full block md:hidden" />
+
+            <div class="absolute top-[70%] left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+                <a href="{% url 'shop' %}">
+                    <button
+                        class="bg-black text-white font-medium text-xs sm:text-sm md:text-base lg:text-lg
+                        w-20 sm:w-30 md:w-40 lg:w-55 rounded shadow hover:bg-gray-900 transition">
+                        SHOP NOW
+                    </button>
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <section class="mb-12">
+        <h3 class="text-3xl font-bold text-center mb-8">New Arrivals</h3>
+
+        <div class="block lg:hidden overflow-x-auto whitespace-nowrap space-x-4 px-2">
+            {% for product in new_products %}
+            <div class="inline-block align-top bg-white rounded-xl shadow-sm overflow-hidden group w-[80%] max-w-xs">
+                <div class="relative overflow-hidden">
+                    <img src="{{ product.images.first.image.url }}" alt="{{ product.name }}"
+                         class="w-full h-[400px] object-cover transform transition-transform duration-300 group-hover:scale-105">
+
+                    {# Wishlist Heart Icon #}
+                    <button class="absolute top-3 right-3 bg-white p-2 rounded-full shadow-md z-10 hover:scale-110 transition-transform duration-200"
+                            onclick="toggleWishlist(this, {{ product.id }})">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 {% if product.id in wishlisted_product_ids %}text-red-500{% else %}text-gray-400{% endif %} hover:text-red-500 transition-colors duration-200" fill="{% if product.id in wishlisted_product_ids %}currentColor{% else %}none{% endif %}" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                        </svg>
+                    </button>
+
+                    <div class="absolute inset-0 bg-black bg-opacity-25 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                        <a href="{% url 'product_detail' product.id %}"
+                           class="bg-white text-gray-800 px-6 py-2 rounded-full font-medium hover:bg-gray-100 transition-colors">
+                            View Product
+                        </a>
+                    </div>
+                </div>
+                <div class="p-4 text-center">
+                    <h4 class="font-semibold text-lg mb-1">{{ product.name }}</h4>
+                    <p class="text-gray-600">₹{{ product.price }}</p>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="hidden lg:grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {% for product in new_products %}
+            <div class="bg-white rounded-xl shadow-sm overflow-hidden group w-full max-w-[350px] mx-auto">
+                <div class="relative overflow-hidden">
+                    <img src="{{ product.images.first.image.url }}" alt="{{ product.name }}"
+                         class="w-full h-[500px] object-cover transform transition-transform duration-300 group-hover:scale-105">
+
+                    {# Wishlist Heart Icon #}
+                    <button class="absolute top-3 right-3 bg-white p-2 rounded-full shadow-md z-10 hover:scale-110 transition-transform duration-200"
+                            onclick="toggleWishlist(this, {{ product.id }})">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 {% if product.id in wishlisted_product_ids %}text-red-500{% else %}text-gray-400{% endif %} hover:text-red-500 transition-colors duration-200" fill="{% if product.id in wishlisted_product_ids %}currentColor{% else %}none{% endif %}" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                        </svg>
+                    </button>
+
+                    <div class="absolute inset-0 bg-black bg-opacity-25 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                        <a href="{% url 'product_detail' product.id %}"
+                           class="bg-white text-gray-800 px-6 py-2 rounded-full font-medium hover:bg-gray-100 transition-colors">
+                            View Product
+                        </a>
+                    </div>
+                </div>
+                <div class="p-4 text-center">
+                    <h4 class="font-semibold text-lg mb-1">{{ product.name }}</h4>
+                    <p class="text-gray-600">₹{{ product.price }}</p>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+<section class="py-20 bg-white text-center px-4">
+    <h3 class="text-4xl font-bold text-gray-800 mb-4">Follow Us On Instagram</h3>
+    <p class="text-gray-500 max-w-xl mx-auto mb-12">
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Scelerisque duis ultrices sollicitudin aliquam sem.
+    </p>
+
+    <div class="hidden lg:flex justify-center items-center space-x-[-40px] items-end gap-6 relative">
+        <img src="{% static 'images/insta-5.jpg' %}" alt="Insta 1" class="w-[300px] h-auto shadow-md z-10" />
+        <img src="{% static 'images/insta-3.jpg' %}" alt="Insta 2" class="w-[250px] h-auto shadow-md z-20 -ml-6" />
+        <img src="{% static 'images/insta-4.jpg' %}" alt="Insta 3" class="w-[300px] h-auto shadow-xl z-30" />
+        <img src="{% static 'images/insta-3.jpg' %}" alt="Insta 4" class="w-[250px] h-auto shadow-md z-20 -mr-6" />
+        <img src="{% static 'images/insta-5.jpg' %}" alt="Insta 5" class="w-[300px] h-auto shadow-md z-10" />
+    </div>
+
+    <div class="block lg:hidden">
+        <div class="swiper instaSwiper">
+            <div class="swiper-wrapper items-center">
+                <div class="swiper-slide">
+                    <img src="{% static 'images/insta-5.jpg' %}" alt="Insta 1" class=" w-full h-auto shadow" />
+                </div>
+                <div class="swiper-slide">
+                    <img src="{% static 'images/insta-3.jpg'}" alt="Insta 2" class=" w-full h-auto shadow" />
+                </div>
+                <div class="swiper-slide">
+                    <img src="{% static 'images/insta-5.jpg' %}" alt="Insta 3" class=" w-full h-auto shadow" />
+                </div>
+                <div class="swiper-slide">
+                    <img src="{% static 'images/insta-3.jpg' %}" alt="Insta 4" class=" w-full h-auto shadow" />
+                </div>
+                <div class="swiper-slide">
+                    <img src="{% static 'images/insta-4.jpg' %}" alt="Insta 5" class=" w-full h-auto shadow" />
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+
+    <section class="mb-12 bg-gray-100 py-12">
+        <div class="container mx-auto px-4">
+            <h3 class="text-3xl font-bold text-center mb-12 text-gray-800">This Is What Our Customers Say</h3>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
+
+                <div class="bg-white p-8 rounded-xl shadow-md text-center flex flex-col items-center justify-center">
+                    <img src="{% static 'images/admin.png' %}" alt="James K." class="w-24 h-24 rounded-full mb-4 object-cover">
+                    <p class="text-gray-700 italic mb-4">"You won't regret it. I would like to personally thank you for your outstanding product. Absolutely wonderful!"</p>
+                    <div class="flex mb-2">
+                        {% for _ in "12345" %}
+                        <svg class="w-5 h-5 text-yellow-500 fill-current" viewBox="0 0 20 20">
+                            <path d="M10 15l-5.878 3.09 1.123-6.545L.487 7.02l6.572-.955L10 0l2.941 6.065 6.572.955-4.758 4.625 1.123 6.545z"/>
+                        </svg>
+                        {% endfor %}
+                    </div>
+                    <p class="font-semibold text-gray-800 text-lg">James K.</p>
+                    <p class="text-gray-500 text-sm">Traveler</p>
+                </div>
+
+                <div class="bg-white p-8 rounded-xl shadow-md text-center flex flex-col items-center justify-center">
+                    <img src="{% static 'images/admin.png' %}" alt="Sarah L." class="w-24 h-24 rounded-full mb-4 object-cover">
+                    <p class="text-gray-700 italic mb-4">"Exceptional experience from start to finish. Highly recommend their services!"</p>
+                    <div class="flex mb-2">
+                        {% for _ in "12345" %}
+                        <svg class="w-5 h-5 text-yellow-500 fill-current" viewBox="0 0 20 20">
+                            <path d="M10 15l-5.878 3.09 1.123-6.545L.487 7.02l6.572-.955L10 0l2.941 6.065 6.572.955-4.758 4.625 1.123 6.545z"/>
+                        </svg>
+                        {% endfor %}
+                    </div>
+                    <p class="font-semibold text-gray-800 text-lg">Sarah L.</p>
+                    <p class="text-gray-500 text-sm">Customer</p>
+                </div>
+
+                <div class="bg-white p-8 rounded-xl shadow-md text-center flex flex-col items-center justify-center">
+                    <img src="{% static 'images/admin.png' %}" alt="John W." class="w-24 h-24 rounded-full mb-4 object-cover">
+                    <p class="text-gray-700 italic mb-4">"I was looking for. Thank you for making it pleasant and most of all hassle free! All are great."</p>
+                    <div class="flex mb-2">
+                        {% for _ in "12345" %}
+                        <svg class="w-5 h-5 text-yellow-500 fill-current" viewBox="0 0 20 20">
+                            <path d="M10 15l-5.878 3.09 1.123-6.545L.487 7.02l6.572-.955L10 0l2.941 6.065 6.572.955-4.758 4.625 1.123 6.545z"/>
+                        </svg>
+                        {% endfor %}
+                    </div>
+                    <p class="font-semibold text-gray-800 text-lg">John W.</p>
+                    <p class="text-gray-500 text-sm">Buyer</p>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <section class="relative h-[500px] md:h-[747px] bg-cover bg-center bg-no-repeat" style="background-image: url('{% static 'images/newsletter.png' %}');">
+        <div class="absolute inset-0"></div>
+        <div class="relative z-10 flex flex-col items-center justify-center h-full text-center px-4">
+            <h3 class="text-3xl font-bold text-black mb-4">Subscribe To Our Newsletter</h3>
+            <p class="text-black mb-6">Get the latest updates and exclusive offers directly to your inbox.</p>
+
+            <form class="flex flex-col sm:flex-row justify-center items-center max-w-lg mx-auto space-y-3 sm:space-y-0 sm:space-x-4 w-full px-2">
+                <input type="email" placeholder="email@gmail.com"
+                       class="flex-grow px-5 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400 w-full sm:w-auto">
+                <button type="submit"
+                        class="bg-white text-black px-8 py-3 rounded-lg font-medium hover:bg-gray-200 transition-colors shadow">
+                    Subscribe
+                </button>
+            </form>
+        </div>
+    </section>
+
+</div>
+<script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
+<script>
+    const instaSwiper = new Swiper(".instaSwiper", {
+        slidesPerView: 1.2,
+        spaceBetween: 16,
+        loop: true,
+        autoplay: {
+            delay: 2000,
+            disableOnInteraction: false,
+        },
+        centeredSlides: true,
+    });
+
+    // Wishlist toggle function
+    function toggleWishlist(buttonElement, productId) {
+        const svgElement = buttonElement.querySelector('svg');
+        const isCurrentlyWishlisted = svgElement.classList.contains('text-red-500');
+
+        fetch(`{% url 'toggle_wishlist' 0 %}`.replace('0', productId), {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'X-Requested-With': 'XMLHttpRequest', // Important for Django's is_ajax() check
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ product_id: productId }),
+        })
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(errorData => { throw new Error(errorData.message || 'Network response was not ok'); });
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.status === 'added') {
+                svgElement.classList.remove('text-gray-400');
+                svgElement.classList.add('text-red-500');
+                svgElement.setAttribute('fill', 'currentColor'); // Fill the heart
+                console.log(data.message);
+            } else if (data.status === 'removed') {
+                svgElement.classList.remove('text-red-500');
+                svgElement.classList.add('text-gray-400');
+                svgElement.setAttribute('fill', 'none'); // Outline the heart
+                console.log(data.message);
+            }
+            // You can add a small temporary message display here if needed
+        })
+        .catch(error => {
+            console.error('Error toggling wishlist:', error);
+            alert('Error updating wishlist: ' + error.message);
+            // Revert UI state if there was an error and it's not a success status
+            if (isCurrentlyWishlisted) {
+                svgElement.classList.remove('text-gray-400');
+                svgElement.classList.add('text-red-500');
+                svgElement.setAttribute('fill', 'currentColor');
+            } else {
+                svgElement.classList.remove('text-red-500');
+                svgElement.classList.add('text-gray-400');
+                svgElement.setAttribute('fill', 'none');
+            }
+        });
+    }
+
+    // Helper function to get CSRF token (needed for Django AJAX POST requests)
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                // Does this cookie string begin with the name we want?
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+</script>
+{% endblock %}

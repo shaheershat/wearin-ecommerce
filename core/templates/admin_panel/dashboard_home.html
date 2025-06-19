@@ -1,0 +1,98 @@
+{% extends 'admin_panel/dashboard.html' %}
+
+{% block content %}
+<h2 class="text-3xl font-bold mb-4">Dashboard</h2>
+
+<!-- Stats -->
+<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">
+  <div class="bg-white p-4 rounded-xl shadow text-center">
+    <div class="text-green-200 bg-green-100 w-12 h-12 mx-auto rounded-full flex items-center justify-center text-2xl">👥</div>
+    <p class="mt-2 text-sm text-gray-500">Total Customers</p>
+    <p class="text-xl font-bold">{{ total_customers }}</p>
+  </div>
+  <div class="bg-white p-4 rounded-xl shadow text-center">
+    <div class="text-green-200 bg-green-100 w-12 h-12 mx-auto rounded-full flex items-center justify-center text-2xl">🚚</div>
+    <p class="mt-2 text-sm text-gray-500">Total Orders</p>
+    <p class="text-xl font-bold">{{ total_orders }}</p>
+  </div>
+  <div class="bg-white p-4 rounded-xl shadow text-center">
+    <div class="text-green-200 bg-green-100 w-12 h-12 mx-auto rounded-full flex items-center justify-center text-2xl">💵</div>
+    <p class="mt-2 text-sm text-gray-500">Total Sales</p>
+    <p class="text-xl font-bold">₹{{ total_sales }}</p>
+  </div>
+  <div class="bg-white p-4 rounded-xl shadow text-center">
+    <div class="text-green-200 bg-green-100 w-12 h-12 mx-auto rounded-full flex items-center justify-center text-2xl">⏳</div>
+    <p class="mt-2 text-sm text-gray-500">Total Pending</p>
+    <p class="text-xl font-bold">{{ total_pending }}</p>
+  </div>
+</div>
+
+<!-- Chart -->
+<div class="bg-white p-6 rounded-xl shadow">
+  <div class="flex justify-between items-center mb-4 flex-wrap gap-2">
+    <h3 class="text-xl font-bold">Total Income</h3>
+    <form method="get" onchange="this.submit()">
+      <select name="range" class="border rounded px-3 py-1 text-sm">
+        <option value="all" {% if request.GET.range == 'all' %}selected{% endif %}>All Time</option>
+        <option value="month" {% if request.GET.range == 'month' %}selected{% endif %}>This Month</option>
+        <option value="week" {% if request.GET.range == 'week' %}selected{% endif %}>This Week</option>
+      </select>
+    </form>
+  </div>
+
+  <!-- Chart Container -->
+  <div class="relative w-full" style="height: 600px;">
+    <canvas id="incomeChart" class="absolute top-0 left-0 w-full h-full"></canvas>
+  </div>
+</div>
+
+<!-- Chart.js CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<!-- Chart Script -->
+<script>
+  const ctx = document.getElementById('incomeChart').getContext('2d');
+
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: {{ labels|safe }},
+      datasets: [{
+        label: 'Income',
+        data: {{ values|safe }},
+        backgroundColor: 'rgba(59, 130, 246, 0.2)',
+        borderColor: 'rgba(59, 130, 246, 1)',
+        borderWidth: 2,
+        tension: 2,
+        fill: true,
+        pointBackgroundColor: 'rgba(59, 130, 246, 1)',
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: false  // This hides the legend
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          suggestedMin: 0,
+          suggestedMax: 20000,
+          ticks: {
+            callback: function(value) {
+              return '₹' + value.toFixed(0);
+            }
+          },
+          title: {
+            display: true,
+            text: 'Amount in ₹'
+          }
+        }
+      }
+    }
+  });
+</script>
+{% endblock %}

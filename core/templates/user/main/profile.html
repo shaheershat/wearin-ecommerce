@@ -1,0 +1,92 @@
+{% extends 'user/base.html' %}
+{% block content %}
+<div class="max-w-6xl mx-auto p-6 bg-white shadow rounded-lg flex">
+  
+  <!-- Sidebar -->
+  <div class="w-1/4 border-r pr-4">
+    <h2 class="text-xl font-bold mb-6">My Account</h2>
+    <ul class="space-y-4">
+      <li><button onclick="showTab('profile')" class="tab-btn text-left w-full font-medium text-gray-700 hover:text-black">👤 My Profile</button></li>
+      <li><button onclick="showTab('address')" class="tab-btn text-left w-full font-medium text-gray-700 hover:text-black">🏠 My Address</button></li>
+      <li><button onclick="showTab('orders')" class="tab-btn text-left w-full font-medium text-gray-700 hover:text-black">📦 My Orders</button></li>
+    </ul>
+  </div>
+
+  <!-- Content Area -->
+  <div class="flex-1 pl-6">
+    <!-- My Profile Tab -->
+    <div id="profile" class="tab-content">
+      <h3 class="text-lg font-semibold mb-4">Edit Profile</h3>
+      <form method="POST" action="{% url 'update_profile' %}">
+        {% csrf_token %}
+        {{ profile_form.as_p }}
+        <button type="submit" class="btn-primary mt-4">Update Profile</button>
+      </form>
+    </div>
+
+    <!-- My Address Tab -->
+<div id="address" class="tab-content hidden">
+  <h3 class="text-lg font-semibold mb-4">My Address</h3>
+
+  {% if user_address %}
+    <!-- Show existing address -->
+    <div class="mb-4 p-4 bg-gray-50 rounded shadow-sm border">
+      <p><strong>Full Name:</strong> {{ user_address.full_name }}</p>
+      <p><strong>Phone:</strong> {{ user_address.phone }}</p>
+      <p><strong>Street:</strong> {{ user_address.street }}</p>
+      <p><strong>City:</strong> {{ user_address.city }}</p>
+      <p><strong>State:</strong> {{ user_address.state }}</p>
+      <p><strong>Pincode:</strong> {{ user_address.pincode }}</p>
+      <p><strong>Country:</strong> {{ user_address.country }}</p>
+
+      <!-- Edit button toggles the address form -->
+      <button onclick="toggleAddressEdit()" class="mt-4 text-blue-600 hover:underline">Edit Address</button>
+    </div>
+
+    <!-- Edit address form (hidden initially) -->
+    <div id="editAddressForm" class="hidden">
+      <form method="POST" action="{% url 'update_address' %}">
+        {% csrf_token %}
+        {{ address_form.as_p }}
+        <button type="submit" class="btn-primary mt-4">Update Address</button>
+      </form>
+    </div>
+  
+  {% else %}
+    <!-- If no address, show add form -->
+    <form method="POST" action="{% url 'my_profile' %}">      {% csrf_token %}
+      {{ address_form.as_p }}
+      <button type="submit" class="btn-primary mt-4">Add Address</button>
+    </form>
+  {% endif %}
+</div>
+
+
+    <!-- My Orders Tab -->
+    <div id="orders" class="tab-content hidden">
+      <h3 class="text-lg font-semibold mb-4">Order History</h3>
+      {% for order in orders %}
+        <div class="border p-4 mb-4 rounded">
+          <p><strong>Order ID:</strong> {{ order.id }}</p>
+          <p><strong>Status:</strong> {{ order.status }}</p>
+          <p><strong>Date:</strong> {{ order.created_at|date:"M d, Y" }}</p>
+          <p><strong>Total:</strong> ₹{{ order.total_price }}</p>
+        </div>
+      {% empty %}
+        <p>No orders yet.</p>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<script>
+  function showTab(tabId) {
+    document.querySelectorAll('.tab-content').forEach(div => div.classList.add('hidden'));
+    document.getElementById(tabId).classList.remove('hidden');
+  }
+  function toggleAddressEdit() {
+  const form = document.getElementById("editAddressForm");
+  form.classList.toggle("hidden");
+  }
+</script>
+{% endblock %}

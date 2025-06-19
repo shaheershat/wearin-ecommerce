@@ -1,0 +1,51 @@
+{% extends 'user/base.html' %}
+
+{% block title %}Contact Us{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-12 min-h-[60vh]">
+    <h1 class="text-4xl font-bold text-gray-900 mb-6 text-center">Contact Us</h1>
+    <div class="max-w-2xl mx-auto bg-white p-8 rounded-xl shadow-lg">
+        <p class="text-gray-700 mb-6 text-center">
+            Have a question or need assistance? Reach out to us through the following channels:
+        </p>
+        <div class="space-y-6">
+            <div class="flex items-center space-x-4">
+                <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                <div>
+                    <p class="font-semibold text-lg">Email Us</p>
+                    <p class="text-gray-600">info@wearin.com</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-4">
+                <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684L10.5 9.87a1 1 0 00.5.5h4.98a1 1 0 00.948-.684l1.392-4.488A1 1 0 0118 3h2a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V5z"></path></svg>
+                <div>
+                    <p class="font-semibold text-lg">Call Us</p>
+                    <p class="text-gray-600">+1 (234) 567-890</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-4">
+                <svg class="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.828 0L6.343 16.657m14.142 0a2 2 0 10-2.828-2.828L10 18l.828.828m7.072-7.07L10 9.828m0 0a2 2 0 10-2.828-2.828L7.172 6.172m14.142 0a2 2 0 10-2.828-2.828L10 9.828"></path></svg>
+                <div>
+                    <p class="font-semibold text-lg">Visit Us</p>
+                    <p class="text-gray-600">123 Fashion Lane, Style City, FL 12345</p>
+                </div>
+            </div>
+        </div>
+        
+        <form class="mt-8 space-y-4">
+            <h3 class="text-xl font-semibold mb-2">Send us a message</h3>
+            <div>
+                <input type="text" placeholder="Your Name" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
+            </div>
+            <div>
+                <input type="email" placeholder="Your Email" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
+            </div>
+            <div>
+                <textarea placeholder="Your Message" rows="5" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"></textarea>
+            </div>
+            <button type="submit" class="w-full bg-black text-white px-6 py-3 rounded-lg font-medium hover:bg-gray-800 transition-colors">Send Message</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

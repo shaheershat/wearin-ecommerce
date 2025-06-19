@@ -1,0 +1,41 @@
+{% extends 'user/base.html' %}
+{% load static %}
+{% block content %}
+<div class="container mx-auto py-10 px-4">
+    <h2 class="text-2xl font-bold mb-6">Your Cart</h2>
+
+    {% if cart_items %}
+    <div class="space-y-6">
+        {% for product_id, item in cart_items %}
+        <div class="flex flex-col md:flex-row justify-between items-center border p-4 rounded-lg shadow-sm bg-white">
+            <div class="w-24 h-24 mb-4 md:mb-0">
+                <img src="{{ item.image_url }}" class="object-cover w-full h-full rounded" alt="{{ item.name }}">
+            </div>
+
+            <div class="flex-1 md:ml-6">
+                <h3 class="text-lg font-semibold">{{ item.name }}</h3>
+                <p class="text-green-600 font-medium">₹{{ item.price }}</p>
+                <p class="text-sm text-gray-500">Quantity: {{ item.quantity }}</p>
+                <p class="text-sm text-gray-500">Total: ₹{{ item.total }}</p>
+            </div>
+
+            <div class="flex space-x-2 mt-4 md:mt-0">
+                <form method="POST" action="{% url 'remove_from_cart' product_id %}">
+                    {% csrf_token %}
+                    <button class="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600">Remove</button>
+                </form>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="mt-10 border-t pt-6 text-right">
+        <h3 class="text-xl font-bold">Subtotal: ₹{{ total_price }}</h3>
+        <button class="mt-4 px-6 py-2 bg-black text-white rounded hover:bg-gray-800">Proceed to Checkout</button>
+    </div>
+
+    {% else %}
+    <p>Your cart is empty.</p>
+    {% endif %}
+</div>
+{% endblock %}

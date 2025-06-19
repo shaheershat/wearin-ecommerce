@@ -1,0 +1,81 @@
+{% extends 'admin_panel/dashboard.html' %}
+
+{% block content %}
+<h1 class="text-2xl font-bold mb-6">Order Details: #{{ order.id }}</h1>
+
+<a href="{% url 'admin_order_list' %}" class="text-blue-600 hover:underline mb-4 inline-block">&larr; Back to Order List</a>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+  <!-- Order Summary -->
+  <div class="bg-white p-6 rounded-xl shadow">
+    <h3 class="text-xl font-semibold mb-4">Order Summary</h3>
+    <p class="mb-2"><strong class="text-gray-700">Order ID:</strong> {{ order.id }}</p>
+    <p class="mb-2"><strong class="text-700">Status:</strong> 
+      <span class="px-2 py-1 rounded-full text-xs font-semibold
+        {% if order.status == 'Pending' %}bg-yellow-100 text-yellow-800
+        {% elif order.status == 'Shipped' %}bg-blue-100 text-blue-800
+        {% elif order.status == 'Delivered' %}bg-green-100 text-green-800
+        {% endif %}">
+        {{ order.status }}
+      </span>
+    </p>
+    <p class="mb-2"><strong class="text-gray-700">Total Price:</strong> ₹{{ order.total_price }}</p>
+    <p class="mb-2"><strong class="text-gray-700">Created At:</strong> {{ order.created_at|date:"M d, Y H:i" }}</p>
+  </div>
+
+  <!-- Customer Details -->
+  <div class="bg-white p-6 rounded-xl shadow">
+    <h3 class="text-xl font-semibold mb-4">Customer Details</h3>
+    {% if customer %}
+      <p class="mb-2"><strong class="text-gray-700">Username:</strong> {{ customer.username }}</p>
+      <p class="mb-2"><strong class="text-gray-700">Email:</strong> {{ customer.email }}</p>
+      {# Add more customer details if needed #}
+    {% else %}
+      <p class="text-gray-500">Customer details not available.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+  <!-- Shipping Address -->
+  <div class="bg-white p-6 rounded-xl shadow">
+    <h3 class="text-xl font-semibold mb-4">Shipping Address</h3>
+    {% if address %}
+      <p class="mb-2"><strong class="text-gray-700">Full Name:</strong> {{ address.full_name }}</p>
+      <p class="mb-2"><strong class="text-gray-700">Phone:</strong> {{ address.phone }}</p>
+      <p class="mb-2"><strong class="text-gray-700">Address Line:</strong> {{ address.address_line }}</p>
+      <p class="mb-2"><strong class="text-gray-700">City:</strong> {{ address.city }}</p>
+      <p class="mb-2"><strong class="text-gray-700">State:</strong> {{ address.state }}</p>
+      <p class="mb-2"><strong class="text-gray-700">Pincode:</strong> {{ address.pincode }}</p>
+    {% else %}
+      <p class="text-gray-500">No shipping address associated with this order.</p>
+    {% endif %}
+  </div>
+
+  <!-- Products Purchased -->
+  <div class="bg-white p-6 rounded-xl shadow">
+    <h3 class="text-xl font-semibold mb-4">Products Purchased</h3>
+    {% if order_items %}
+      <ul class="space-y-3">
+        {% for item in order_items %}
+          <li class="flex justify-between items-center border-b pb-2 last:border-b-0 last:pb-0">
+            <div>
+              <p class="font-medium text-gray-800">
+                {# Corrected syntax for conditional display of product name #}
+                {% if item.product %}{{ item.product.name }}{% else %}Deleted Product{% endif %}
+              </p>
+              <p class="text-sm text-gray-500">
+                {% if item.product and item.product.size %}(Size: {{ item.product.size }}){% endif %}
+              </p>
+            </div>
+            <p class="font-semibold text-gray-900">₹{{ item.price_at_purchase }}</p>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="text-gray-500">No products found for this order.</p>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}
