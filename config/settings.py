@@ -63,9 +63,7 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 
 CLOUDINARY_STORAGE = {
-    'CLOUD_NAME': 'dzpksiomk',
-    'API_KEY': '632675563128142',
-    'API_SECRET': 'UEND0Y8VjyLI9uNA9CWAC4DkcZM'
+    
 }
 
 DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
@@ -75,12 +73,7 @@ DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'wearin_db',
-        'USER': 'wearin_user',
-        'PASSWORD': 'wearin@123',
-        'HOST': 'localhost',
-        'PORT': '5432',
+        
     }
 }
 
