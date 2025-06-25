@@ -63,12 +63,7 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'wearin_db',
-        'USER': 'wearin_user',
-        'PASSWORD': 'wearin@123',
-        'HOST': 'localhost',
-        'PORT': '5432',
+        
     }
 }
 
