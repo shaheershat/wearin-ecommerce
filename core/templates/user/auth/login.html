@@ -1,13 +1,16 @@
 {% extends 'user/base.html' %}
+
 {% load widget_tweaks %}
+{% load socialaccount %}
 
 {% block title %}Sign In{% endblock %}
 
 {% block content %}
 <div class="min-h-screen flex items-center justify-center bg-gray-50 p-4">
     <div class="bg-white shadow-xl rounded-2xl flex flex-col md:flex-row max-w-7xl w-full overflow-hidden">
+
         <!-- Image Section -->
-        <div class="md:w-1/2 min-h-[300px] md:min-h-0 bg-cover bg-center" 
+        <div class="md:w-1/2 min-h-[300px] md:min-h-0 bg-cover bg-center"
              style="background-image: url('https://placehold.co/600x800/E2E8F0/A0AEC0?text=Login+Image'); border-top-left-radius: 1rem; border-bottom-left-radius: 1rem;">
         </div>
 
@@ -18,14 +21,12 @@
 
             <!-- Optional Social Login Buttons -->
             <div class="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 mb-6">
-                <button class="flex items-center justify-center border border-gray-300 rounded-lg px-6 py-3 w-full text-base font-medium text-gray-700 hover:bg-gray-50 transition-colors">
-                    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/480px-Google_%22G%22_logo.svg.png" alt="Google" class="w-5 h-5 mr-3">
+                <a href="{% provider_login_url 'google' %}"
+                   class="flex items-center justify-center border border-gray-300 rounded-lg px-6 py-3 w-full text-base font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/480px-Google_%22G%22_logo.svg.png"
+                         alt="Google" class="w-5 h-5 mr-3">
                     Sign in with Google
-                </button>
-                <button class="flex items-center justify-center border border-gray-300 rounded-lg px-6 py-3 w-full text-base font-medium text-gray-700 hover:bg-gray-50 transition-colors">
-                    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/4/4e/Mail_icon_%28iOS%29.svg/2048px-Mail_icon_%28iOS%29.svg.png" alt="Email" class="w-5 h-5 mr-3">
-                    Sign in with Email
-                </button>
+                </a>
             </div>
 
             <div class="flex items-center my-6">
@@ -38,13 +39,17 @@
             {% if messages %}
                 <ul class="mb-4 space-y-2">
                     {% for message in messages %}
-                        <li class="p-3 rounded-lg text-sm {% if message.tags == 'error' %}bg-red-100 text-red-700{% elif message.tags == 'success' %}bg-green-100 text-green-700{% else %}bg-blue-100 text-blue-700{% endif %}">
+                        <li class="p-3 rounded-lg text-sm 
+                            {% if message.tags == 'error' %}bg-red-100 text-red-700
+                            {% elif message.tags == 'success' %}bg-green-100 text-green-700
+                            {% else %}bg-blue-100 text-blue-700{% endif %}">
                             {{ message }}
                         </li>
                     {% endfor %}
                 </ul>
             {% endif %}
 
+            <!-- Login Form -->
             <form method="post" class="space-y-5">
                 {% csrf_token %}
 
@@ -74,7 +79,8 @@
                     </div>
                 {% endif %}
 
-                <button type="submit" class="w-full bg-black text-white px-6 py-3 rounded-lg text-lg font-medium hover:bg-gray-800 transition-colors shadow">
+                <button type="submit"
+                        class="w-full bg-black text-white px-6 py-3 rounded-lg text-lg font-medium hover:bg-gray-800 transition-colors shadow">
                     Sign In
                 </button>
             </form>
@@ -86,6 +92,7 @@
 
             <p class="text-gray-500 text-xs mt-6 text-center">WEARIN Terms & Conditions</p>
         </div>
+
     </div>
 </div>
 {% endblock %}

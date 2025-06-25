@@ -1,16 +1,20 @@
 from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib.auth.decorators import login_required
-from django.contrib.auth import login, authenticate, logout as auth_logout
+# from django.contrib.auth.decorators import login_required # No longer using default login_required
+from django.contrib.auth import login, authenticate # Don't import logout from django.contrib.auth here
+from django.contrib.auth import get_user_model # To get User model
 from django.contrib import messages
 from django.views.decorators.http import require_POST
-from django.http import JsonResponse # Import JsonResponse
-from core.forms import UserLoginForm, UserRegistrationForm
-from core.models import Product, Category, Wishlist # Import Wishlist model
+from django.http import JsonResponse
 from django.urls import reverse
-from core.forms import ProfileForm, AddressForm
-from core.models import Order, UserProfile
 
-@login_required
+# Import our custom decorators
+from core.decorators import admin_login_required, user_login_required
+
+from core.forms import UserLoginForm, UserRegistrationForm, ProfileForm, AddressForm
+from core.models import Product, Category, Wishlist, Order, UserProfile
+
+
+@user_login_required # Apply the new decorator
 def update_profile(request):
     if request.method == 'POST':
         user = request.user
@@ -21,10 +25,11 @@ def update_profile(request):
         messages.success(request, "Profile updated successfully!")
         return redirect('my_profile')
 
-@login_required
+
+@user_login_required # Apply the new decorator
 def update_address(request):
     if request.method == 'POST':
-        profile = request.user.profile  # or however you store the address
+        profile, created = UserProfile.objects.get_or_create(user=request.user)
         profile.address = request.POST.get('address')
         profile.city = request.POST.get('city')
         profile.state = request.POST.get('state')
@@ -33,84 +38,129 @@ def update_address(request):
         messages.success(request, "Address updated successfully!")
         return redirect('my_profile')
 
-@login_required
+
+@user_login_required # Apply the new decorator
 def profile_view(request):
     user = request.user
-
-    # Handle OneToOne profile
     user_profile, created = UserProfile.objects.get_or_create(user=user)
-
     profile_form = ProfileForm(instance=user)
     address_form = AddressForm(instance=user_profile)
     orders = Order.objects.filter(user=user).order_by('-created_at')
 
     if request.method == 'POST':
-        if 'name' in request.POST:
+        if 'update_profile' in request.POST:
             profile_form = ProfileForm(request.POST, instance=user)
             if profile_form.is_valid():
                 profile_form.save()
-                return redirect('profile_view')
-        elif 'street' in request.POST:  # a key from the address form
+                messages.success(request, "Profile updated successfully!")
+                return redirect('my_profile')
+        elif 'update_address' in request.POST:
             address_form = AddressForm(request.POST, instance=user_profile)
             if address_form.is_valid():
                 address_form.save()
-                return redirect('profile_view')
+                messages.success(request, "Address updated successfully!")
+                return redirect('my_profile')
+        else:
+            messages.error(request, "Invalid form submission.")
 
     return render(request, 'user/profile.html', {
         'profile_form': profile_form,
         'address_form': address_form,
-        'user_address': user_profile,  # So template knows address exists
+        'user_address': user_profile,
         'orders': orders
     })
 
-    
-@login_required
-def my_profile(request):
-    return render(request, 'user/main/profile.html')
-@login_required
-def my_address(request):
-    return render(request, 'user/profile/my_address.html')
 
-@login_required
+@user_login_required # Apply the new decorator
+def my_profile(request):
+    user_profile, created = UserProfile.objects.get_or_create(user=request.user)
+    profile_form = ProfileForm(instance=request.user)
+    address_form = AddressForm(instance=user_profile)
+    return render(request, 'user/main/profile.html', {
+        'profile_form': profile_form,
+        'address_form': address_form,
+        'user_address': user_profile
+    })
+
+
+@user_login_required # Apply the new decorator
+def my_address(request):
+    user_profile, created = UserProfile.objects.get_or_create(user=request.user)
+    address_form = AddressForm(instance=user_profile)
+    return render(request, 'user/profile/my_address.html', {'address_form': address_form, 'user_address': user_profile})
+
+
+@user_login_required # Apply the new decorator
 def my_orders(request):
-    orders = request.user.order_set.all()  # or your Order model
+    orders = request.user.order_set.all()
     return render(request, 'user/profile/my_orders.html', {'orders': orders})
+
 
 # --- Auth Views ---
 
 def login_view(request):
-    if request.user.is_authenticated:
+    # Check if currently logged in as admin via the admin portal (custom key)
+    if request.session.get('_auth_user_id_admin_portal'):
+        messages.warning(request, "You are logged in as an admin. Please log out from the admin panel first if you wish to log in as a regular user.")
+        return redirect('admin_dashboard')
+
+    # If already logged in as a user (check default Django key)
+    if request.session.get('_auth_user_id'):
+        messages.info(request, "You are already logged in as a user.")
         return redirect('user_dashboard')
 
     if request.method == 'POST':
-        form = UserLoginForm(request, data=request.POST)
+        form = UserLoginForm(request=request, data=request.POST) # Pass request to AuthenticationForm
         if form.is_valid():
-            username = form.cleaned_data.get('username')
-            password = form.cleaned_data.get('password')
-            user = authenticate(request, username=username, password=password)
-            if user is not None:
-                login(request, user)
-                messages.success(request, f"Welcome back, {user.username}!")
+            user = form.get_user()
+            # Ensure it's not a superuser trying to log into the user side IF you want strict prevention
+            # If a superuser can *also* act as a regular user via this login, remove `and not user.is_superuser`
+            if user: # Changed from `user and not user.is_superuser` to allow superuser to log in as user
+                # Manually set the default Django session key
+                request.session['_auth_user_id'] = user.pk
+                # Optionally, clear any existing admin session if they were logged in as admin in THIS TAB
+                # (This prevents a superuser being logged in as admin AND user in the *same* browser tab)
+                if '_auth_user_id_admin_portal' in request.session:
+                    del request.session['_auth_user_id_admin_portal']
+
+                messages.success(request, f"Welcome, {user.username}!")
                 return redirect('user_dashboard')
             else:
-                messages.error(request, "Invalid username or password.")
+                messages.error(request, 'Invalid credentials.')
+        else:
+            messages.error(request, 'Invalid username or password.')
     else:
-        form = UserLoginForm()
+        form = UserLoginForm() # Initialize the form for GET requests
 
     return render(request, 'user/auth/login.html', {'form': form})
 
 
 def register_view(request):
-    if request.user.is_authenticated:
+    # Check for admin login
+    if request.session.get('_auth_user_id_admin_portal'):
+        messages.warning(request, "Admin is currently logged in. Please logout to access user account.")
+        return redirect('admin_dashboard')
+
+    # Check for user login
+    if request.session.get('_auth_user_id'):
+        messages.info(request, "You are already logged in.")
         return redirect('user_dashboard')
 
     if request.method == 'POST':
         form = UserRegistrationForm(data=request.POST)
         if form.is_valid():
             user = form.save()
-            login(request, user)
+            # After successful registration, log them in as a regular user
+            request.session['_auth_user_id'] = user.pk
             messages.success(request, "Account created successfully! Welcome to WEARIN.")
             return redirect('user_dashboard')
+        else:
+            for field, errors in form.errors.items():
+                for error in errors:
+                    messages.error(request, f"{field.replace('_', ' ').title()}: {error}")
+            if form.non_field_errors():
+                for error in form.non_field_errors():
+                    messages.error(request, f"Error: {error}")
     else:
         form = UserRegistrationForm()
 
@@ -130,7 +180,13 @@ def reset_password_view(request):
 
 
 def logout_view(request):
-    auth_logout(request)
+    # Clear only the default Django session key
+    if '_auth_user_id' in request.session:
+        del request.session['_auth_user_id']
+        # Also clear the generic Django session. This is important.
+        # If the user was also logged in as an 'admin' here by mistake, this clears it too for THIS TAB.
+        request.session.flush() # Clear the entire session for this browser if logging out of user
+                                # This ensures no leftover user auth.
     messages.info(request, "You have been logged out.")
     return redirect('home')
 
@@ -138,12 +194,23 @@ def logout_view(request):
 # --- Main Pages ---
 
 def home_view(request):
+    # Retrieve user based on the session (if any) to provide proper context
+    user = None
+    user_id = request.session.get('_auth_user_id')
+    if user_id:
+        try:
+            User = get_user_model()
+            user = User.objects.get(pk=user_id)
+            request.user = user # Set request.user for this specific view context
+        except User.DoesNotExist:
+            pass # User ID in session but user not found, treat as anonymous
+
     new_products = Product.objects.filter(is_sold=False).order_by('-created_at')[:12]
     categories = Category.objects.all()
 
     wishlisted_product_ids = []
-    if request.user.is_authenticated:
-        wishlisted_product_ids = Wishlist.objects.filter(user=request.user).values_list('product_id', flat=True)
+    if user and user.is_authenticated: # Use 'user' variable now
+        wishlisted_product_ids = Wishlist.objects.filter(user=user).values_list('product_id', flat=True)
 
     cart = request.session.get('cart', {})
     cart_count = sum(item.get('quantity', 0) for item in cart.values())
@@ -153,27 +220,38 @@ def home_view(request):
         'categories': categories,
         'wishlisted_product_ids': list(wishlisted_product_ids),
         'cart_count': cart_count,
+        'request_user': user # Pass 'user' object explicitly if needed in template for display
     })
 
 
-
-@login_required
+@user_login_required # Apply the new decorator
 def user_dashboard_view(request):
     return render(request, 'user/main/authenticated_home.html')
 
 
 def shop_view(request):
+    # Retrieve user based on the session (if any)
+    user = None
+    user_id = request.session.get('_auth_user_id')
+    if user_id:
+        try:
+            User = get_user_model()
+            user = User.objects.get(pk=user_id)
+            request.user = user
+        except User.DoesNotExist:
+            pass
+
     products = Product.objects.filter(is_sold=False).order_by('-created_at')
     categories = Category.objects.all()
 
     wishlisted_product_ids = []
-    if request.user.is_authenticated:
-        wishlisted_product_ids = Wishlist.objects.filter(user=request.user).values_list('product_id', flat=True)
+    if user and user.is_authenticated:
+        wishlisted_product_ids = Wishlist.objects.filter(user=user).values_list('product_id', flat=True)
 
     return render(request, 'user/main/shop.html', {
         'products': products,
         'categories': categories,
-        'wishlisted_product_ids': list(wishlisted_product_ids), # Convert to list for template
+        'wishlisted_product_ids': list(wishlisted_product_ids),
     })
 
 
@@ -189,8 +267,10 @@ def product_detail_view(request, id=None):
 def policy_view(request):
     return render(request, 'user/main/static_pages/policy.html')
 
+
 def contact_view(request):
     return render(request, 'user/main/static_pages/contact.html')
+
 
 def about_view(request):
     return render(request, 'user/main/static_pages/about.html')
@@ -198,28 +278,26 @@ def about_view(request):
 
 # --- CART SYSTEM (Session Based) ---
 
-@login_required
+@user_login_required # Apply the new decorator
 def cart_page_view(request):
     cart = request.session.get('cart', {})
     cart_items = []
     total_price = 0
 
-    for product_id, item in cart.items():
-        # Ensure product still exists in database, handle if it's been deleted
+    for product_id, item in list(cart.items()):
         try:
             product_obj = Product.objects.get(id=int(product_id))
             item_total = item['price'] * item['quantity']
             item['total'] = item_total
-            item['product_obj'] = product_obj # Add product object for detailed info if needed
+            item['product_obj'] = product_obj
             cart_items.append((product_id, item))
             total_price += item_total
         except Product.DoesNotExist:
-            # Optionally remove item from session cart if product no longer exists
+            # If product no longer exists, remove it from cart
             if product_id in request.session['cart']:
                 del request.session['cart'][product_id]
-                request.session.modified = True # Mark session as modified
-            messages.warning(request, f"Product (ID: {product_id}) not found and removed from your cart.")
-
+                request.session.modified = True
+                messages.warning(request, f"A product was not found and has been removed from your cart.")
 
     context = {
         'cart_items': cart_items,
@@ -228,12 +306,12 @@ def cart_page_view(request):
     return render(request, 'user/main/cart.html', context)
 
 
-@login_required
+@user_login_required # Apply the new decorator
 def add_to_cart_view(request, product_id):
     product = get_object_or_404(Product, id=product_id)
     cart = request.session.get('cart', {})
-
     product_id_str = str(product_id)
+
     if product_id_str in cart:
         cart[product_id_str]['quantity'] += 1
         messages.info(request, f"Increased quantity of {product.name} in your cart.")
@@ -246,31 +324,29 @@ def add_to_cart_view(request, product_id):
         }
         messages.success(request, f"{product.name} added to your cart.")
 
-
     request.session['cart'] = cart
     return redirect('cart_page')
 
 
 @require_POST
-@login_required
+@user_login_required # Apply the new decorator
 def remove_from_cart_view(request, product_id):
     cart = request.session.get('cart', {})
     product_id_str = str(product_id)
 
     if product_id_str in cart:
-        product_name = cart[product_id_str]['name'] # Get name before deleting
+        product_name = cart[product_id_str]['name']
         del cart[product_id_str]
         request.session['cart'] = cart
         messages.info(request, f"{product_name} removed from your cart.")
     else:
         messages.warning(request, "Product not found in your cart.")
 
-
     return redirect('cart_page')
 
 
 @require_POST
-@login_required
+@user_login_required # Apply the new decorator
 def buy_now_view(request, product_id):
     product = get_object_or_404(Product, id=product_id)
     request.session['buy_now'] = {
@@ -284,21 +360,21 @@ def buy_now_view(request, product_id):
 
 # --- WISHLIST SYSTEM ---
 
-@login_required
+@user_login_required # Apply the new decorator
 def wishlist_view(request):
-    wishlist_items = Wishlist.objects.filter(user=request.user).select_related('product', 'product__category') # Optimise query
+    wishlist_items = Wishlist.objects.filter(user=request.user).select_related('product', 'product__category')
     context = {
         'wishlist_items': wishlist_items
     }
     return render(request, 'user/main/wishlist.html', context)
 
-@login_required
-@require_POST # Ensure this view only accepts POST requests
+
+@user_login_required # Apply the new decorator
+@require_POST
 def toggle_wishlist(request, product_id):
     product = get_object_or_404(Product, id=product_id)
 
     if not request.headers.get('x-requested-with') == 'XMLHttpRequest':
-        # If not an AJAX request, redirect or return error
         messages.error(request, "Invalid request for wishlist toggle.")
         return JsonResponse({'status': 'error', 'message': 'Invalid request'}, status=400)
 
@@ -320,7 +396,8 @@ def toggle_wishlist(request, product_id):
 
     return JsonResponse({'status': status, 'message': message})
 
-@login_required
+
+@user_login_required # Apply the new decorator
 @require_POST
 def remove_from_wishlist(request, product_id):
     product = get_object_or_404(Product, id=product_id)

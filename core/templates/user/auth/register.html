@@ -1,6 +1,6 @@
 {% extends 'user/base.html' %}
 {% load widget_tweaks %}
-
+{% load socialaccount %}
 {% block title %}Create Account{% endblock %}
 
 {% block content %}
@@ -17,14 +17,10 @@
             <p class="text-gray-600 text-xl mb-6">Create Account</p>
 
             <div class="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 mb-6">
-                <button class="flex items-center justify-center border border-gray-300 rounded-lg px-6 py-3 w-full text-base font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+                <a href="{% provider_login_url 'google' %}" class="flex items-center justify-center border border-gray-300 rounded-lg px-6 py-3 w-full text-base font-medium text-gray-700 hover:bg-gray-50 transition-colors">
                     <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/480px-Google_%22G%22_logo.png" alt="Google" class="w-5 h-5 mr-3">
                     Sign up with Google
-                </button>
-                <button class="flex items-center justify-center border border-gray-300 rounded-lg px-6 py-3 w-full text-base font-medium text-gray-700 hover:bg-gray-50 transition-colors">
-                    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/4/4e/Mail_icon_%28iOS%29.svg/2048px-Mail_icon_%28iOS%29.svg.png" alt="Email" class="w-5 h-5 mr-3">
-                    Sign up with Email
-                </button>
+                </a>
             </div>
 
             <div class="flex items-center my-6">

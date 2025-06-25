@@ -29,11 +29,13 @@
 <body class="bg-white text-gray-800">
 
     <header class="bg-white shadow-sm sticky top-0 z-40">
-        <div class="container mx-auto px-4 py-4 flex justify-between items-center"> . 
+        <div class="container mx-auto px-4 py-4 flex justify-between items-center">
             <div class="text-2xl font-bold uppercase tracking-wider">
                 <a href="{% url 'home' %}" class="hover:text-gray-600">WEARIN</a>
             </div>
-            <nav class="hidden md:flex space-x-8 font-medium">
+
+            <!-- Main Navigation Links - Centered -->
+            <nav class="hidden md:flex space-x-8 font-medium absolute left-1/2 -translate-x-1/2">
                 {# Home/Dashboard link based on authentication status #}
                 {% if user.is_authenticated %}
                     <a href="{% url 'home' %}" class="hover:text-gray-600">Home</a> {# Always link to home for authenticated users #}
@@ -54,7 +56,9 @@
                     </div>
                 </div>
             </nav>
-            <div class="flex items-center space-x-4"> {# Adjusted space-x for buttons to accommodate new icons #}
+
+            <!-- Action Buttons/Icons on the Right -->
+            <div class="flex items-center space-x-4">
                 {# Conditional buttons based on authentication status #}
                 {% if user.is_authenticated %}
                    {# Wishlist Icon #}
@@ -85,7 +89,7 @@
                     </a>
 
                    {# User Icon #}
-                    <a href="{% url 'profile' %}" class="hover:text-gray-600">
+                    <a href="{% url 'my_profile' %}" class="hover:text-gray-600">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="w-8 h-8 fill-black">
                             <g>
                                 <path d="M12 11a4 4 0 1 0-4-4 4 4 0 0 0 4 4zm6 10a1 1 0 0 0 1-1 7 7 0 0 0-14 0 1 1 0 0 0 1 1z"></path>

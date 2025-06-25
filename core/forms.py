@@ -19,18 +19,17 @@ class AddressForm(forms.ModelForm):
 
 # --- Login Form ---
 class UserLoginForm(AuthenticationForm):
-    username = forms.CharField(
-        widget=forms.TextInput(attrs={
+    # Modified __init__ to accept 'request' as per AuthenticationForm's signature
+    def __init__(self, request=None, *args, **kwargs):
+        super().__init__(request=request, *args, **kwargs)
+        self.fields['username'].widget = forms.TextInput(attrs={
             'placeholder': 'Email (or Username)',
             'class': 'w-full px-5 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400'
         })
-    )
-    password = forms.CharField(
-        widget=forms.PasswordInput(attrs={
+        self.fields['password'].widget = forms.PasswordInput(attrs={
             'placeholder': 'Password',
             'class': 'w-full px-5 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400'
         })
-    )
 
 # --- Registration Form ---
 class UserRegistrationForm(UserCreationForm):

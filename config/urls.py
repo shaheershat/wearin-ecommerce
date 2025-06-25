@@ -2,12 +2,34 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
-from core.views.user_views import remove_from_cart_view, register_view, toggle_wishlist, remove_from_wishlist, wishlist_view # Import new views
+
+# Import the specific user views that don't need decorators at the URL level
+# (or if they do, they'll use the new user_login_required decorator within the view)
+from core.views.user_views import (
+    remove_from_cart_view,
+    register_view,
+    toggle_wishlist,
+    remove_from_wishlist,
+    wishlist_view,
+    update_profile,
+    update_address
+)
 from core.views import user_views, admin_views
-from core.views.user_views import update_profile, update_address
+# No need to import admin_login_required or user_login_required here,
+# they are used as decorators within the view files themselves.
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
+    # Optional: Django's built-in admin (you can remove this if unused)
+    # Be cautious with this if you want absolute separation, as it uses default Django auth.
+    # It's better to manage all superuser logins through your custom admin_login.
+    # If you keep it, a superuser logging in here will use the default Django session.
+    # path('admin/', admin.site.urls),
+
+    # --- Custom Admin Auth ---
+    path('admin-login/', admin_views.admin_login_view, name='admin_login'),
+    path('admin-logout/', admin_views.admin_logout_view, name='admin_logout'),
+
+    # --- Admin Panel ---
     path('dashboard/', admin_views.admin_dashboard_view, name='admin_dashboard'),
     path('dashboard/products/', admin_views.admin_products_view, name='admin_product_list'),
     path('dashboard/products/<int:pk>/edit/', admin_views.edit_product_view, name='edit_product'),
@@ -15,13 +37,16 @@ urlpatterns = [
     path('dashboard/upload/', admin_views.batch_upload_view, name='admin_upload_page'),
     path('dashboard/users/', admin_views.admin_user_list, name='admin_user_list'),
     path('dashboard/users/toggle/<int:user_id>/', admin_views.toggle_user_status, name='toggle_user_status'),
+    path('dashboard/orders/', admin_views.admin_order_list, name='admin_order_list'),
+    path('dashboard/orders/<int:order_id>/', admin_views.admin_order_detail_view, name='admin_order_detail'),
+
+    # --- Coupon Management ---
     path('coupons/', admin_views.coupon_list, name='admin_coupon_list'),
     path('coupons/create/', admin_views.coupon_create, name='admin_coupon_create'),
     path('coupons/<int:pk>/edit/', admin_views.edit_coupon_view, name='admin_coupon_edit'),
     path('coupons/<int:pk>/delete/', admin_views.delete_coupon_view, name='admin_coupon_delete'),
-    path('dashboard/orders/', admin_views.admin_order_list, name='admin_order_list'),
-    path('dashboard/orders/<int:order_id>/', admin_views.admin_order_detail_view, name='admin_order_detail'),
 
+    # --- User Auth ---
     path('login/', user_views.login_view, name='login'),
     path('register/', register_view, name='register'),
     path('forgot-password/', user_views.forgot_password_view, name='forgot_password'),
@@ -29,6 +54,7 @@ urlpatterns = [
     path('reset-password/', user_views.reset_password_view, name='reset_password'),
     path('logout/', user_views.logout_view, name='logout'),
 
+    # --- User Pages ---
     path('', user_views.home_view, name='home'),
     path('my-home/', user_views.user_dashboard_view, name='user_dashboard'),
     path('shop/', user_views.shop_view, name='shop'),
@@ -37,26 +63,34 @@ urlpatterns = [
     path('contact/', user_views.contact_view, name='contact'),
     path('about/', user_views.about_view, name='about'),
 
+    # --- Cart ---
     path('add-to-cart/<int:product_id>/', user_views.add_to_cart_view, name='add_to_cart'),
     path('buy-now/<int:product_id>/', user_views.buy_now_view, name='buy_now'),
     path('cart/', user_views.cart_page_view, name='cart_page'),
-    path('checkout/', user_views.cart_page_view, name='checkout_page'), # This might need a separate view for actual checkout process
+    path('checkout/', user_views.cart_page_view, name='checkout_page'),
     path('cart/remove/<int:product_id>/', remove_from_cart_view, name='remove_from_cart'),
 
-    # Wishlist URLs
+    # --- Wishlist ---
     path('wishlist/', wishlist_view, name='wishlist'),
     path('wishlist/toggle/<int:product_id>/', toggle_wishlist, name='toggle_wishlist'),
     path('wishlist/remove/<int:product_id>/', remove_from_wishlist, name='remove_from_wishlist'),
 
+    # --- User Profile ---
     path('profile/', user_views.my_profile, name='my_profile'),
     path('profile/address/', user_views.my_address, name='my_address'),
     path('profile/orders/', user_views.my_orders, name='my_orders'),
-    path('profile/', user_views.profile_view, name='profile'),
     path('profile/update/', update_profile, name='update_profile'),
     path('profile/update-address/', update_address, name='update_address'),
 
-
+    # --- Social Login ---
+    # Be very careful with allauth here. It uses Django's default session,
+    # meaning if a superuser logs in via Google on the user side,
+    # they will be logged in as a 'user' (even if they are superuser).
+    # This design makes it hard to distinguish 'superuser logged in as admin' vs
+    # 'superuser logged in as user'.
+    path('accounts/', include('allauth.urls')),
 ]
 
+# Media files for development only
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

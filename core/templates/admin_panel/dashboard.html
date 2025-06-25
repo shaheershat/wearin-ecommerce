@@ -9,10 +9,8 @@
 </head>
 <body class="bg-pink-50 flex flex-col md:flex-row">
 
-  <!-- Overlay Sidebar for Mobile -->
   <div id="mobileSidebar" class="fixed inset-0 z-50 bg-black bg-opacity-50 hidden md:hidden" onclick="closeSidebar()">
     <aside onclick="event.stopPropagation()" class="w-64 bg-white h-full p-4 flex flex-col justify-between relative">
-      <!-- ✖ Close button -->
       <button onclick="closeSidebar()" class="absolute top-2 right-2 text-xl">✖</button>
 
       <div class="mt-8">
@@ -36,12 +34,11 @@
             <p class="text-sm text-gray-500">Admin</p>
           </div>
         </div>
-        <a href="#" class="mt-4 flex items-center gap-2 text-red-500 hover:underline">🚪 Logout</a>
+        <a href="{% url 'admin_logout' %}" class="mt-4 flex items-center gap-2 text-red-500 hover:underline">🚪 Logout</a>
       </div>
     </aside>
   </div>
 
-  <!-- Desktop Sidebar -->
   <aside class="hidden md:flex w-64 bg-white border-r border-gray-200 p-4 flex-col justify-between min-h-screen">
     <div>
       <h1 class="text-2xl font-bold mb-6">WEARIN</h1>
@@ -64,13 +61,11 @@
           <p class="text-sm text-gray-500">Admin</p>
         </div>
       </div>
-      <a href="#" class="mt-4 flex items-center gap-2 text-red-500 hover:underline">🚪 Logout</a>
+      <a href="{% url 'admin_logout' %}" class="mt-4 flex items-center gap-2 text-red-500 hover:underline">🚪 Logout</a>
     </div>
   </aside>
 
-  <!-- Main content -->
   <main class="flex-1 bg-gray-100 p-6 overflow-y-auto w-full">
-    <!-- Mobile toggle button -->
     <button onclick="openSidebar()" class="md:hidden text-2xl mb-4">☰</button>
 
     {% block content %}
@@ -78,7 +73,6 @@
     {% endblock %}
   </main>
 
-  <!-- Scripts -->
   <script>
     function openSidebar() {
       document.getElementById('mobileSidebar').classList.remove('hidden');
