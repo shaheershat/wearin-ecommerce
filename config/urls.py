@@ -23,14 +23,14 @@ urlpatterns = [
     # Be cautious with this if you want absolute separation, as it uses default Django auth.
     # It's better to manage all superuser logins through your custom admin_login.
     # If you keep it, a superuser logging in here will use the default Django session.
-    # path('admin/', admin.site.urls),
+    path('admin/', admin.site.urls),
 
     # --- Custom Admin Auth ---
     path('admin-login/', admin_views.admin_login_view, name='admin_login'),
     path('admin-logout/', admin_views.admin_logout_view, name='admin_logout'),
 
     # --- Admin Panel ---
-    path('dashboard/', admin_views.admin_dashboard_view, name='admin_dashboard'),
+    path('admin-dashboard/', admin_views.admin_dashboard_view, name='admin_dashboard'),
     path('dashboard/products/', admin_views.admin_products_view, name='admin_product_list'),
     path('dashboard/products/<int:pk>/edit/', admin_views.edit_product_view, name='edit_product'),
     path('dashboard/products/<int:pk>/delete/', admin_views.delete_product_view, name='delete_product'),
