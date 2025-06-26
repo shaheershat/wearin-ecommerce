@@ -31,14 +31,16 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
+    'core.middlewares.CustomSessionMiddleware',             # Your custom middleware - runs first for session handling
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
-    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware', # Django's AuthenticationMiddleware - relies on session/user
     'allauth.account.middleware.AccountMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+SILENCED_SYSTEM_CHECKS = ['admin.E410'] 
 
 ROOT_URLCONF = 'config.urls'
 
@@ -63,9 +65,19 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 DATABASES = {
     'default': {
-        
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'wearin_db',
+        'USER': 'wearin_user',
+        'PASSWORD': 'wearin@123',
+        'HOST': 'localhost',
+        'PORT': '5432',
     }
 }
+
+# Sessions (ensure these are present and correct)
+SESSION_ENGINE = 'django.contrib.sessions.backends.db' # Ensure this is present
+SESSION_COOKIE_NAME = 'user_sessionid' # Default for regular users
+ADMIN_SESSION_COOKIE_NAME = 'admin_sessionid'
 
 # Password validators
 AUTH_PASSWORD_VALIDATORS = [
@@ -136,9 +148,49 @@ SOCIALACCOUNT_PROVIDERS = {
 # Sessions
 SESSION_COOKIE_AGE = 3600
 SESSION_EXPIRE_AT_BROWSER_CLOSE = False
+SESSION_COOKIE_SAMESITE = 'Lax'
 
-# Logging for debugging (optional)
-import logging
-logger = logging.getLogger('allauth')
-logger.setLevel(logging.DEBUG)
-logger.addHandler(logging.StreamHandler())
+# Logging for debugging (REQUIRED FOR MIDDLEWARE DEBUGGING)
+import logging # Already present, but confirming
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'level': 'DEBUG', 
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple', 
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO', # Default level for other loggers
+    },
+    'loggers': {
+        'core.middlewares': { # Target your custom middleware's logger for detailed output
+            'handlers': ['console'],
+            'level': 'DEBUG', # VERY IMPORTANT: Set to DEBUG to see all custom middleware logs
+            'propagate': False,
+        },
+        'allauth': { # Keep your existing allauth logging setup
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'django': { # Example for general Django logging
+            'handlers': ['console'],
+            'level': 'INFO', # Keep this at INFO or WARNING for less verbosity
+            'propagate': False,
+        },
+    },
+}
