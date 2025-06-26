@@ -8,12 +8,137 @@ from django.views.decorators.http import require_POST
 from django.http import JsonResponse
 from django.urls import reverse
 from django.conf import settings
-
+from django.core.mail import send_mail
+from django.contrib.sessions.backends.db import SessionStore
+from django.contrib.auth import login
+from django.contrib.auth import get_user_model
+from django.contrib.sessions.backends.db import SessionStore
+from django.contrib import messages
 # Import our custom decorators
 from core.decorators import user_login_required
 
 from core.forms import UserLoginForm, UserRegistrationForm, ProfileForm, AddressForm
 from core.models import Product, Category, Wishlist, Order, UserProfile
+from django.utils import timezone
+import random
+from core.models import Product, Category, Wishlist, Order, UserProfile, EmailOTP
+from core.utils import send_otp_email
+
+from django.contrib.auth.hashers import make_password
+
+User = get_user_model()
+
+# ------------------- OTP Registration Views -------------------
+
+
+def request_register_otp_view(request):
+    if request.method == "POST":
+        email = request.POST.get("email")
+        if User.objects.filter(email=email).exists():
+            messages.error(request, "Email already registered.")
+        else:
+            otp = str(random.randint(100000, 999999))
+            # Delete previous OTPs for this email + purpose
+            EmailOTP.objects.filter(email=email, purpose="register").delete()
+            EmailOTP.objects.create(email=email, otp=otp, purpose="register", created_at=timezone.now())
+            send_otp_email(email, otp)
+            request.session['otp_email'] = email
+            return redirect('verify_register_otp')
+    return render(request, 'user/auth/request_register_otp.html')
+
+
+def verify_register_otp_view(request):
+    email = request.session.get('otp_email')
+    if not email:
+        return redirect('request_register_otp')
+
+    if request.method == 'POST':
+        entered_otp = request.POST.get('otp')
+        try:
+            otp_obj = EmailOTP.objects.get(email=email, otp=entered_otp, purpose="register")
+            return redirect('register')
+        except EmailOTP.DoesNotExist:
+            messages.error(request, "Invalid OTP. Please try again.")
+    return render(request, 'user/auth/verify_register_otp.html', {"email": email})
+
+# ------------------- OTP Forgot Password Views -------------------
+
+def request_reset_otp_view(request):
+    if request.method == "POST":
+        email = request.POST.get("email")
+        if not User.objects.filter(email=email).exists():
+            messages.error(request, "No account found with this email.")
+        else:
+            otp = str(random.randint(100000, 999999))
+            EmailOTP.objects.update_or_create(
+                email=email,
+                defaults={"otp": otp, "purpose": "reset", "created_at": timezone.now()}
+            )
+            send_otp_email(email, otp)
+            request.session['reset_email'] = email
+            request.session.save()
+            return redirect('verify_reset_otp')
+
+            print("✅ OTP sent & session saved. Redirecting now...")
+            return redirect('verify_reset_otp')
+
+    return render(request, 'user/auth/request_reset_otp.html')
+
+
+
+def verify_reset_otp_view(request):
+    email = request.session.get('reset_email')
+    if not email:
+        return redirect('forgot_password')
+
+    if request.method == 'POST':
+        entered_otp = request.POST.get('otp')
+        try:
+            otp_obj = EmailOTP.objects.get(email=email, otp=entered_otp, purpose="reset")
+            
+            # ✅ OTP matched: Set flag to allow password reset
+            request.session['otp_verified'] = True
+            return redirect('reset_password')
+        except EmailOTP.DoesNotExist:
+            messages.error(request, "Invalid OTP. Please try again.")
+    
+    return render(request, 'user/auth/verify_reset_otp.html', {"email": email})
+
+def reset_password_view(request):
+    email = request.session.get('reset_email')
+    otp_verified = request.session.get('otp_verified', False)
+
+    if not email or not otp_verified:
+        print("❌ Missing email or OTP not verified.")
+        return redirect('forgot_password')
+
+    if request.method == 'POST':
+        password = request.POST.get('password')
+        confirm_password = request.POST.get('confirm_password')
+
+        if password != confirm_password:
+            print("❌ Passwords do not match.")
+            messages.error(request, "Passwords do not match.")
+        else:
+            try:
+                user = User.objects.get(email=email)
+                user.set_password(password)
+                user.save()
+
+                # 🔐 Clean up session
+                request.session.pop('reset_email', None)
+                request.session.pop('otp_verified', None)
+
+                print("✅ Password reset successful. Redirecting to login.")
+                messages.success(request, "Password reset successful. Please login.")
+                return redirect('login')  # <--- this should trigger redirect (302)
+
+            except User.DoesNotExist:
+                print("❌ User not found for email:", email)
+                messages.error(request, "User not found.")
+
+    return render(request, 'user/auth/reset_password.html', {"email": email})
+
 
 
 @user_login_required
@@ -130,35 +255,44 @@ def my_orders(request):
 
 # --- Auth Views ---
 
+User = get_user_model()
+
 def login_view(request):
     list(messages.get_messages(request))
 
-    # Crucial: Only check if *this* session (user session) is authenticated.
-    user_id = request.session.get('_auth_user_id')
-    if user_id:
-        # Attempt to retrieve user just to confirm it's still valid
-        User = get_user_model()
-        try:
-            User.objects.get(pk=user_id)
-            messages.info(request, "You are already logged in as a user.")
-            return redirect('user_dashboard')
-        except User.DoesNotExist:
-            # If user ID is in session but user doesn't exist, clear it.
-            if '_auth_user_id' in request.session:
-                del request.session['_auth_user_id']
-            request.session.flush()
-            messages.error(request, "Your previous user session was invalid. Please log in.")
+    user_session_key = request.COOKIES.get('user_sessionid')
+    if user_session_key:
+        session = SessionStore(session_key=user_session_key)
+        user_id = session.get('_auth_user_id')
+
+        if user_id:
+            try:
+                User.objects.get(pk=user_id)
+                messages.info(request, "You are already logged in as a user.")
+                return redirect('user_dashboard')
+            except User.DoesNotExist:
+                session.flush()
 
     if request.method == 'POST':
         form = UserLoginForm(request=request, data=request.POST)
         if form.is_valid():
-            user = form.get_user() # This implicitly uses authenticate()
+            user = form.get_user()
 
             if user:
-                # IMPORTANT: For user login, we ONLY set our custom session key.
-                request.session['_auth_user_id'] = user.pk
+                # ✅ Use Django's login method (important!)
+                login(request, user)  # This attaches user to request AND sets session data
+
+                # ✅ Save session manually (to get the session_key for cookie)
+                request.session.save()
+
+                response = redirect('user_dashboard')
+                response.set_cookie(
+                    'user_sessionid',  # Must match SESSION_COOKIE_NAME
+                    request.session.session_key
+                )
+
                 messages.success(request, f"Welcome, {user.username}!")
-                return redirect('user_dashboard')
+                return response
             else:
                 messages.error(request, 'Invalid credentials.')
         else:
@@ -212,15 +346,28 @@ def register_view(request):
 
 
 def forgot_password_view(request):
-    return render(request, 'user/auth/forgot_password.html')
+    if request.method == 'POST':
+        email = request.POST.get('email')
+        if User.objects.filter(email=email).exists():
+            otp = generate_otp()
+            EmailOTP.objects.update_or_create(
+                email=email,
+                defaults={'otp': otp, 'created_at': timezone.now()}
+            )
+            send_otp_email(email, otp)
+            request.session['reset_email'] = email
+
+            # ✅ Redirect to OTP input page
+            return redirect('verify_forgot_otp')
+        else:
+            messages.error(request, "Email not found.")
+    
+    return render(request, 'user/auth/request_reset_otp.html')
+
 
 
 def confirm_code_view(request):
     return render(request, 'user/auth/confirm_code.html')
-
-
-def reset_password_view(request):
-    return render(request, 'user/auth/reset_password.html')
 
 
 def logout_view(request):

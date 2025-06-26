@@ -2,27 +2,18 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
-
-# Import the specific user views that don't need decorators at the URL level
-# (or if they do, they'll use the new user_login_required decorator within the view)
-from core.views.user_views import (
-    remove_from_cart_view,
-    register_view,
-    toggle_wishlist,
-    remove_from_wishlist,
-    wishlist_view,
-    update_profile,
-    update_address
-)
+from core.views.user_views import verify_reset_otp_view
 from core.views import user_views, admin_views
-# No need to import admin_login_required or user_login_required here,
-# they are used as decorators within the view files themselves.
+from core.views.user_views import (
+    register_view, request_register_otp_view, verify_register_otp_view,
+    request_reset_otp_view, verify_reset_otp_view, reset_password_view,
+    login_view, logout_view, confirm_code_view,
+    wishlist_view, toggle_wishlist, remove_from_wishlist,
+    remove_from_cart_view, update_profile, update_address
+)
 
 urlpatterns = [
-    # Optional: Django's built-in admin (you can remove this if unused)
-    # Be cautious with this if you want absolute separation, as it uses default Django auth.
-    # It's better to manage all superuser logins through your custom admin_login.
-    # If you keep it, a superuser logging in here will use the default Django session.
+    # Django's default admin (can be removed if not needed)
     path('admin/', admin.site.urls),
 
     # --- Custom Admin Auth ---
@@ -47,12 +38,19 @@ urlpatterns = [
     path('coupons/<int:pk>/delete/', admin_views.delete_coupon_view, name='admin_coupon_delete'),
 
     # --- User Auth ---
-    path('login/', user_views.login_view, name='login'),
+    path('login/', login_view, name='login'),
     path('register/', register_view, name='register'),
-    path('forgot-password/', user_views.forgot_password_view, name='forgot_password'),
-    path('confirm-code/', user_views.confirm_code_view, name='confirm_code'),
-    path('reset-password/', user_views.reset_password_view, name='reset_password'),
-    path('logout/', user_views.logout_view, name='logout'),
+    path('logout/', logout_view, name='logout'),
+    path('confirm-code/', confirm_code_view, name='confirm_code'),
+
+    # --- Registration OTP ---
+    path('register/otp/', request_register_otp_view, name='request_register_otp'),
+    path('register/verify/', verify_register_otp_view, name='verify_register_otp'),
+
+    # --- Forgot Password OTP ---
+    path('forgot-password/', request_reset_otp_view, name='forgot_password'),
+    path('forgot-password/verify/', verify_reset_otp_view, name='verify_reset_otp'),
+    path('forgot-password/reset/', reset_password_view, name='reset_password'),
 
     # --- User Pages ---
     path('', user_views.home_view, name='home'),
@@ -83,14 +81,13 @@ urlpatterns = [
     path('profile/update-address/', update_address, name='update_address'),
 
     # --- Social Login ---
-    # Be very careful with allauth here. It uses Django's default session,
-    # meaning if a superuser logs in via Google on the user side,
-    # they will be logged in as a 'user' (even if they are superuser).
-    # This design makes it hard to distinguish 'superuser logged in as admin' vs
-    # 'superuser logged in as user'.
     path('accounts/', include('allauth.urls')),
 ]
 
-# Media files for development only
+# Media files for development
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+
+
+

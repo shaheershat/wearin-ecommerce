@@ -31,14 +31,17 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'core.middlewares.CustomSessionMiddleware',             # Your custom middleware - runs first for session handling
+    'django.contrib.sessions.middleware.SessionMiddleware',   # ✅ Keep this
+    'core.middlewares.CustomSessionMiddleware',               # ✅ After SessionMiddleware
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
-    'django.contrib.auth.middleware.AuthenticationMiddleware', # Django's AuthenticationMiddleware - relies on session/user
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
     'allauth.account.middleware.AccountMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+
 
 SILENCED_SYSTEM_CHECKS = ['admin.E410'] 
 
@@ -194,3 +197,13 @@ LOGGING = {
         },
     },
 }
+
+
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+
+EMAIL_HOST_USER = 'infoatwearin@gmail.com'
+EMAIL_HOST_PASSWORD = 'xlbp ouqt keab nsod'  # paste the 16-character app password
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
