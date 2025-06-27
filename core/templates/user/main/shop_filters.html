@@ -1,0 +1,28 @@
+<div class="mb-6">
+    <h4 class="font-medium text-gray-800 mb-3">Category</h4>
+    <ul class="space-y-2 text-sm text-gray-600">
+        {% for category in categories %}
+            <li><label><input type="checkbox" class="mr-2 rounded"> {{ category.name }}</label></li>
+        {% endfor %}
+    </ul>
+</div>
+
+<div class="mb-6">
+    <h4 class="font-medium text-gray-800 mb-3">Price Range</h4>
+    <input type="range" min="0" max="1000" value="500"
+           class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+    <div class="flex justify-between text-sm text-gray-600 mt-2">
+        <span>₹0</span>
+        <span>₹1000</span>
+    </div>
+</div>
+
+<div class="mb-6">
+    <h4 class="font-medium text-gray-800 mb-3">Size</h4>
+    {% comment %} Hardcoded size list instead of trying to use split() {% endcomment %}
+    <div class="grid grid-cols-3 gap-2">
+        {% for size in sizes %}
+            <button class="border border-gray-300 rounded-lg px-3 py-1 text-sm hover:bg-gray-100">{{ size }}</button>
+        {% endfor %}
+    </div>
+</div>
