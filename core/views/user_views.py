@@ -219,12 +219,15 @@ def profile_view(request):
                         messages.error(request, f"{field.replace('_', ' ').title()}: {error}")
         else:
             messages.error(request, "Invalid form submission.")
-
+    cart = request.session.get('cart', {})
+    cart_count = sum(item.get('quantity', 0) for item in cart.values())
     return render(request, 'user/profile.html', {
         'profile_form': profile_form,
         'address_form': address_form,
         'user_address': user_profile,
+        'cart_count': cart_count,
         'orders': orders
+
     })
 
 
@@ -233,10 +236,13 @@ def my_profile(request):
     user_profile, created = UserProfile.objects.get_or_create(user=request.user)
     profile_form = ProfileForm(instance=request.user)
     address_form = AddressForm(instance=user_profile)
+    cart = request.session.get('cart', {})
+    cart_count = sum(item.get('quantity', 0) for item in cart.values())
     return render(request, 'user/main/profile.html', {
         'profile_form': profile_form,
         'address_form': address_form,
-        'user_address': user_profile
+        'user_address': user_profile,
+        'cart_count': cart_count,
     })
 
 
@@ -435,13 +441,13 @@ def user_dashboard_view(request):
 
 def shop_view(request):
     user = request.user if request.user.is_authenticated else None
-    if not user: # Same logic as home_view
+    if not user:
         user_id = request.session.get('_auth_user_id')
         if user_id:
             try:
                 User = get_user_model()
                 user = User.objects.get(pk=user_id)
-                request.user = user # Ensure request.user is set
+                request.user = user
             except User.DoesNotExist:
                 if '_auth_user_id' in request.session:
                     del request.session['_auth_user_id']
@@ -456,30 +462,59 @@ def shop_view(request):
     if user:
         wishlisted_product_ids = Wishlist.objects.filter(user=user).values_list('product_id', flat=True)
 
+    cart = request.session.get('cart', {})
+    cart_count = sum(item.get('quantity', 0) for item in cart.values())
+
+    sizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL']  # ✅ Add this
+
     return render(request, 'user/main/shop.html', {
         'products': products,
         'categories': categories,
+        'sizes': sizes,  # ✅ Pass it to the template
+        'cart_count': cart_count,
         'wishlisted_product_ids': list(wishlisted_product_ids),
     })
+
 
 
 def product_detail_view(request, id=None):
     product = None
     if id:
         product = get_object_or_404(Product, id=id)
-    return render(request, 'user/main/product_detail.html', {'product': product})
+
+    cart = request.session.get('cart', {})
+    cart_count = sum(item.get('quantity', 0) for item in cart.values())
+
+    return render(request, 'user/main/product_detail.html', {
+        'product': product,
+        'cart_count': cart_count,
+        })
 
 
 def policy_view(request):
-    return render(request, 'user/main/static_pages/policy.html')
+    cart = request.session.get('cart', {})
+    cart_count = sum(item.get('quantity', 0) for item in cart.values())
+
+    return render(request, 'user/main/static_pages/policy.html',{
+        'cart_count': cart_count,
+    })
 
 
 def contact_view(request):
-    return render(request, 'user/main/static_pages/contact.html')
+    cart = request.session.get('cart', {})
+    cart_count = sum(item.get('quantity', 0) for item in cart.values())
+
+    return render(request, 'user/main/static_pages/contact.html',{
+        'cart_count': cart_count,
+    })
 
 
 def about_view(request):
-    return render(request, 'user/main/static_pages/about.html')
+    cart = request.session.get('cart', {})
+    cart_count = sum(item.get('quantity', 0) for item in cart.values())
+    return render(request, 'user/main/static_pages/about.html',{
+        'cart_count': cart_count,
+    })
 
 
 @user_login_required
@@ -501,10 +536,12 @@ def cart_page_view(request):
                 del request.session['cart'][product_id]
                 request.session.modified = True
                 messages.warning(request, f"A product was not found and has been removed from your cart.")
-
+    cart = request.session.get('cart', {})
+    cart_count = sum(item.get('quantity', 0) for item in cart.values())
     context = {
         'cart_items': cart_items,
         'total_price': total_price,
+        'cart_count': cart_count,
     }
     return render(request, 'user/main/cart.html', context)
 
@@ -563,9 +600,14 @@ def buy_now_view(request, product_id):
 
 @user_login_required
 def wishlist_view(request):
+    cart = request.session.get('cart', {})
+    cart_count = sum(item.get('quantity', 0) for item in cart.values())
+    
     wishlist_items = Wishlist.objects.filter(user=request.user).select_related('product', 'product__category')
+    
     context = {
-        'wishlist_items': wishlist_items
+        'wishlist_items': wishlist_items,
+        'cart_count': cart_count,
     }
     return render(request, 'user/main/wishlist.html', context)
 
