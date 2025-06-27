@@ -15,7 +15,7 @@ class ProfileForm(forms.ModelForm):
 class AddressForm(forms.ModelForm):
     class Meta:
         model = UserProfile
-        fields = ['address', 'city', 'state', 'pincode']
+        fields = ['fullname','phone','housename','street', 'city', 'state', 'pincode', 'country']
 
 # --- Login Form ---
 class UserLoginForm(AuthenticationForm):

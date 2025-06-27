@@ -79,7 +79,7 @@ def request_reset_otp_view(request):
             request.session.save()
             return redirect('verify_reset_otp')
 
-            print("✅ OTP sent & session saved. Redirecting now...")
+            print(" OTP sent & session saved. Redirecting now...")
             return redirect('verify_reset_otp')
 
     return render(request, 'user/auth/request_reset_otp.html')
@@ -96,7 +96,7 @@ def verify_reset_otp_view(request):
         try:
             otp_obj = EmailOTP.objects.get(email=email, otp=entered_otp, purpose="reset")
             
-            # ✅ OTP matched: Set flag to allow password reset
+            #  OTP matched: Set flag to allow password reset
             request.session['otp_verified'] = True
             return redirect('reset_password')
         except EmailOTP.DoesNotExist:
@@ -129,7 +129,7 @@ def reset_password_view(request):
                 request.session.pop('reset_email', None)
                 request.session.pop('otp_verified', None)
 
-                print("✅ Password reset successful. Redirecting to login.")
+                print(" Password reset successful. Redirecting to login.")
                 messages.success(request, "Password reset successful. Please login.")
                 return redirect('login')  # <--- this should trigger redirect (302)
 
@@ -236,14 +236,20 @@ def my_profile(request):
     user_profile, created = UserProfile.objects.get_or_create(user=request.user)
     profile_form = ProfileForm(instance=request.user)
     address_form = AddressForm(instance=user_profile)
+
+    orders = Order.objects.filter(user=request.user).order_by('-created_at')  # ← ADD THIS
+
     cart = request.session.get('cart', {})
     cart_count = sum(item.get('quantity', 0) for item in cart.values())
+
     return render(request, 'user/main/profile.html', {
         'profile_form': profile_form,
         'address_form': address_form,
         'user_address': user_profile,
         'cart_count': cart_count,
+        'orders': orders  # ← ADD THIS TOO
     })
+
 
 
 @user_login_required
@@ -285,10 +291,10 @@ def login_view(request):
             user = form.get_user()
 
             if user:
-                # ✅ Use Django's login method (important!)
+                #  Use Django's login method (important!)
                 login(request, user)  # This attaches user to request AND sets session data
 
-                # ✅ Save session manually (to get the session_key for cookie)
+                #  Save session manually (to get the session_key for cookie)
                 request.session.save()
 
                 response = redirect('user_dashboard')
@@ -363,7 +369,7 @@ def forgot_password_view(request):
             send_otp_email(email, otp)
             request.session['reset_email'] = email
 
-            # ✅ Redirect to OTP input page
+            #  Redirect to OTP input page
             return redirect('verify_forgot_otp')
         else:
             messages.error(request, "Email not found.")
@@ -465,12 +471,12 @@ def shop_view(request):
     cart = request.session.get('cart', {})
     cart_count = sum(item.get('quantity', 0) for item in cart.values())
 
-    sizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL']  # ✅ Add this
+    sizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL']  #  Add this
 
     return render(request, 'user/main/shop.html', {
         'products': products,
         'categories': categories,
-        'sizes': sizes,  # ✅ Pass it to the template
+        'sizes': sizes,  #  Pass it to the template
         'cart_count': cart_count,
         'wishlisted_product_ids': list(wishlisted_product_ids),
     })

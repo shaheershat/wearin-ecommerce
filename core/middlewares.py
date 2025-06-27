@@ -14,7 +14,7 @@ class CustomSessionMiddleware:
     def __call__(self, request):
         logger.debug(f"Middleware: Incoming Request Path: {request.path}")
 
-        # ✅ Allow Django to handle normal session/auth for public/OTP pages
+        #  Allow Django to handle normal session/auth for public/OTP pages
         safe_paths = [
             "/forgot-password/",
             "/forgot-password/verify/",
