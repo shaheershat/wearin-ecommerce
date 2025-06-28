@@ -205,5 +205,5 @@ EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 
 EMAIL_HOST_USER = 'infoatwearin@gmail.com'
-EMAIL_HOST_PASSWORD = 'xlbp ouqt keab nsod'  # paste the 16-character app password
+EMAIL_HOST_PASSWORD = 'xlbp ouqt keab nsod'  
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER

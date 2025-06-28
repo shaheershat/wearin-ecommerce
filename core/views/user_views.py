@@ -1,10 +1,8 @@
-# core/views/user_views.py
-
 from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib.auth import authenticate # ONLY authenticate for user login, NO django.contrib.auth.login/logout
+from django.contrib.auth import authenticate
 from django.contrib.auth import get_user_model
 from django.contrib import messages
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_GET
 from django.http import JsonResponse
 from django.urls import reverse
 from django.conf import settings
@@ -13,24 +11,28 @@ from django.contrib.sessions.backends.db import SessionStore
 from django.contrib.auth import login
 from django.contrib.auth import get_user_model
 from django.contrib.sessions.backends.db import SessionStore
-from django.contrib import messages
-# Import our custom decorators
 from core.decorators import user_login_required
+from django.views.decorators.csrf import csrf_protect
+import json
+from django.http import JsonResponse
+from django.core.mail import send_mail
 
-from core.forms import UserLoginForm, UserRegistrationForm, ProfileForm, AddressForm
-from core.models import Product, Category, Wishlist, Order, UserProfile
-from django.utils import timezone
-import random
-from core.models import Product, Category, Wishlist, Order, UserProfile, EmailOTP
+# Import the correct models and forms
+# IMPORTANT: Added NewsletterForm
+from core.forms import UserLoginForm, UserRegistrationForm, ProfileForm, AddressForm, NewsletterForm
+# IMPORTANT: Added NewsletterSubscriber
+from core.models import Product, Category, Wishlist, Order, UserProfile, EmailOTP, Address, NewsletterSubscriber
 from core.utils import send_otp_email
 
 from django.contrib.auth.hashers import make_password
+from django.db import transaction, IntegrityError # IMPORTANT: Added IntegrityError
+import random
+from django.utils import timezone
+
 
 User = get_user_model()
 
-# ------------------- OTP Registration Views -------------------
-
-
+# ------------------- OTP Registration Views (No change needed) -------------------
 def request_register_otp_view(request):
     if request.method == "POST":
         email = request.POST.get("email")
@@ -38,14 +40,12 @@ def request_register_otp_view(request):
             messages.error(request, "Email already registered.")
         else:
             otp = str(random.randint(100000, 999999))
-            # Delete previous OTPs for this email + purpose
             EmailOTP.objects.filter(email=email, purpose="register").delete()
             EmailOTP.objects.create(email=email, otp=otp, purpose="register", created_at=timezone.now())
             send_otp_email(email, otp)
             request.session['otp_email'] = email
             return redirect('verify_register_otp')
     return render(request, 'user/auth/request_register_otp.html')
-
 
 def verify_register_otp_view(request):
     email = request.session.get('otp_email')
@@ -61,8 +61,7 @@ def verify_register_otp_view(request):
             messages.error(request, "Invalid OTP. Please try again.")
     return render(request, 'user/auth/verify_register_otp.html', {"email": email})
 
-# ------------------- OTP Forgot Password Views -------------------
-
+# ------------------- OTP Forgot Password Views (No change needed) -------------------
 def request_reset_otp_view(request):
     if request.method == "POST":
         email = request.POST.get("email")
@@ -78,13 +77,7 @@ def request_reset_otp_view(request):
             request.session['reset_email'] = email
             request.session.save()
             return redirect('verify_reset_otp')
-
-            print(" OTP sent & session saved. Redirecting now...")
-            return redirect('verify_reset_otp')
-
     return render(request, 'user/auth/request_reset_otp.html')
-
-
 
 def verify_reset_otp_view(request):
     email = request.session.get('reset_email')
@@ -95,13 +88,10 @@ def verify_reset_otp_view(request):
         entered_otp = request.POST.get('otp')
         try:
             otp_obj = EmailOTP.objects.get(email=email, otp=entered_otp, purpose="reset")
-            
-            #  OTP matched: Set flag to allow password reset
             request.session['otp_verified'] = True
             return redirect('reset_password')
         except EmailOTP.DoesNotExist:
             messages.error(request, "Invalid OTP. Please try again.")
-    
     return render(request, 'user/auth/verify_reset_otp.html', {"email": email})
 
 def reset_password_view(request):
@@ -109,7 +99,6 @@ def reset_password_view(request):
     otp_verified = request.session.get('otp_verified', False)
 
     if not email or not otp_verified:
-        print("❌ Missing email or OTP not verified.")
         return redirect('forgot_password')
 
     if request.method == 'POST':
@@ -117,7 +106,6 @@ def reset_password_view(request):
         confirm_password = request.POST.get('confirm_password')
 
         if password != confirm_password:
-            print("❌ Passwords do not match.")
             messages.error(request, "Passwords do not match.")
         else:
             try:
@@ -125,148 +113,201 @@ def reset_password_view(request):
                 user.set_password(password)
                 user.save()
 
-                # 🔐 Clean up session
                 request.session.pop('reset_email', None)
                 request.session.pop('otp_verified', None)
 
-                print(" Password reset successful. Redirecting to login.")
                 messages.success(request, "Password reset successful. Please login.")
-                return redirect('login')  # <--- this should trigger redirect (302)
-
+                return redirect('login')
             except User.DoesNotExist:
-                print("❌ User not found for email:", email)
                 messages.error(request, "User not found.")
 
     return render(request, 'user/auth/reset_password.html', {"email": email})
 
-
-
-@user_login_required
-def update_profile(request):
-    if request.method == 'POST':
-        profile_form = ProfileForm(request.POST, instance=request.user)
-        if profile_form.is_valid():
-            profile_form.save()
-            messages.success(request, "Profile updated successfully!")
-            return redirect('my_profile')
-        else:
-            for field, errors in profile_form.errors.items():
-                for error in errors:
-                    messages.error(request, f"{field.replace('_', ' ').title()}: {error}")
-            user_profile, created = UserProfile.objects.get_or_create(user=request.user)
-            address_form = AddressForm(instance=user_profile)
-            orders = Order.objects.filter(user=request.user).order_by('-created_at')
-            return render(request, 'user/profile.html', {
-                'profile_form': profile_form,
-                'address_form': address_form,
-                'user_address': user_profile,
-                'orders': orders
-            })
-    return redirect('my_profile')
-
-
-@user_login_required
-def update_address(request):
-    if request.method == 'POST':
-        user_profile, created = UserProfile.objects.get_or_create(user=request.user)
-        address_form = AddressForm(request.POST, instance=user_profile)
-        if address_form.is_valid():
-            address_form.save()
-            messages.success(request, "Address updated successfully!")
-            return redirect('my_profile')
-        else:
-            for field, errors in address_form.items():
-                for error in errors:
-                    messages.error(request, f"{field.replace('_', ' ').title()}: {error}")
-            profile_form = ProfileForm(instance=request.user)
-            orders = Order.objects.filter(user=request.user).order_by('-created_at')
-            return render(request, 'user/profile.html', {
-                'profile_form': profile_form,
-                'address_form': address_form,
-                'user_address': user_profile,
-                'orders': orders
-            })
-    return redirect('my_profile')
-
-
-@user_login_required
-def profile_view(request):
-    user = request.user
-    user_profile, created = UserProfile.objects.get_or_create(user=user)
-    profile_form = ProfileForm(instance=user)
-    address_form = AddressForm(instance=user_profile)
-    orders = Order.objects.filter(user=user).order_by('-created_at')
-
-    if request.method == 'POST':
-        if 'update_profile' in request.POST:
-            profile_form = ProfileForm(request.POST, instance=user)
-            if profile_form.is_valid():
-                profile_form.save()
-                messages.success(request, "Profile updated successfully!")
-                return redirect('my_profile')
-            else:
-                for field, errors in profile_form.errors.items():
-                    for error in errors:
-                        messages.error(request, f"{field.replace('_', ' ').title()}: {error}")
-        elif 'update_address' in request.POST:
-            address_form = AddressForm(request.POST, instance=user_profile)
-            if address_form.is_valid():
-                address_form.save()
-                messages.success(request, "Address updated successfully!")
-            else:
-                for field, errors in address_form.errors.items():
-                    for error in errors:
-                        messages.error(request, f"{field.replace('_', ' ').title()}: {error}")
-        else:
-            messages.error(request, "Invalid form submission.")
-    cart = request.session.get('cart', {})
-    cart_count = sum(item.get('quantity', 0) for item in cart.values())
-    return render(request, 'user/profile.html', {
-        'profile_form': profile_form,
-        'address_form': address_form,
-        'user_address': user_profile,
-        'cart_count': cart_count,
-        'orders': orders
-
-    })
-
+# ------------------- Profile & Address Management -------------------
 
 @user_login_required
 def my_profile(request):
-    user_profile, created = UserProfile.objects.get_or_create(user=request.user)
     profile_form = ProfileForm(instance=request.user)
-    address_form = AddressForm(instance=user_profile)
-
-    orders = Order.objects.filter(user=request.user).order_by('-created_at')  # ← ADD THIS
+    user_addresses = Address.objects.filter(user=request.user).order_by('-is_default', 'id')
+    add_address_form = AddressForm()
+    orders = Order.objects.filter(user=request.user).order_by('-created_at')
 
     cart = request.session.get('cart', {})
     cart_count = sum(item.get('quantity', 0) for item in cart.values())
 
     return render(request, 'user/main/profile.html', {
         'profile_form': profile_form,
-        'address_form': address_form,
-        'user_address': user_profile,
+        'user_addresses': user_addresses,
+        'add_address_form': add_address_form,
         'cart_count': cart_count,
-        'orders': orders  # ← ADD THIS TOO
+        'orders': orders
     })
 
+@user_login_required
+@require_POST
+def update_profile(request):
+    # Ensure userprofile exists, create if not (common pattern)
+    # The current form `ProfileForm` is based on `User` model, not `UserProfile`.
+    # If UserProfile has fields tied to profile form, you'd load it.
+    # For now, `instance=request.user` is correct if updating User fields directly.
+    profile_form = ProfileForm(request.POST, instance=request.user)
+
+    if profile_form.is_valid():
+        profile_form.save()
+        return JsonResponse({'success': True, 'message': 'Profile updated successfully!'})
+    else:
+        errors = profile_form.errors.as_dict()
+        message = 'Please correct the profile errors.'
+        if profile_form.non_field_errors():
+            message += ' ' + ' '.join(form.non_field_errors())
+        return JsonResponse({'success': False, 'errors': errors, 'message': message}, status=400)
 
 
 @user_login_required
-def my_address(request):
-    user_profile, created = UserProfile.objects.get_or_create(user=request.user)
-    address_form = AddressForm(instance=user_profile)
-    return render(request, 'user/profile/my_address.html', {'address_form': address_form, 'user_address': user_profile})
+@require_POST
+def add_address(request):
+    if request.user.addresses.count() >= 3:
+        return JsonResponse({'success': False, 'message': 'You can add a maximum of 3 addresses.'}, status=400)
+
+    form = AddressForm(request.POST)
+    if form.is_valid():
+        with transaction.atomic():
+            address = form.save(commit=False)
+            address.user = request.user
+
+            if address.is_default or not request.user.addresses.exists():
+                request.user.addresses.update(is_default=False)
+                address.is_default = True
+            address.save()
+            return JsonResponse({'success': True, 'message': 'Address added successfully!'})
+    else:
+        errors = form.errors.as_dict()
+        message = 'Please correct the errors below.'
+        if form.non_field_errors():
+            message += ' ' + ' '.join(form.non_field_errors())
+        return JsonResponse({'success': False, 'errors': errors, 'message': message}, status=400)
+
+
+@user_login_required
+@require_POST
+def edit_address(request, address_id):
+    address = get_object_or_404(Address, id=address_id, user=request.user)
+    form = AddressForm(request.POST, instance=address)
+
+    if form.is_valid():
+        with transaction.atomic():
+            if form.cleaned_data['is_default']:
+                request.user.addresses.exclude(id=address.id).update(is_default=False)
+            elif address.is_default and not form.cleaned_data['is_default'] and request.user.addresses.count() > 1:
+                first_other_address = request.user.addresses.exclude(id=address.id).first()
+                if first_other_address:
+                    first_other_address.is_default = True
+                    first_other_address.save()
+
+            form.save()
+            return JsonResponse({'success': True, 'message': 'Address updated successfully!'})
+    else:
+        errors = form.errors.as_dict()
+        message = 'Please correct the errors.'
+        if form.non_field_errors():
+            message += ' ' + ' '.join(form.non_field_errors())
+        return JsonResponse({'success': False, 'errors': errors, 'message': message}, status=400)
+
+
+@user_login_required
+@require_GET
+def get_address_data(request, address_id):
+    try:
+        address = get_object_or_404(Address, id=address_id, user=request.user)
+        data = {
+            'id': address.id,
+            'full_name': address.full_name,
+            'phone': address.phone,
+            'house_name': address.house_name,
+            'street': address.street,
+            'city': address.city,
+            'state': address.state,
+            'pincode': address.pincode,
+            'country': address.country,
+            'is_default': address.is_default,
+        }
+        return JsonResponse(data)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
+
+@user_login_required
+@require_POST
+def set_default_address(request, address_id):
+    try:
+        with transaction.atomic():
+            request.user.addresses.update(is_default=False)
+            address_to_set_default = get_object_or_404(Address, id=address_id, user=request.user)
+            address_to_set_default.is_default = True
+            address_to_set_default.save()
+            return JsonResponse({'success': True, 'message': 'Default address updated.'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': f'Error setting default address: {str(e)}'}, status=400)
+
+
+@user_login_required
+@require_POST
+def delete_address(request, address_id):
+    try:
+        address_to_delete = get_object_or_404(Address, id=address_id, user=request.user)
+
+        if request.user.addresses.count() == 1 and address_to_delete.is_default:
+            return JsonResponse({'success': False, 'message': 'Cannot delete the only address as it is the default.'}, status=400)
+
+        was_default = address_to_delete.is_default
+        address_to_delete.delete()
+
+        if was_default and request.user.addresses.exists():
+            new_default = request.user.addresses.order_by('id').first()
+            if new_default:
+                new_default.is_default = True
+                new_default.save()
+
+        return JsonResponse({'success': True, 'message': 'Address deleted successfully.'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': f'Error deleting address: {str(e)}'}, status=400)
+
+# --- NEW VIEW FOR NEWSLETTER SUBSCRIPTION ---
+@require_POST
+def subscribe_newsletter(request):
+    # Check if it's an AJAX request (optional, but good practice if this URL is only for AJAX)
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+        form = NewsletterForm(request.POST) # Use the form for validation
+        if form.is_valid():
+            try:
+                form.save() # Saves the email to the NewsletterSubscriber model
+                return JsonResponse({'success': True, 'message': 'Thank you for subscribing!'})
+            except IntegrityError:
+                # This catches if the email is already in the database (due to unique=True)
+                return JsonResponse({'success': False, 'message': 'This email is already subscribed.'}, status=409) # 409 Conflict
+            except Exception as e:
+                # Log other unexpected errors
+                # print(f"Error subscribing: {e}") # Uncomment for debugging
+                return JsonResponse({'success': False, 'message': 'An unexpected error occurred. Please try again later.'}, status=500)
+        else:
+            # Form is not valid, return validation errors
+            errors = form.errors.as_dict()
+            # Extract the first error message from the dictionary
+            first_error_message = next(iter(errors.values()))[0] if errors else "Invalid email provided."
+            return JsonResponse({'success': False, 'message': first_error_message, 'errors': errors}, status=400)
+    # If not an AJAX request, return a generic error or redirect
+    return JsonResponse({'success': False, 'message': 'Invalid request.'}, status=400)
 
 
 @user_login_required
 def my_orders(request):
     orders = request.user.order_set.all()
-    return render(request, 'user/profile/my_orders.html', {'orders': orders})
+    cart = request.session.get('cart', {})
+    cart_count = sum(item.get('quantity', 0) for item in cart.values())
+    return render(request, 'user/profile/my_orders.html', {'orders': orders, 'cart_count': cart_count})
 
 
-# --- Auth Views ---
-
+# --- Auth Views (No changes to these sections for address functionality directly) ---
 User = get_user_model()
 
 def login_view(request):
@@ -291,15 +332,12 @@ def login_view(request):
             user = form.get_user()
 
             if user:
-                #  Use Django's login method (important!)
-                login(request, user)  # This attaches user to request AND sets session data
-
-                #  Save session manually (to get the session_key for cookie)
+                login(request, user)
                 request.session.save()
 
                 response = redirect('user_dashboard')
                 response.set_cookie(
-                    'user_sessionid',  # Must match SESSION_COOKIE_NAME
+                    'user_sessionid',
                     request.session.session_key
                 )
 
@@ -318,17 +356,14 @@ def login_view(request):
 def register_view(request):
     list(messages.get_messages(request))
 
-    # Crucial: Only check if *this* session (user session) is authenticated.
     user_id = request.session.get('_auth_user_id')
     if user_id:
-        # Attempt to retrieve user just to confirm it's still valid
         User = get_user_model()
         try:
             User.objects.get(pk=user_id)
             messages.info(request, "You are already logged in.")
             return redirect('user_dashboard')
         except User.DoesNotExist:
-            # If user ID is in session but user doesn't exist, clear it.
             if '_auth_user_id' in request.session:
                 del request.session['_auth_user_id']
             request.session.flush()
@@ -338,10 +373,7 @@ def register_view(request):
         form = UserRegistrationForm(data=request.POST)
         if form.is_valid():
             user = form.save()
-
-            # IMPORTANT: For user registration/login, only set your custom session key.
             request.session['_auth_user_id'] = user.pk
-
             messages.success(request, "Account created successfully! Welcome to WEARIN.")
             return redirect('user_dashboard')
         else:
@@ -361,21 +393,18 @@ def forgot_password_view(request):
     if request.method == 'POST':
         email = request.POST.get('email')
         if User.objects.filter(email=email).exists():
-            otp = generate_otp()
+            # Assume generate_otp() is defined elsewhere or use random.randint
+            otp = str(random.randint(100000, 999999))
             EmailOTP.objects.update_or_create(
                 email=email,
                 defaults={'otp': otp, 'created_at': timezone.now()}
             )
             send_otp_email(email, otp)
             request.session['reset_email'] = email
-
-            #  Redirect to OTP input page
-            return redirect('verify_forgot_otp')
+            return redirect('verify_reset_otp') # Assuming verify_reset_otp exists and is correctly named.
         else:
             messages.error(request, "Email not found.")
-    
     return render(request, 'user/auth/request_reset_otp.html')
-
 
 
 def confirm_code_view(request):
@@ -383,48 +412,36 @@ def confirm_code_view(request):
 
 
 def logout_view(request):
-    # CRITICAL: This logout is ONLY for the user side.
     if '_auth_user_id' in request.session:
         del request.session['_auth_user_id']
-
-    # Then, flush the entire session data for the current user session.
     request.session.flush()
-
     messages.info(request, "You have been logged out.")
     return redirect('home')
 
 
-# --- Main Pages ---
+# --- Main Pages (No changes needed, but ensure cart_count is consistent) ---
 
 def home_view(request):
-    # For general views like home, we determine the user based on the active session.
-    # AuthenticationMiddleware should populate request.user based on `user_sessionid` if present.
     user = request.user if request.user.is_authenticated else None
-
-    # If request.user is not authenticated by Django (e.g., if you're not using
-    # django.contrib.auth.login for regular users), but we have a custom session ID,
-    # then manually set request.user for consistency.
     if not user:
         user_id = request.session.get('_auth_user_id')
         if user_id:
             try:
                 User = get_user_model()
                 user = User.objects.get(pk=user_id)
-                # Manually set request.user for consistency if needed by later middleware/context processors
                 request.user = user
             except User.DoesNotExist:
-                # If user ID in session is invalid, clear it
                 if '_auth_user_id' in request.session:
                     del request.session['_auth_user_id']
                 request.session.flush()
-                user = None # Ensure user is None if session was invalid
+                user = None
                 messages.error(request, "Your user session was invalid and has been cleared.")
 
     new_products = Product.objects.filter(is_sold=False).order_by('-created_at')[:12]
     categories = Category.objects.all()
 
     wishlisted_product_ids = []
-    if user: # Use the determined `user` object
+    if user:
         wishlisted_product_ids = Wishlist.objects.filter(user=user).values_list('product_id', flat=True)
 
     cart = request.session.get('cart', {})
@@ -435,13 +452,12 @@ def home_view(request):
         'categories': categories,
         'wishlisted_product_ids': list(wishlisted_product_ids),
         'cart_count': cart_count,
-        'request_user': user # Pass the user object for template
+        'request_user': user
     })
 
 
 @user_login_required
 def user_dashboard_view(request):
-    # The @user_login_required decorator ensures request.user is set to the authenticated user.
     return render(request, 'user/main/authenticated_home.html')
 
 
@@ -471,16 +487,15 @@ def shop_view(request):
     cart = request.session.get('cart', {})
     cart_count = sum(item.get('quantity', 0) for item in cart.values())
 
-    sizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL']  #  Add this
+    sizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL']
 
     return render(request, 'user/main/shop.html', {
         'products': products,
         'categories': categories,
-        'sizes': sizes,  #  Pass it to the template
+        'sizes': sizes,
         'cart_count': cart_count,
         'wishlisted_product_ids': list(wishlisted_product_ids),
     })
-
 
 
 def product_detail_view(request, id=None):
@@ -500,7 +515,6 @@ def product_detail_view(request, id=None):
 def policy_view(request):
     cart = request.session.get('cart', {})
     cart_count = sum(item.get('quantity', 0) for item in cart.values())
-
     return render(request, 'user/main/static_pages/policy.html',{
         'cart_count': cart_count,
     })
@@ -509,7 +523,6 @@ def policy_view(request):
 def contact_view(request):
     cart = request.session.get('cart', {})
     cart_count = sum(item.get('quantity', 0) for item in cart.values())
-
     return render(request, 'user/main/static_pages/contact.html',{
         'cart_count': cart_count,
     })
@@ -608,9 +621,9 @@ def buy_now_view(request, product_id):
 def wishlist_view(request):
     cart = request.session.get('cart', {})
     cart_count = sum(item.get('quantity', 0) for item in cart.values())
-    
+
     wishlist_items = Wishlist.objects.filter(user=request.user).select_related('product', 'product__category')
-    
+
     context = {
         'wishlist_items': wishlist_items,
         'cart_count': cart_count,
@@ -666,3 +679,46 @@ def remove_from_wishlist(request, product_id):
     except Exception as e:
         messages.error(request, f"An error occurred: {str(e)}")
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+
+@csrf_protect # Protects against CSRF attacks
+@require_POST # Ensures only POST requests are allowed
+def send_contact_email(request):
+    if not request.META.get('HTTP_X_REQUESTED_WITH') == 'XMLHttpRequest':
+        return JsonResponse({'success': False, 'message': 'Invalid request.'}, status=400)
+
+    try:
+        data = json.loads(request.body)
+        name = data.get('name')
+        email = data.get('email')
+        message = data.get('message')
+
+        # Basic server-side validation
+        if not all([name, email, message]):
+            return JsonResponse({'success': False, 'message': 'All fields are required.'}, status=400)
+        if '@' not in email or '.' not in email: # More robust validation can be added
+            return JsonResponse({'success': False, 'message': 'Please enter a valid email address.'}, status=400)
+
+        # Compose the email
+        subject = f"New Contact Form Submission from {name}"
+        email_message = f"Name: {name}\nEmail: {email}\n\nMessage:\n{message}"
+        from_email = settings.EMAIL_HOST_USER # Sender email defined in settings.py
+        recipient_list = [settings.EMAIL_HOST_USER] # Send to your own email address
+
+        # Send the email
+        send_mail(
+            subject,
+            email_message,
+            from_email,
+            recipient_list,
+            fail_silently=False, # Set to True in production if you don't want exceptions
+        )
+
+        return JsonResponse({'success': True, 'message': 'Your message has been sent successfully!'})
+
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'message': 'Invalid JSON format.'}, status=400)
+    except Exception as e:
+        # Log the error for debugging
+        print(f"Error sending contact email: {e}")
+        return JsonResponse({'success': False, 'message': 'An unexpected error occurred. Please try again later.'}, status=500)
