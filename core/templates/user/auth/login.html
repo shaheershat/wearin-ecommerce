@@ -1,5 +1,5 @@
 {% extends 'user/base.html' %}
-
+{% load static %}
 {% load widget_tweaks %}
 {% load socialaccount %}
 
@@ -11,9 +11,8 @@
 
         <!-- Image Section -->
         <div class="md:w-1/2 min-h-[300px] md:min-h-0 bg-cover bg-center"
-             style="background-image: url('https://placehold.co/600x800/E2E8F0/A0AEC0?text=Login+Image'); border-top-left-radius: 1rem; border-bottom-left-radius: 1rem;">
+            style="background-image: url('{% static 'images/login-1.jpg' %}'); border-top-left-radius: 1rem; border-bottom-left-radius: 1rem;">
         </div>
-
         <!-- Form Section -->
         <div class="md:w-1/2 p-8 md:p-12 flex flex-col justify-center">
             <h2 class="text-4xl font-bold text-gray-900 mb-2">WEARIN</h2>

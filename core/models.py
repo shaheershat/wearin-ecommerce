@@ -1,5 +1,6 @@
+# core/models.py
 from django.db import models
-from django.contrib.auth.models import User
+from django.contrib.auth.models import User # Or your custom user model
 from django.utils.text import slugify
 from cloudinary.models import CloudinaryField
 from django.utils import timezone
@@ -12,8 +13,8 @@ User = get_user_model()
 
 class EmailOTP(models.Model):
     email = models.EmailField()
-    otp = models.CharField(max_length=6)  # ← this must exist
-    purpose = models.CharField(max_length=20)  # e.g., 'register' or 'reset'
+    otp = models.CharField(max_length=6)
+    purpose = models.CharField(max_length=20)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -30,14 +31,7 @@ class OTP(models.Model):
 
 
 class UserProfile(models.Model):
-    fullname = models.CharField(max_length=255, blank=True, null=True)
-    phone = models.CharField(max_length=20, blank=True, null=True)
-    housename = models.CharField(max_length=255, blank=True, null=True)
-    street = models.CharField(max_length=255, blank=True, null=True)
-    city = models.CharField(max_length=100, blank=True, null=True)
-    state = models.CharField(max_length=100, blank=True, null=True)
-    pincode = models.CharField(max_length=10, blank=True, null=True)
-    country = models.CharField(max_length=100, blank=True, null=True)
+    # Removed: fullname, phone, housename, street, city, state, pincode, country
     user = models.OneToOneField(User, on_delete=models.CASCADE)
 
     def __str__(self):
@@ -50,8 +44,8 @@ class Coupon(models.Model):
     limit = models.PositiveIntegerField()
     min_purchase = models.DecimalField(max_digits=8, decimal_places=2)
     redeemable_price = models.DecimalField(max_digits=8, decimal_places=2)
-    valid_from = models.DateField(null=True, blank=True) 
-    valid_to = models.DateField() 
+    valid_from = models.DateField(null=True, blank=True)
+    valid_to = models.DateField()
     is_active = models.BooleanField(default=True)
 
     def __str__(self):
@@ -93,16 +87,24 @@ class ProductImage(models.Model):
         return f"Image for {self.product.name} (Order: {self.order})"
 
 class Address(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='addresses') # Added related_name
     full_name = models.CharField(max_length=255)
     phone = models.CharField(max_length=20)
-    address_line = models.CharField(max_length=255)
+    # Changed from address_line to housename and street for consistency with your forms
+    house_name = models.CharField(max_length=255, verbose_name="House Name/Thalavala") # Added
+    street = models.CharField(max_length=255) # Renamed from address_line
     city = models.CharField(max_length=100)
     state = models.CharField(max_length=100)
     pincode = models.CharField(max_length=10)
+    country = models.CharField(max_length=100, default='India') # Added
+    is_default = models.BooleanField(default=False) # Added
+
+    class Meta:
+        verbose_name_plural = "Addresses" # Added for better admin display
 
     def __str__(self):
-        return f"{self.full_name}, {self.city}"
+        return f"{self.full_name}, {self.street}, {self.city}"
+
 
 class Order(models.Model):
     STATUS_CHOICES = [
@@ -162,4 +164,16 @@ class Wishlist(models.Model):
 
     def __str__(self):
         return f"{self.product.name} in {self.user.username}'s wishlist"
-    
+
+# --- NEW MODEL FOR NEWSLETTER ---
+class NewsletterSubscriber(models.Model):
+    email = models.EmailField(unique=True)
+    subscribed_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.email
+
+    class Meta:
+        ordering = ['-subscribed_at']
+        verbose_name = "Newsletter Subscriber"
+        verbose_name_plural = "Newsletter Subscribers"

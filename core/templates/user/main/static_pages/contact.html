@@ -1,4 +1,5 @@
 {% extends 'user/base.html' %}
+{% load static %}
 
 {% block title %}Contact Us{% endblock %}
 
@@ -14,38 +15,112 @@
                 <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
                 <div>
                     <p class="font-semibold text-lg">Email Us</p>
-                    <p class="text-gray-600">info@wearin.com</p>
+                    <p class="text-gray-600">infoatwearin@gmail.com</p>
                 </div>
             </div>
             <div class="flex items-center space-x-4">
                 <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684L10.5 9.87a1 1 0 00.5.5h4.98a1 1 0 00.948-.684l1.392-4.488A1 1 0 0118 3h2a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V5z"></path></svg>
                 <div>
                     <p class="font-semibold text-lg">Call Us</p>
-                    <p class="text-gray-600">+1 (234) 567-890</p>
-                </div>
-            </div>
-            <div class="flex items-center space-x-4">
-                <svg class="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.828 0L6.343 16.657m14.142 0a2 2 0 10-2.828-2.828L10 18l.828.828m7.072-7.07L10 9.828m0 0a2 2 0 10-2.828-2.828L7.172 6.172m14.142 0a2 2 0 10-2.828-2.828L10 9.828"></path></svg>
-                <div>
-                    <p class="font-semibold text-lg">Visit Us</p>
-                    <p class="text-gray-600">123 Fashion Lane, Style City, FL 12345</p>
+                    <p class="text-gray-600">+91 9744936772</p>
                 </div>
             </div>
         </div>
-        
-        <form class="mt-8 space-y-4">
+
+        <form id="contactForm" class="mt-8 space-y-4">
+            {% csrf_token %} {# Add CSRF token for security #}
             <h3 class="text-xl font-semibold mb-2">Send us a message</h3>
             <div>
-                <input type="text" placeholder="Your Name" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
+                <input type="text" id="contactName" name="name" placeholder="Your Name" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400" required>
             </div>
             <div>
-                <input type="email" placeholder="Your Email" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
+                <input type="email" id="contactEmail" name="email" placeholder="Your Email" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400" required>
             </div>
             <div>
-                <textarea placeholder="Your Message" rows="5" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"></textarea>
+                <textarea id="contactMessage" name="message" placeholder="Your Message" rows="5" class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400" required></textarea>
             </div>
-            <button type="submit" class="w-full bg-black text-white px-6 py-3 rounded-lg font-medium hover:bg-gray-800 transition-colors">Send Message</button>
+            <button type="button" onclick="submitContactForm()" class="w-full bg-black text-white px-6 py-3 rounded-lg font-medium hover:bg-gray-800 transition-colors">Send Message</button>
+            <div id="contactMessageDisplay" class="mt-4 text-center text-sm font-semibold"></div> {# Message display area #}
         </form>
     </div>
 </div>
+
+<script>
+    // Helper function to get CSRF token (already in your other templates, but good to ensure here)
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    function submitContactForm() {
+        const nameInput = document.getElementById('contactName');
+        const emailInput = document.getElementById('contactEmail');
+        const messageInput = document.getElementById('contactMessage');
+        const messageDisplay = document.getElementById('contactMessageDisplay');
+
+        const name = nameInput.value.trim();
+        const email = emailInput.value.trim();
+        const message = messageInput.value.trim();
+
+        // Clear previous messages
+        messageDisplay.textContent = '';
+        messageDisplay.classList.remove('text-green-600', 'text-red-600');
+
+        if (!name || !email || !message) {
+            messageDisplay.textContent = 'All fields are required.';
+            messageDisplay.classList.add('text-red-600');
+            return;
+        }
+
+        // Basic email format validation
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            messageDisplay.textContent = 'Please enter a valid email address.';
+            messageDisplay.classList.add('text-red-600');
+            return;
+        }
+
+        fetch('{% url "send_contact_email" %}', { // Use the URL name defined in urls.py
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'X-Requested-With': 'XMLHttpRequest', // Important for Django to recognize as AJAX
+                'Content-Type': 'application/json', // Send JSON data
+            },
+            body: JSON.stringify({
+                name: name,
+                email: email,
+                message: message
+            }),
+        })
+        .then(response => response.json().then(data => ({ status: response.status, body: data })))
+        .then(({ status, body }) => {
+            if (status === 200 && body.success) {
+                messageDisplay.textContent = body.message;
+                messageDisplay.classList.add('text-green-600');
+                // Clear the form fields on success
+                nameInput.value = '';
+                emailInput.value = '';
+                messageInput.value = '';
+            } else {
+                messageDisplay.textContent = body.message || 'An error occurred. Please try again.';
+                messageDisplay.classList.add('text-red-600');
+            }
+        })
+        .catch(error => {
+            console.error('Error submitting contact form:', error);
+            messageDisplay.textContent = 'An unexpected error occurred. Please try again later.';
+            messageDisplay.classList.add('text-red-600');
+        });
+    }
+</script>
 {% endblock %}

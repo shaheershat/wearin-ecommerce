@@ -1,67 +1,99 @@
 {% extends 'user/base.html' %}
+{% load custom_filters %}
+{% load widget_tweaks %}
 {% block content %}
-<div class="flex min-h-screen bg-gray-100">
+<div class="flex bg-gray-100 flex-grow h-full min-h-0">
 
-  <!-- Sidebar -->
-  <div class="w-64 bg-white p-6 shadow border-r">
+  <div class="w-64 bg-white p-6 shadow border-r h-full flex flex-col">
     <h2 class="text-xl font-bold mb-6">My Account</h2>
-    <ul class="space-y-4">
-      <li><button onclick="showTab('profile')" class="tab-btn w-full text-left text-gray-700 hover:text-black font-medium">👤 My Profile</button></li>
-      <li><button onclick="showTab('address')" class="tab-btn w-full text-left text-gray-700 hover:text-black font-medium">🏠 My Address</button></li>
-      <li><button onclick="showTab('orders')" class="tab-btn w-full text-left text-gray-700 hover:text-black font-medium">📦 My Orders</button></li>
+    <ul class="space-y-4 flex-grow">
+      <li><button id="tabButtonProfile" onclick="showTab('profile')" class="tab-btn w-full text-left text-gray-700 hover:text-black font-medium flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-gray-100">👤 My Profile</button></li>
+      <li><button id="tabButtonAddress" onclick="showTab('address')" class="tab-btn w-full text-left text-gray-700 hover:text-black font-medium flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-gray-100">🏠 My Address</button></li>
+      <li><button id="tabButtonOrders" onclick="showTab('orders')" class="tab-btn w-full text-left text-gray-700 hover:text-black font-medium flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-gray-100">📦 My Orders</button></li>
     </ul>
   </div>
 
-  <!-- Main Content -->
-  <div class="flex-1 p-8">
-    
-    <!-- Profile -->
+  <div class="flex-1 p-8 overflow-y-auto">
+
+    {# Keep this Django messages block for initial page loads #}
+    {% if messages %}
+    <div class="mb-4">
+        {% for message in messages %}
+        <div class="p-3 mb-2 rounded {% if message.tags == 'success' %}bg-green-100 text-green-700{% elif message.tags == 'error' %}bg-red-100 text-red-700{% else %}bg-blue-100 text-blue-700{% endif %}">
+            {{ message }}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
     <div id="profile" class="tab-content">
       <div class="bg-white p-6 rounded shadow">
         <h3 class="text-lg font-semibold mb-4">Edit Profile</h3>
         <form method="POST" action="{% url 'update_profile' %}">
           {% csrf_token %}
-          {{ profile_form.as_p }}
+          {% for field in profile_form %}
+            <div class="mb-4">
+              <label for="{{ field.id_for_label }}" class="block text-gray-700 text-sm font-bold mb-2">{{ field.label }}</label>
+              {{ field|add_class:"shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" }}
+              {% if field.help_text %}
+                <p class="text-xs text-gray-500 mt-1">{{ field.help_text }}</p>
+              {% endif %}
+              {% for error in field.errors %}
+                <p class="text-red-500 text-xs italic">{{ error }}</p>
+              {% endfor %}
+            </div>
+          {% endfor %}
           <button type="submit" class="mt-4 bg-black text-white px-4 py-2 rounded">Update Profile</button>
         </form>
       </div>
     </div>
 
-    <!-- Address -->
     <div id="address" class="tab-content hidden">
       <div class="bg-white p-6 rounded shadow">
-        <h3 class="text-lg font-semibold mb-4">My Address</h3>
-        {% if user_address %}
-          <div class="mb-4 p-4 bg-gray-50 rounded border">
-            <p class="mb-2"><strong>Full Name:</strong> {{ user_address.fullname }}</p>
-            <p class="mb-2"><strong>Phone:</strong> {{ user_address.phone }}</p>
-            <p class="mb-2"><strong>Phone:</strong> {{ user_address.housename }}</p>
-            <p class="mb-2"><strong>Street:</strong> {{ user_address.street }}</p>
-            <p class="mb-2"><strong>City:</strong> {{ user_address.city }}</p>
-            <p class="mb-2"><strong>State:</strong> {{ user_address.state }}</p>
-            <p class="mb-2"><strong>Pincode:</strong> {{ user_address.pincode }}</p>
-            <p class="mb-4"><strong>Country:</strong> {{ user_address.country }}</p>
-            <button onclick="toggleAddressEdit()" class="text-blue-600 hover:underline font-medium">Edit Address</button>
-          </div>
+        <h3 class="text-lg font-semibold mb-4">My Addresses</h3>
 
-          <div id="editAddressForm" class="hidden">
-            <form method="POST" action="{% url 'update_address' %}">
-              {% csrf_token %}
-              {{ address_form.as_p }}
-              <button type="submit" class="mt-4 bg-black text-white px-4 py-2 rounded">Update Address</button>
-            </form>
+        {% if user_addresses %}
+          <div class="space-y-6 mb-6">
+            {% for address in user_addresses %}
+              <div class="p-4 bg-gray-50 rounded border flex flex-col sm:flex-row justify-between items-start sm:items-center relative">
+                <div>
+                  <p class="font-semibold text-lg mb-2">{{ address.full_name }}</p>
+                  <p class="text-gray-700">{{ address.house_name }}, {{ address.street }}</p>
+                  <p class="text-gray-700">{{ address.city }}, {{ address.state }} - {{ address.pincode }}</p>
+                  <p class="text-gray-700">{{ address.country }}</p>
+                  <p class="text-gray-700">Phone: {{ address.phone }}</p>
+                </div>
+                <div class="mt-4 sm:mt-0 flex flex-col sm:flex-row sm:space-x-4 space-y-2 sm:space-y-0 items-start sm:items-center">
+                  {% if address.is_default %}
+                    <span class="px-3 py-1 bg-green-200 text-green-800 rounded-full text-xs font-semibold">Default</span>
+                  {% else %}
+                    <form action="{% url 'set_default_address' address.id %}" method="POST" class="inline-block set-default-form">
+                      {% csrf_token %}
+                      <button type="submit" class="text-blue-600 hover:underline text-sm">Set as Default</button>
+                    </form>
+                  {% endif %}
+                  <button onclick="openEditAddressModal('{{ address.id }}')" class="text-blue-600 hover:underline font-medium text-sm">Edit</button>
+                  <form action="{% url 'delete_address' address.id %}" method="POST" onsubmit="return confirm('Are you sure you want to delete this address?');" class="inline-block delete-address-form">
+                      {% csrf_token %}
+                      <button type="submit" class="text-red-600 hover:underline font-medium text-sm">Delete</button>
+                  </form>
+                </div>
+              </div>
+            {% endfor %}
           </div>
         {% else %}
-          <form method="POST" action="{% url 'my_profile' %}">
-            {% csrf_token %}
-            {{ address_form.as_p }}
-            <button type="submit" class="mt-4 bg-black text-white px-4 py-2 rounded">Add Address</button>
-          </form>
+          <p class="text-gray-600 mb-6">No addresses added yet.</p>
         {% endif %}
+
+        {% if user_addresses|length < 3 %}
+            <button onclick="openAddAddressModal()" class="mt-4 bg-black text-white px-4 py-2 rounded hover:bg-gray-800 transition-colors">Add New Address</button>
+        {% else %}
+          <p class="text-red-600 mt-6">You have reached the maximum limit of 3 addresses.</p>
+        {% endif %}
+
       </div>
     </div>
 
-    <!-- Orders -->
     <div id="orders" class="tab-content hidden">
       <div class="bg-white p-6 rounded shadow">
         <h3 class="text-lg font-semibold mb-4">Order History</h3>
@@ -99,14 +131,388 @@
   </div>
 </div>
 
+{# MODAL for EDIT ADDRESS (existing) #}
+<div id="editAddressModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50 hidden">
+  <div class="bg-white p-8 rounded-lg shadow-xl w-11/12 max-w-lg relative">
+    <button onclick="closeEditAddressModal()" class="absolute top-4 right-4 text-gray-500 hover:text-red-800 text-xl font-bold">&times;</button>
+    <h3 class="text-xl font-semibold mb-6">Edit Address</h3>
+    <form id="editAddressForm" method="POST" action="" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {% csrf_token %}
+      <div id="editAddressFields" class="grid grid-cols-1 md:grid-cols-2 gap-4 col-span-full">
+        {# Form fields will be dynamically inserted here by JavaScript #}
+      </div>
+      <div class="col-span-1 md:col-span-2 flex items-center">
+          <input type="checkbox" id="id_is_default_edit" name="is_default" class="mr-2">
+          <label for="id_is_default_edit" class="text-sm font-medium text-gray-700">Set as default</label>
+      </div>
+      <div class="col-span-1 md:col-span-2">
+        <button type="submit" class="mt-4 bg-black text-white px-4 py-2 rounded">Update Address</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# NEW MODAL for ADD NEW ADDRESS #}
+<div id="addAddressModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50 hidden">
+  <div class="bg-white p-8 rounded-lg shadow-xl w-11/12 max-w-lg relative">
+    <button onclick="closeAddAddressModal()" class="absolute top-4 right-4 text-gray-500 hover:text-red-800 text-xl font-bold">&times;</button>
+    <h3 class="text-xl font-semibold mb-6">Add New Address</h3>
+    <form id="addAddressForm" method="POST" action="{% url 'add_address' %}" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {% csrf_token %}
+      {# Dynamically render the form fields using the Django form object #}
+      {% for field in add_address_form %}
+        {# Skip rendering the 'is_default' field here, as we have a custom one below #}
+        {% if field.name != 'is_default' %}
+          <div class="flex flex-col">
+            <label for="{{ field.id_for_label }}" class="mb-1 text-sm font-medium text-gray-700">{{ field.label }}</label>
+            {{ field|add_class:"shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" }}
+            {% if field.help_text %}
+              <p class="text-xs text-gray-500 mt-1">{{ field.help_text }}</p>
+            {% endif %}
+            {% for error in field.errors %}
+              <p class="text-red-500 text-xs mt-1">{{ error }}</p>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endfor %}
+      <div class="col-span-1 md:col-span-2 flex items-center">
+          <input type="checkbox" id="id_is_default_add" name="is_default" class="mr-2">
+          <label for="id_is_default_add" class="text-sm font-medium text-gray-700">Set as default</label>
+      </div>
+      <div class="col-span-1 md:col-span-2">
+        <button type="submit" class="mt-4 bg-black text-white px-4 py-2 rounded">Add Address</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+
 <script>
   function showTab(tabId) {
     document.querySelectorAll('.tab-content').forEach(div => div.classList.add('hidden'));
     document.getElementById(tabId).classList.remove('hidden');
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('bg-gray-100', 'text-black'));
+    document.querySelector(`button[onclick="showTab('${tabId}')"]`).classList.add('bg-gray-100', 'text-black');
+
+    const newUrl = new URL(window.location.href);
+    newUrl.searchParams.set('tab', tabId);
+    window.history.pushState({ path: newUrl.href }, '', newUrl.href);
   }
-  function toggleAddressEdit() {
-    const form = document.getElementById("editAddressForm");
-    form.classList.toggle("hidden");
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const initialTab = urlParams.get('tab');
+
+    if (initialTab) {
+        showTab(initialTab);
+    } else {
+        showTab('profile');
+    }
+  });
+
+  // Function to display messages (re-added as you don't want SweetAlert)
+  function displayMessage(type, message) {
+      const messageContainer = document.querySelector('.flex-1.p-8'); // Target main content area
+      if (!messageContainer) {
+          console.error("Message container not found.");
+          return;
+      }
+
+      let existingMessageDiv = messageContainer.querySelector('.temp-message-div');
+      if (existingMessageDiv) {
+        existingMessageDiv.remove(); // Remove any previous temporary message
+      }
+
+      const messageDiv = document.createElement('div');
+      messageDiv.classList.add('p-3', 'mb-2', 'rounded', 'temp-message-div'); // Add a class to identify temporary messages
+      if (type === 'success') {
+          messageDiv.classList.add('bg-green-100', 'text-green-700');
+      } else if (type === 'error') {
+          messageDiv.classList.add('bg-red-100', 'text-red-700');
+      } else {
+          messageDiv.classList.add('bg-blue-100', 'text-blue-700'); // info/warning
+      }
+      messageDiv.innerHTML = message; // Use innerHTML for messages with <br> tags
+      messageContainer.prepend(messageDiv); // Add to the top of the main content area
+
+      // Optional: auto-hide messages after a few seconds
+      setTimeout(() => messageDiv.remove(), 5000);
   }
+
+
+  // Modal functions for EDIT ADDRESS (existing)
+  function openEditAddressModal(addressId) {
+    const modal = document.getElementById('editAddressModal');
+    const form = document.getElementById('editAddressForm');
+    const editAddressFields = document.getElementById('editAddressFields');
+
+    editAddressFields.innerHTML = '';
+    document.getElementById('id_is_default_edit').checked = false;
+
+    fetch(`/api/addresses/${addressId}/`)
+      .then(response => {
+          if (!response.ok) {
+              return response.json().then(err => { throw new Error(err.message || err.error || 'Failed to fetch address data'); });
+          }
+          return response.json();
+      })
+      .then(data => {
+        const fields = [
+            { name: 'full_name', label: 'Full Name' },
+            { name: 'phone', label: 'Phone' },
+            { name: 'house_name', label: 'House Name' },
+            { name: 'street', label: 'Street' },
+            { name: 'city', label: 'City' },
+            { name: 'state', label: 'State' },
+            { name: 'pincode', label: 'Pincode' },
+            { name: 'country', label: 'Country' }
+        ];
+
+        fields.forEach(fieldInfo => {
+          const div = document.createElement('div');
+          div.classList.add('flex', 'flex-col');
+
+          const label = document.createElement('label');
+          label.htmlFor = `edit_id_${fieldInfo.name}`;
+          label.classList.add('mb-1', 'text-sm', 'font-medium', 'text-gray-700');
+          label.textContent = fieldInfo.label;
+          div.appendChild(label);
+
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.id = `edit_id_${fieldInfo.name}`;
+          input.name = fieldInfo.name;
+          input.value = data[fieldInfo.name] || '';
+          input.classList.add('w-full', 'px-3', 'py-2', 'border', 'rounded-md', 'shadow', 'appearance-none', 'text-gray-700', 'leading-tight', 'focus:outline-none', 'focus:shadow-outline');
+          div.appendChild(input);
+
+          editAddressFields.appendChild(div);
+        });
+
+        document.getElementById('id_is_default_edit').checked = data.is_default;
+        form.action = `/profile/address/${addressId}/edit/`;
+        modal.classList.remove('hidden');
+      })
+      .catch(error => {
+        console.error('Error fetching address data:', error);
+        displayMessage('error', 'Failed to load address data: ' + error.message);
+      });
+  }
+
+  function closeEditAddressModal() {
+    document.getElementById('editAddressModal').classList.add('hidden');
+    window.location.href = "{% url 'my_profile' %}?tab=address";
+  }
+
+  function openAddAddressModal() {
+    const modal = document.getElementById('addAddressModal');
+    const form = document.getElementById('addAddressForm');
+    form.reset();
+
+    document.getElementById('id_is_default_add').checked = false;
+
+    // This part ensures unique IDs for modal fields if you have other forms on the page
+    // For a single modal, it might be overkill but harmless.
+    Array.from(form.elements).forEach(element => {
+        if (element.id && element.id.startsWith('id_') && element.id !== 'id_is_default_add') {
+            const originalId = element.id;
+            const newId = `add_modal_${originalId}`;
+            element.id = newId;
+
+            const label = form.querySelector(`label[for="${originalId}"]`);
+            if (label) {
+                label.htmlFor = newId;
+            }
+        }
+    });
+
+    modal.classList.remove('hidden');
+  }
+
+  function closeAddAddressModal() {
+    document.getElementById('addAddressModal').classList.add('hidden');
+    window.location.href = "{% url 'my_profile' %}?tab=address";
+  }
+
+  // Close modals when clicking outside
+  window.addEventListener('click', (event) => {
+    const editModal = document.getElementById('editAddressModal');
+    const addModal = document.getElementById('addAddressModal');
+
+    if (event.target == editModal) {
+      editModal.classList.add('hidden');
+      window.location.href = "{% url 'my_profile' %}?tab=address";
+    }
+    if (event.target == addModal) {
+      addModal.classList.add('hidden');
+      window.location.href = "{% url 'my_profile' %}?tab=address";
+    }
+  });
+
+  // Handle Edit Address Form submission via AJAX
+  document.getElementById('editAddressForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    const form = e.target;
+    const formData = new FormData(form);
+
+    fetch(form.action, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+      },
+    })
+    .then(response => {
+        if (!response.ok) { // Check for HTTP errors (e.g., 400, 500)
+            return response.json().then(err => { throw new Error(err.message || err.error || 'Server responded with an error status.'); });
+        }
+        return response.json();
+    })
+    .then(data => {
+      if (data.success) { // This is the check that needs 'success: true' from backend
+        displayMessage('success', data.message);
+        document.getElementById('editAddressModal').classList.add('hidden');
+        window.location.href = "{% url 'my_profile' %}?tab=address";
+      } else {
+        let errorMessage = '';
+        if (data.errors) {
+            for (const field in data.errors) {
+                data.errors[field].forEach(error => {
+                    errorMessage += `${field.replace('_', ' ').charAt(0).toUpperCase() + field.replace('_', ' ').slice(1)}: ${error}<br>`;
+                });
+            }
+        }
+        if (data.message) { // Generic error message from view
+            errorMessage += (errorMessage ? '<br>' : '') + data.message;
+        }
+        displayMessage('error', errorMessage || 'An unknown error occurred.');
+      }
+    })
+    .catch(error => {
+      console.error('Error:', error);
+      displayMessage('error', 'An unexpected error occurred. ' + error.message);
+    });
+  });
+
+  // Handle ADD NEW Address Form submission via AJAX
+  document.getElementById('addAddressForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    const form = e.target;
+    const formData = new FormData(form);
+
+    fetch(form.action, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+      },
+    })
+    .then(response => {
+        if (!response.ok) { // Check for HTTP errors (e.g., 400, 500)
+            return response.json().then(err => { throw new Error(err.message || err.error || 'Server responded with an error status.'); });
+        }
+        return response.json(); // If status is OK (2xx), proceed to parse JSON
+    })
+    .then(data => {
+      if (data.success) { // ⭐ THIS IS THE KEY CHECK ⭐
+        displayMessage('success', data.message);
+        document.getElementById('addAddressModal').classList.add('hidden');
+        window.location.href = "{% url 'my_profile' %}?tab=address";
+      } else {
+        let errorMessage = '';
+        if (data.errors) {
+            for (const field in data.errors) {
+                data.errors[field].forEach(error => {
+                    errorMessage += `${field.replace('_', ' ').charAt(0).toUpperCase() + field.replace('_', ' ').slice(1)}: ${error}<br>`;
+                });
+            }
+        }
+        if (data.message) {
+            errorMessage += (errorMessage ? '<br>' : '') + data.message;
+        }
+        displayMessage('error', errorMessage || 'An unknown error occurred.');
+      }
+    })
+    .catch(error => {
+      console.error('Error:', error);
+      displayMessage('error', 'An unexpected error occurred. ' + error.message);
+    });
+  });
+
+  // Handle Set as Default Form submission via AJAX
+  document.querySelectorAll('.set-default-form').forEach(form => {
+      form.addEventListener('submit', function(e) {
+          e.preventDefault();
+          const formData = new FormData(form);
+          fetch(form.action, {
+              method: 'POST',
+              body: formData,
+              headers: {
+                  'X-Requested-With': 'XMLHttpRequest',
+                  'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+              },
+          })
+          .then(response => {
+              if (!response.ok) {
+                  return response.json().then(err => { throw new Error(err.message || err.error || 'Server responded with an error status.'); });
+              }
+              return response.json();
+          })
+          .then(data => {
+              if (data.success) {
+                  displayMessage('success', data.message);
+                  window.location.href = "{% url 'my_profile' %}?tab=address";
+              } else {
+                  displayMessage('error', data.message || 'Failed to set address as default.');
+              }
+          })
+          .catch(error => {
+              console.error('Error:', error);
+              displayMessage('error', 'An unexpected error occurred. ' + error.message);
+          });
+      });
+  });
+
+  // Handle Delete Address Form submission via AJAX
+  document.querySelectorAll('.delete-address-form').forEach(form => {
+      form.addEventListener('submit', function(e) {
+          e.preventDefault();
+          if (!confirm('Are you sure you want to delete this address?')) {
+              return;
+          }
+          const formData = new FormData(form);
+          fetch(form.action, {
+              method: 'POST',
+              body: formData,
+              headers: {
+                  'X-Requested-With': 'XMLHttpRequest',
+                  'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+              },
+          })
+          .then(response => {
+              if (!response.ok) {
+                  return response.json().then(err => { throw new Error(err.message || err.error || 'Server responded with an error status.'); });
+              }
+              return response.json();
+          })
+          .then(data => {
+              if (data.success) {
+                  displayMessage('success', data.message);
+                  window.location.href = "{% url 'my_profile' %}?tab=address";
+              } else {
+                  displayMessage('error', data.message || 'Failed to delete address.');
+              }
+          })
+          .catch(error => {
+              console.error('Error:', error);
+              displayMessage('error', 'An unexpected error occurred. ' + error.message);
+          });
+      });
+  });
+
 </script>
 {% endblock %}

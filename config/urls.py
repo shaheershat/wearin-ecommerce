@@ -1,3 +1,4 @@
+# urls.py (your project's main urls.py or the app's urls.py)
 from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
@@ -9,7 +10,9 @@ from core.views.user_views import (
     request_reset_otp_view, verify_reset_otp_view, reset_password_view,
     login_view, logout_view, confirm_code_view,
     wishlist_view, toggle_wishlist, remove_from_wishlist,
-    remove_from_cart_view, update_profile, update_address
+    remove_from_cart_view, update_profile,
+    add_address, edit_address, set_default_address, delete_address, get_address_data,
+    subscribe_newsletter # IMPORTANT: Added subscribe_newsletter
 )
 
 urlpatterns = [
@@ -65,7 +68,7 @@ urlpatterns = [
     path('add-to-cart/<int:product_id>/', user_views.add_to_cart_view, name='add_to_cart'),
     path('buy-now/<int:product_id>/', user_views.buy_now_view, name='buy_now'),
     path('cart/', user_views.cart_page_view, name='cart_page'),
-    path('checkout/', user_views.cart_page_view, name='checkout_page'),
+    path('checkout/', user_views.cart_page_view, name='checkout_page'), # This should likely be a separate view for actual checkout
     path('cart/remove/<int:product_id>/', remove_from_cart_view, name='remove_from_cart'),
 
     # --- Wishlist ---
@@ -73,12 +76,22 @@ urlpatterns = [
     path('wishlist/toggle/<int:product_id>/', toggle_wishlist, name='toggle_wishlist'),
     path('wishlist/remove/<int:product_id>/', remove_from_wishlist, name='remove_from_wishlist'),
 
-    # --- User Profile ---
+    # --- User Profile & Address Management ---
     path('profile/', user_views.my_profile, name='my_profile'),
-    path('profile/address/', user_views.my_address, name='my_address'),
+    # path('profile/address/', user_views.my_address, name='my_address'), # This path is not strictly needed if all address management is on my_profile
     path('profile/orders/', user_views.my_orders, name='my_orders'),
-    path('profile/update/', update_profile, name='update_profile'),
-    path('profile/update-address/', update_address, name='update_address'),
+    path('profile/update/', update_profile, name='update_profile'), # For User fields update
+    path('contact/send/', user_views.send_contact_email, name='send_contact_email'),
+
+    # New URLs for address management:
+    path('profile/address/add/', add_address, name='add_address'),
+    path('profile/address/<int:address_id>/edit/', edit_address, name='edit_address'),
+    path('profile/address/<int:address_id>/set-default/', set_default_address, name='set_default_address'),
+    path('profile/address/<int:address_id>/delete/', delete_address, name='delete_address'),
+    path('api/addresses/<int:address_id>/', get_address_data, name='get_address_data'), # API endpoint for AJAX modal
+
+    # --- Newsletter Subscription ---
+    path('subscribe/', subscribe_newsletter, name='subscribe_newsletter'), # NEW: Newsletter subscription URL
 
     # --- Social Login ---
     path('accounts/', include('allauth.urls')),
@@ -87,7 +100,3 @@ urlpatterns = [
 # Media files for development
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-
-
-
-

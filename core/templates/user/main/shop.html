@@ -1,18 +1,16 @@
 {% extends 'user/base.html' %}
-{% load static %} 
+{% load static %}
 
 {% block title %}Shop{% endblock %}
 
 {% block content %}
 <div class="container mx-auto px-4 py-8">
-    <!-- Banner -->
     <section class="mb-12">
         <div class="relative bg-gray-100 rounded-xl overflow-hidden shadow-sm">
             <img src="{% static 'images/Banner-2.png' %}" alt="Shop Banner" class="w-full h-full md:h- object-cover">
         </div>
     </section>
 
-    <!--  Filter Button (Mobile Only) -->
     <div class="block md:hidden mb-4">
         <button id="openFilterDrawerBtn" onclick="toggleMobileFilters()" class="flex items-center gap-2 text-sm font-medium px-4 py-2 border border-gray-300 rounded-lg">
             <svg xmlns="http://www.w3.org/2000/svg" width="22" height="20" viewBox="0 0 22 20" fill="none">
@@ -26,7 +24,6 @@
 
     <div class="flex flex-col md:flex-row gap-8">
 
-        <!-- Mobile Filter Drawer -->
         <aside id="mobileFilterDrawer"
                class="fixed inset-y-0 right-0 w-4/5 bg-white p-6 shadow-lg z-50 transform translate-x-full transition-transform duration-300 md:hidden">
             <div class="flex justify-between items-center mb-4">
@@ -39,11 +36,9 @@
             </form>
         </aside>
 
-        <!--  Backdrop for Mobile Filter -->
         <div id="mobileBackdrop" onclick="toggleMobileFilters()"
              class="fixed inset-0 bg-black bg-opacity-50 z-40 hidden md:hidden"></div>
 
-    <!--  Desktop Sidebar Filter (Collapsible) -->
     <aside class="hidden md:block w-full md:w-1/4 bg-white p-6 rounded-xl shadow-sm sticky top-24 h-fit">
         <div class="flex justify-between items-center mb-4">
             <h3 class="text-xl font-semibold">Filters</h3>
@@ -55,7 +50,6 @@
     </aside>
 
 
-        <!--  Product Grid -->
         <section class="flex-1">
             <div id="productGrid" class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 {% for product in products %}
@@ -69,7 +63,6 @@
                                  class="w-full h-72 object-cover transform transition-transform duration-300 group-hover:scale-105">
                         {% endif %}
 
-                        <!--  Wishlist Icon -->
                         <button class="absolute top-3 right-3 bg-white p-2 rounded-full shadow-md z-10 hover:scale-110 transition-transform duration-200"
                                 onclick="toggleWishlist(this, {{ product.id }})">
                             <svg xmlns="http://www.w3.org/2000/svg"
@@ -98,25 +91,26 @@
         </section>
     </div>
 
-    <!--  Newsletter Section -->
     <section class="relative h-[747px] bg-cover bg-center bg-no-repeat mt-12" style="background-image: url('{% static 'images/newsletter.png' %}');">
         <div class="relative z-10 flex flex-col items-center justify-center h-full text-center px-4">
             <h3 class="text-3xl font-bold text-black mb-4">Subscribe To Our Newsletter</h3>
             <p class="text-black mb-6">Get the latest updates and exclusive offers directly to your inbox.</p>
 
-            <form class="flex flex-col sm:flex-row justify-center items-center max-w-lg mx-auto space-y-3 sm:space-y-0 sm:space-x-4 w-full px-2">
-                <input type="email" placeholder="email@gmail.com"
-                       class="flex-grow px-5 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400 w-full sm:w-auto">
-                <button type="submit"
+            <form id="newsletter-form" class="flex flex-col sm:flex-row justify-center items-center max-w-lg mx-auto space-y-3 sm:space-y-0 sm:space-x-4 w-full px-2">
+                {% csrf_token %} {# IMPORTANT: Add CSRF token for POST requests #}
+                <input type="email" id="newsletter-email" name="email" placeholder="email@gmail.com"
+                       class="flex-grow px-5 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400 w-full sm:w-auto" required>
+                <button type="button" onclick="subscribeNewsletter()"
                         class="bg-white text-black px-8 py-3 rounded-lg font-medium hover:bg-gray-200 transition-colors shadow">
                     Subscribe
                 </button>
             </form>
+            {# Message display area #}
+            <div id="newsletter-message" class="mt-4 text-center text-sm font-semibold"></div>
         </div>
     </section>
 </div>
 
-<!-- Scripts -->
 <script>
     function toggleMobileFilters() {
         const drawer = document.getElementById('mobileFilterDrawer');
@@ -203,6 +197,49 @@
             toggleMobileFilters();
         })
         .catch(err => console.error('Filter apply failed', err));
+    }
+
+    // NEW: Newsletter subscription function
+    function subscribeNewsletter() {
+        const emailInput = document.getElementById('newsletter-email');
+        const messageDiv = document.getElementById('newsletter-message');
+        const email = emailInput.value;
+
+        // Clear previous messages
+        messageDiv.textContent = '';
+        messageDiv.classList.remove('text-green-600', 'text-red-600');
+
+        if (!email) {
+            messageDiv.textContent = 'Please enter your email address.';
+            messageDiv.classList.add('text-red-600');
+            return;
+        }
+
+        fetch('{% url "subscribe_newsletter" %}', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'X-Requested-With': 'XMLHttpRequest',
+                'Content-Type': 'application/x-www-form-urlencoded', // Use this for simple form data
+            },
+            body: `email=${encodeURIComponent(email)}`,
+        })
+        .then(response => response.json().then(data => ({ status: response.status, body: data })))
+        .then(({ status, body }) => {
+            if (status === 200 && body.success) {
+                messageDiv.textContent = body.message;
+                messageDiv.classList.add('text-green-600');
+                emailInput.value = ''; // Clear the input field on success
+            } else {
+                messageDiv.textContent = body.message || 'An error occurred during subscription.';
+                messageDiv.classList.add('text-red-600');
+            }
+        })
+        .catch(error => {
+            console.error('Error subscribing to newsletter:', error);
+            messageDiv.textContent = 'An unexpected error occurred. Please try again.';
+            messageDiv.classList.add('text-red-600');
+        });
     }
 </script>
 {% endblock %}

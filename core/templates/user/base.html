@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="h-full"> {# ADDED: class="h-full" here #}
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -10,6 +10,7 @@
     body {
       font-family: 'Inter', sans-serif;
       overflow-x: hidden;
+      /* Remove overflow-y if present, as it can interfere with flex-grow */
     }
     .dropdown-menu {
       display: none;
@@ -29,8 +30,8 @@
   </style>
 </head>
 
-<body class="bg-white text-gray-800">
-  <header class="bg-white shadow-sm sticky top-0 z-40">
+<body class="bg-white text-gray-800 flex flex-col h-full"> {# CHANGED: Added flex flex-col h-full #}
+  <header class="bg-white shadow-sm z-40">
     <div class="container mx-auto px-4 py-4 flex justify-between items-center">
       <div class="text-2xl font-bold uppercase tracking-wider">
         <a href="{% url 'home' %}" class="hover:text-gray-600">WEARIN</a>
@@ -76,7 +77,14 @@
             </span>
             {% endif %}
           </a>
-          <a href="{% url 'my_profile' %}" class="hover:text-gray-600 font-medium">Profile</a>
+          <a href="{% url 'my_profile' %}" class="hover:text-gray-600 font-medium flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" id="person" class="w-7 h-7">
+                <g>
+                <path d="M12 11a4 4 0 1 0-4-4 4 4 0 0 0 4 4zm6 10a1 1 0 0 0 1-1 7 7 0 0 0-14 0 1 1 0 0 0 1 1z"></path>
+                </g>
+            </svg>
+            <span class="sr-only">Profile</span> {# Optional: For accessibility, visually hidden text #}
+          </a>
           <a href="{% url 'logout' %}" class="text-sm hover:text-gray-600 font-medium">Logout</a>
         {% else %}
           <a href="{% url 'login' %}" class="bg-black text-white px-3 py-1 rounded text-sm">Sign In</a>
@@ -108,7 +116,7 @@
     {% endif %}
   </div>
 
-  <main class="min-h-screen">
+  <main class="flex-grow"> {# CHANGED: from min-h-screen to flex-grow #}
     {% block content %}{% endblock %}
   </main>
 

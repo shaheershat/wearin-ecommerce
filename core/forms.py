@@ -1,3 +1,4 @@
+# core/forms.py
 from django import forms
 from django.forms.widgets import ClearableFileInput
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
@@ -5,7 +6,9 @@ from django.contrib.auth.models import User
 from django.contrib.auth import get_user_model
 from core.models import Product, Coupon
 import uuid
-from core.models import UserProfile
+# Import the actual Address model and UserProfile
+from core.models import UserProfile, Address, NewsletterSubscriber # Import NewsletterSubscriber
+
 
 class ProfileForm(forms.ModelForm):
     class Meta:
@@ -13,13 +16,35 @@ class ProfileForm(forms.ModelForm):
         fields = ['first_name', 'last_name', 'email']
 
 class AddressForm(forms.ModelForm):
+    # Changed model from UserProfile to Address
     class Meta:
-        model = UserProfile
-        fields = ['fullname','phone','housename','street', 'city', 'state', 'pincode', 'country']
+        model = Address
+        fields = ['full_name', 'phone', 'house_name', 'street', 'city', 'state', 'pincode', 'country', 'is_default']
+        widgets = {
+            'full_name': forms.TextInput(attrs={'class': 'w-full px-3 py-2 border rounded-md'}),
+            'phone': forms.TextInput(attrs={'class': 'w-full px-3 py-2 border rounded-md'}),
+            'house_name': forms.TextInput(attrs={'class': 'w-full px-3 py-2 border rounded-md'}),
+            'street': forms.TextInput(attrs={'class': 'w-full px-3 py-2 border rounded-md'}),
+            'city': forms.TextInput(attrs={'class': 'w-full px-3 py-2 border rounded-md'}),
+            'state': forms.TextInput(attrs={'class': 'w-full px-3 py-2 border rounded-md'}),
+            'pincode': forms.TextInput(attrs={'class': 'w-full px-3 py-2 border rounded-md'}),
+            'country': forms.TextInput(attrs={'class': 'w-full px-3 py-2 border rounded-md'}),
+            'is_default': forms.CheckboxInput(attrs={'class': 'mr-2'}), # Added widget for checkbox
+        }
 
+# --- NEW FORM FOR NEWSLETTER ---
+class NewsletterForm(forms.ModelForm):
+    class Meta:
+        model = NewsletterSubscriber
+        fields = ['email']
+        widgets = {
+            'email': forms.EmailInput(attrs={'placeholder': 'email@example.com', 'class': 'flex-grow px-5 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400 w-full sm:w-auto'})
+        }
+
+
+# --- Rest of your forms.py remains the same ---
 # --- Login Form ---
 class UserLoginForm(AuthenticationForm):
-    # Modified __init__ to accept 'request' as per AuthenticationForm's signature
     def __init__(self, request=None, *args, **kwargs):
         super().__init__(request=request, *args, **kwargs)
         self.fields['username'].widget = forms.TextInput(attrs={
@@ -47,7 +72,7 @@ class UserRegistrationForm(UserCreationForm):
         required=True,
         widget=forms.EmailInput(attrs={'placeholder': 'Email', 'class': 'form-input'})
     )
-    phone_number = forms.CharField(
+    phone_number = forms.CharField( # This field is not saved to User model directly by default
         max_length=15,
         required=False,
         widget=forms.TextInput(attrs={'placeholder': 'Phone Number', 'class': 'form-input'})
@@ -77,7 +102,7 @@ class UserRegistrationForm(UserCreationForm):
         user.first_name = self.cleaned_data.get("first_name", "")
         user.last_name = self.cleaned_data.get("last_name", "")
         user.email = self.cleaned_data["email"]
-        user.username = self.cleaned_data["email"] or f"user_{uuid.uuid4().hex[:10]}"
+        user.username = self.cleaned_data["email"] # Use email as username for consistency
         if commit:
             user.save()
         return user
