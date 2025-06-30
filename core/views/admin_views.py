@@ -29,7 +29,6 @@ def is_superuser(user): # This function seems unused, consider removing if not n
 def admin_login_view(request):
     list(messages.get_messages(request))  # Clear previous messages
 
-    #  Already logged in as admin
     if request.user.is_authenticated and request.user.is_superuser:
         messages.info(request, "You are already logged in as an administrator.")
         return redirect('admin_dashboard')
@@ -40,18 +39,29 @@ def admin_login_view(request):
         user = authenticate(request, username=username, password=password)
 
         if user and user.is_superuser:
-            #  Use Django's login to bind session, backend, and request.user
             login(request, user)
 
-            #  Set your custom admin session marker
+            # Set admin session flag and save session
             request.session['_auth_admin_id'] = user.pk
             request.session.save()
 
-            #  Flag for middleware to use admin_sessionid cookie
-            request._is_admin_session = True
+            request._is_admin_session = True  # for middleware tracking
+
+            # 🔴 Manually create response to set cookie
+            response = redirect('admin_dashboard')
+
+            response.set_cookie(
+                settings.ADMIN_SESSION_COOKIE_NAME,  # typically 'admin_sessionid'
+                request.session.session_key,
+                max_age=settings.SESSION_COOKIE_AGE,
+                httponly=True,
+                secure=settings.SESSION_COOKIE_SECURE,
+                samesite=getattr(settings, 'SESSION_COOKIE_SAMESITE', 'Lax'),
+            )
 
             messages.success(request, f"Successfully signed in as administrator: {user.username}.")
-            return redirect('admin_dashboard')
+            return response
+
         else:
             messages.error(request, "Invalid credentials or not an administrator.")
 

@@ -1,23 +1,9 @@
-{% comment %}
-    Removed {% extends 'user/base.html' %} to eliminate the user navbar.
-    This page will now render as a standalone HTML page.
-    If you have a separate "admin_base.html" for common admin layouts,
-    you might extend that instead (e.g., {% extends 'admin_panel/admin_base.html' %}).
-    However, for a simple login page, standalone is often preferred.
-{% endcomment %}
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Admin Login | WEARIN</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    /* Optional: Add any specific styles for this page if needed */
-  </style>
-</head>
-<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+{% extends 'user/base.html' %}
 
+{% block title %}Admin Login{% endblock %}
+
+{% block content %}
+<div class="min-h-screen flex justify-center items-center bg-gray-100">
     <div class="bg-white p-8 rounded shadow-md w-full max-w-md">
         <h2 class="text-2xl font-bold mb-6 text-center">Admin Login</h2>
 
@@ -27,39 +13,29 @@
                 type="text" 
                 name="username" 
                 placeholder="Admin Username" 
-                class="w-full p-3 border rounded mb-4 focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
-                required
+                class="w-full p-3 border rounded mb-4"
             >
 
             <input 
                 type="password" 
                 name="password" 
                 placeholder="Password" 
-                class="w-full p-3 border rounded mb-4 focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
-                required
+                class="w-full p-3 border rounded mb-4"
             >
 
             <button 
                 type="submit" 
-                class="w-full bg-black text-white p-3 rounded hover:bg-gray-800 transition-colors"
+                class="w-full bg-black text-white p-3 rounded"
             >
                 Login
             </button>
         </form>
 
         {% if messages %}
-            <div class="mt-4 space-y-2">
-                {% for message in messages %}
-                    <p class="p-2 rounded text-sm 
-                        {% if message.tags == 'error' %}bg-red-100 text-red-700
-                        {% elif message.tags == 'success' %}bg-green-100 text-green-700
-                        {% else %}bg-blue-100 text-blue-700{% endif %}">
-                        {{ message }}
-                    </p>
-                {% endfor %}
-            </div>
+            {% for message in messages %}
+                <p class="text-red-500 text-sm mt-4">{{ message }}</p>
+            {% endfor %}
         {% endif %}
     </div>
-
-</body>
-</html>
+</div>
+{% endblock %}

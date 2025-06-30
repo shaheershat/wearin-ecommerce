@@ -1,29 +1,38 @@
 {% extends 'user/base.html' %}
+{% load static %}
 {% block content %}
-<div class="p-6">
+<div class="container mx-auto py-10 px-4 text-center">
   <h2 class="text-2xl font-bold mb-4">Checkout</h2>
+  <p class="text-xl mb-2">Total: ₹{{ total_price }}</p>
+  <button id="rzp-button" class="bg-black text-white px-6 py-2 rounded hover:bg-gray-800">
+    Pay with Razorpay
+  </button>
 
-  {% if buy_now %}
-    <div class="border p-4 rounded-md">
-        <h3 class="text-xl font-semibold mb-2">Buy Now</h3>
-        <img src="{{ buy_now.image }}" class="w-32 h-32 object-cover mb-2" alt="">
-        <p class="text-lg">{{ buy_now.name }}</p>
-        <p class="text-green-600 font-bold">₹{{ buy_now.price }}</p>
-        <p>Quantity: {{ buy_now.quantity }}</p>
-    </div>
-  {% elif cart %}
-    <h3 class="text-xl font-semibold mb-4">Items in Cart</h3>
-    {% for pid, item in cart.items %}
-      <div class="flex items-center justify-between mb-4">
-          <img src="{{ item.image }}" class="w-20 h-20 object-cover" alt="">
-          <div>
-              <p class="font-semibold">{{ item.name }}</p>
-              <p>₹{{ item.price }} x {{ item.quantity }}</p>
-          </div>
-      </div>
-    {% endfor %}
-  {% else %}
-    <p>No items in checkout.</p>
-  {% endif %}
+  <form id="payment-form" action="{% url 'payment_success' %}" method="POST" style="display:none;">
+    {% csrf_token %}
+  </form>
 </div>
+
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script>
+const options = {
+    "key": "{{ razorpay_key }}",
+    "amount": "{{ total_price|floatformat:2|add:'0'|floatformat:'0' }}" * 100,
+    "currency": "INR",
+    "name": "WEARIN",
+    "description": "Order Payment",
+    "order_id": "{{ order_id }}",
+    "handler": function (response) {
+        document.getElementById('payment-form').submit();
+    },
+    "theme": {
+        "color": "#000000"
+    }
+};
+const rzp = new Razorpay(options);
+document.getElementById('rzp-button').onclick = function (e) {
+    rzp.open();
+    e.preventDefault();
+}
+</script>
 {% endblock %}

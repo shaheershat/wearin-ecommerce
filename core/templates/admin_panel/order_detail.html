@@ -69,6 +69,7 @@
               </p>
             </div>
             <p class="font-semibold text-gray-900">₹{{ item.price_at_purchase }}</p>
+            <img src="{{ item.product.images.first.image.url }}" alt="{{ item.product.name }}" class="w-24 h-24 object-cover rounded">
           </li>
         {% endfor %}
       </ul>

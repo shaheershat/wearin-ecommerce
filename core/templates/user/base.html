@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="h-full"> {# ADDED: class="h-full" here #}
+<html lang="en" class="h-full">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,10 +7,14 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <style>
+    html, body {
+      height: 100%;
+    }
     body {
       font-family: 'Inter', sans-serif;
       overflow-x: hidden;
-      /* Remove overflow-y if present, as it can interfere with flex-grow */
+      display: flex;
+      flex-direction: column;
     }
     .dropdown-menu {
       display: none;
@@ -30,8 +34,8 @@
   </style>
 </head>
 
-<body class="bg-white text-gray-800 flex flex-col h-full"> {# CHANGED: Added flex flex-col h-full #}
-  <header class="bg-white shadow-sm z-40">
+<body class="bg-white text-gray-800">
+  <header class="sticky top-0 bg-white shadow-sm z-50">
     <div class="container mx-auto px-4 py-4 flex justify-between items-center">
       <div class="text-2xl font-bold uppercase tracking-wider">
         <a href="{% url 'home' %}" class="hover:text-gray-600">WEARIN</a>
@@ -79,11 +83,9 @@
           </a>
           <a href="{% url 'my_profile' %}" class="hover:text-gray-600 font-medium flex items-center justify-center">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" id="person" class="w-7 h-7">
-                <g>
-                <path d="M12 11a4 4 0 1 0-4-4 4 4 0 0 0 4 4zm6 10a1 1 0 0 0 1-1 7 7 0 0 0-14 0 1 1 0 0 0 1 1z"></path>
-                </g>
+                <g><path d="M12 11a4 4 0 1 0-4-4 4 4 0 0 0 4 4zm6 10a1 1 0 0 0 1-1 7 7 0 0 0-14 0 1 1 0 0 0 1 1z"></path></g>
             </svg>
-            <span class="sr-only">Profile</span> {# Optional: For accessibility, visually hidden text #}
+            <span class="sr-only">Profile</span>
           </a>
           <a href="{% url 'logout' %}" class="text-sm hover:text-gray-600 font-medium">Logout</a>
         {% else %}
@@ -104,7 +106,6 @@
     <a href="{% url 'policy' %}" class="block text-gray-800 hover:text-gray-600">Policy</a>
     <a href="{% url 'contact' %}" class="block text-gray-800 hover:text-gray-600">Contact</a>
     <a href="{% url 'about' %}" class="block text-gray-800 hover:text-gray-600">About Us</a>
-
     {% if user.is_authenticated %}
       <a href="{% url 'wishlist' %}" class="block text-gray-800 hover:text-gray-600">Wishlist</a>
       <a href="{% url 'cart_page' %}" class="block text-gray-800 hover:text-gray-600">Cart</a>
@@ -116,7 +117,7 @@
     {% endif %}
   </div>
 
-  <main class="flex-grow"> {# CHANGED: from min-h-screen to flex-grow #}
+  <main class="flex-grow">
     {% block content %}{% endblock %}
   </main>
 
@@ -148,27 +149,27 @@
   {% endblock footer %}
 
   {% if user.is_authenticated %}
-  <div class="fixed right-4 bottom-4 z-50 flex flex-col space-y-4 md:hidden"> {# `md:hidden` makes it disappear on medium screens and up #}
-      <a href="{% url 'wishlist' %}" class="relative bg-white p-2 rounded-full shadow-lg hover:scale-105">
-          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 32 32">
-              <path fill="#1C1C1C" d="M27.683 5.392a7.738 7.738 0 0 0-11.188 0l-.495.51-.494-.51c-3.09-3.189-8.099-3.189-11.188 0s-3.09 8.36 0 11.549l.494.51L16 29l11.188-11.549.494-.51c3.09-3.189 3.09-8.36.001-11.549z"></path>
-          </svg>
-          {% if wishlist_count > 0 %}
-          <span class="absolute top-0 right-0 -mt-1 -mr-1 bg-red-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
-              {{ wishlist_count }}
-          </span>
-          {% endif %}
-      </a>
-      <a href="{% url 'cart_page' %}" class="relative bg-white p-2 rounded-full shadow-lg hover:scale-105">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" class="w-7 h-7 fill-black">
-              <path d="M14 13.1V12H4.6l.6-1.1 9.2-.9L16 4H3.7L3 1H0v1h2.2l2.1 8.4L3 13v1.5c0 .8.7 1.5 1.5 1.5S6 15.3 6 14.5 5.3 13 4.5 13H12v1.5c0 .8.7 1.5 1.5 1.5s1.5-.7 1.5-1.5c0-.7-.4-1.2-1-1.4z"/>
-          </svg>
-          {% if cart_count > 0 %}
-          <span class="absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center shadow-md">
-              {{ cart_count }}
-          </span>
-          {% endif %}
-      </a>
+  <div class="fixed right-4 bottom-4 z-50 flex flex-col space-y-4 md:hidden">
+    <a href="{% url 'wishlist' %}" class="relative bg-white p-2 rounded-full shadow-lg hover:scale-105">
+      <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 32 32">
+        <path fill="#1C1C1C" d="M27.683 5.392a7.738 7.738 0 0 0-11.188 0l-.495.51-.494-.51c-3.09-3.189-8.099-3.189-11.188 0s-3.09 8.36 0 11.549l.494.51L16 29l11.188-11.549.494-.51c3.09-3.189 3.09-8.36.001-11.549z"/>
+      </svg>
+      {% if wishlist_count > 0 %}
+      <span class="absolute top-0 right-0 -mt-1 -mr-1 bg-red-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+        {{ wishlist_count }}
+      </span>
+      {% endif %}
+    </a>
+    <a href="{% url 'cart_page' %}" class="relative bg-white p-2 rounded-full shadow-lg hover:scale-105">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" class="w-7 h-7 fill-black">
+        <path d="M14 13.1V12H4.6l.6-1.1 9.2-.9L16 4H3.7L3 1H0v1h2.2l2.1 8.4L3 13v1.5c0 .8.7 1.5 1.5 1.5S6 15.3 6 14.5 5.3 13 4.5 13H12v1.5c0 .8.7 1.5 1.5 1.5s1.5-.7 1.5-1.5c0-.7-.4-1.2-1-1.4z"/>
+      </svg>
+      {% if cart_count > 0 %}
+      <span class="absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center shadow-md">
+        {{ cart_count }}
+      </span>
+      {% endif %}
+    </a>
   </div>
   {% endif %}
 

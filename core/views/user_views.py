@@ -13,10 +13,14 @@ from django.contrib.auth import get_user_model
 from django.contrib.sessions.backends.db import SessionStore
 from core.decorators import user_login_required
 from django.views.decorators.csrf import csrf_protect
+from django.contrib.auth import get_user
+
 import json
+from decimal import Decimal
 from django.http import JsonResponse
 from django.core.mail import send_mail
-
+import razorpay
+from django.views.decorators.csrf import csrf_exempt
 # Import the correct models and forms
 # IMPORTANT: Added NewsletterForm
 from core.forms import UserLoginForm, UserRegistrationForm, ProfileForm, AddressForm, NewsletterForm
@@ -29,6 +33,37 @@ from django.db import transaction, IntegrityError # IMPORTANT: Added IntegrityEr
 import random
 from django.utils import timezone
 
+razorpay_client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+
+def checkout_view(request):
+    cart = request.session.get('cart', {})
+    if not cart:
+        return redirect('cart_page')
+
+    total_price = sum(item['price'] * item['quantity'] for item in cart.values())
+
+    payment = razorpay_client.order.create({
+        "amount": int(total_price * 100),  # in paise
+        "currency": "INR",
+        "payment_capture": "1"
+    })
+
+    context = {
+        "cart": cart,
+        "total_price": total_price,
+        "order_id": payment['id'],
+        "razorpay_key": settings.RAZORPAY_KEY_ID,
+    }
+    return render(request, 'user/main/checkout.html', context)
+
+@csrf_exempt
+def payment_success_view(request):
+    # Optional: Verify signature and update Order model
+    return render(request, 'user/main/payment_success.html')
+
+@csrf_exempt
+def payment_failed_view(request):
+    return render(request, 'user/main/payment_failed.html')
 
 User = get_user_model()
 
@@ -422,6 +457,8 @@ def logout_view(request):
 # --- Main Pages (No changes needed, but ensure cart_count is consistent) ---
 
 def home_view(request):
+    print("🔍 AUTH USER:", get_user(request))
+    print("🔍 IS AUTHENTICATED:", request.user.is_authenticated)
     user = request.user if request.user.is_authenticated else None
     if not user:
         user_id = request.session.get('_auth_user_id')
@@ -606,15 +643,22 @@ def remove_from_cart_view(request, product_id):
 
 @require_POST
 @user_login_required
-def buy_now_view(request, product_id):
-    product = get_object_or_404(Product, id=product_id)
-    request.session['buy_now'] = {
-        'id': product.id,
-        'name': product.name,
-        'price': float(product.price),
-        'image': product.images.first().image.url if product.images.exists() else None,
-    }
-    return redirect('checkout_page')
+def buy_now_checkout_view(request, product_id):
+    if request.method == 'POST':
+        product = get_object_or_404(Product, id=product_id, is_sold=False)
+
+        request.session['cart'] = {
+            str(product_id): {
+                'name': product.name,
+                'price': float(product.price),  # 👈 Convert Decimal to float
+                'quantity': 1,
+                'image_url': product.images.first().image.url if product.images.exists() else '',
+            }
+        }
+        request.session.modified = True
+        return redirect('checkout')
+
+    return redirect('product_detail', product_id=product_id)
 
 
 @user_login_required

@@ -14,18 +14,22 @@ class CustomSessionMiddleware:
     def __call__(self, request):
         logger.debug(f"Middleware: Incoming Request Path: {request.path}")
 
-        #  Allow Django to handle normal session/auth for public/OTP pages
-        safe_paths = [
-            "/forgot-password/",
-            "/forgot-password/verify/",
-            "/forgot-password/reset/",
-            "/register/",
-            "/register/verify/"
+        # ✅ Bypass admin login/logout and Allauth flows
+        bypass_paths = [
+            "/admin/login/", "/admin/logout/",
+            "/forgot-password/", "/forgot-password/verify/",
+            "/forgot-password/reset/", "/register/", "/register/verify/",
+            "/accounts/google/login/", "/accounts/google/login/callback/"
         ]
-        if any(request.path.startswith(p) for p in safe_paths):
+        if any(request.path.startswith(p) for p in bypass_paths):
             return self.get_response(request)
 
-        # 🚀 Custom session handling for admin/user split
+        # ✅ If already authenticated (Allauth or Django), respect it
+        if hasattr(request, "user") and request.user.is_authenticated:
+            logger.debug(f"Middleware: Skipping custom session - already authenticated user: {request.user}")
+            return self.get_response(request)
+
+        # 🧠 Begin custom session logic
         request.user = None
         request._is_admin_session = False
 
@@ -90,7 +94,7 @@ class CustomSessionMiddleware:
             except Exception as e:
                 logger.error(f"Middleware: Error loading user session '{user_session_key}': {e}", exc_info=True)
 
-        # --- Final session adjustments ---
+        # --- Final session sync ---
         if request.user and request.user.is_authenticated:
             if request.user.pk != request.session.get('_auth_user_id'):
                 request.session['_auth_user_id'] = request.user.pk
@@ -121,13 +125,13 @@ class CustomSessionMiddleware:
 
         response = self.get_response(request)
 
-        # --- Save and set cookie ---
-        if request.session.modified or not request.session.session_key:
-            try:
+        # --- Save and set session cookie ---
+        try:
+            if request.session.modified or not request.session.session_key:
                 request.session.save()
                 logger.debug(f"Middleware: Session saved with key: {request.session.session_key}")
-            except Exception as e:
-                logger.error(f"Middleware: Failed to save session: {e}", exc_info=True)
+        except Exception as e:
+            logger.error(f"Middleware: Failed to save session: {e}", exc_info=True)
 
         session_key_to_set = request.session.session_key
         cookie_name = settings.ADMIN_SESSION_COOKIE_NAME if request._is_admin_session else settings.SESSION_COOKIE_NAME
