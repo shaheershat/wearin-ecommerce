@@ -31,7 +31,6 @@ class OTP(models.Model):
 
 
 class UserProfile(models.Model):
-    # Removed: fullname, phone, housename, street, city, state, pincode, country
     user = models.OneToOneField(User, on_delete=models.CASCADE)
 
     def __str__(self):
@@ -71,6 +70,8 @@ class Product(models.Model):
     size = models.CharField(max_length=10)
     is_sold = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
+    # Added stock_quantity for better inventory management (optional but highly recommended)
+    stock_quantity = models.PositiveIntegerField(default=1)
 
     def __str__(self):
         return self.name
@@ -87,20 +88,19 @@ class ProductImage(models.Model):
         return f"Image for {self.product.name} (Order: {self.order})"
 
 class Address(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='addresses') # Added related_name
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='addresses')
     full_name = models.CharField(max_length=255)
     phone = models.CharField(max_length=20)
-    # Changed from address_line to housename and street for consistency with your forms
-    house_name = models.CharField(max_length=255, verbose_name="House Name/Thalavala") # Added
-    street = models.CharField(max_length=255) # Renamed from address_line
+    house_name = models.CharField(max_length=255, verbose_name="House Name/Thalavala")
+    street = models.CharField(max_length=255)
     city = models.CharField(max_length=100)
     state = models.CharField(max_length=100)
     pincode = models.CharField(max_length=10)
-    country = models.CharField(max_length=100, default='India') # Added
-    is_default = models.BooleanField(default=False) # Added
+    country = models.CharField(max_length=100, default='India')
+    is_default = models.BooleanField(default=False)
 
     class Meta:
-        verbose_name_plural = "Addresses" # Added for better admin display
+        verbose_name_plural = "Addresses"
 
     def __str__(self):
         return f"{self.full_name}, {self.street}, {self.city}"
@@ -111,20 +111,35 @@ class Order(models.Model):
         ('Pending', 'Pending'),
         ('Shipped', 'Shipped'),
         ('Delivered', 'Delivered'),
+        ('Cancelled', 'Cancelled'), # Added Cancelled status
+    ]
+    PAYMENT_STATUS_CHOICES = [ # Added payment status choices
+        ('Pending', 'Pending'),
+        ('Success', 'Success'),
+        ('Failed', 'Failed'),
     ]
 
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     address = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, blank=True)
     total_price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Pending')
+    payment_status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default='Pending') # New field
+    razorpay_order_id = models.CharField(max_length=100, blank=True, null=True) # New field
+    razorpay_payment_id = models.CharField(max_length=100, blank=True, null=True) # New field
+    razorpay_signature = models.CharField(max_length=255, blank=True, null=True) # New field
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True) # Track last update
 
     def save(self, *args, **kwargs):
+        # Update is_sold status when order is delivered (existing logic)
         if self.pk:
-            old_status = Order.objects.get(pk=self.pk).status
-            if old_status != 'Delivered' and self.status == 'Delivered':
+            old_order = Order.objects.get(pk=self.pk)
+            # Only if status changes to Delivered and was not Delivered before
+            if old_order.status != 'Delivered' and self.status == 'Delivered':
                 for item in self.items.all():
                     if item.product:
+                        # Assuming 'is_sold' means the product is no longer available
+                        # If you have stock quantity, you'd decrement that instead
                         item.product.is_sold = True
                         item.product.save()
         super().save(*args, **kwargs)
@@ -135,10 +150,11 @@ class Order(models.Model):
 class OrderItem(models.Model):
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items')
     product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True)
+    quantity = models.PositiveIntegerField(default=1) # Added quantity
     price_at_purchase = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
 
     def __str__(self):
-        return f"{self.product.name if self.product else 'N/A'} in Order #{self.order.id}"
+        return f"{self.product.name if self.product else 'N/A'} (x{self.quantity}) in Order #{self.order.id}"
 
     def save(self, *args, **kwargs):
         if not self.pk and self.product:
@@ -146,21 +162,34 @@ class OrderItem(models.Model):
         super().save(*args, **kwargs)
 
 class Cart(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='cart') # Added related_name
+    created_at = models.DateTimeField(auto_now_add=True) # Track creation
+    updated_at = models.DateTimeField(auto_now=True) # Track last update
 
     def __str__(self):
         return f"Cart of {self.user.username}"
 
+    def get_total_price(self):
+        return sum(item.product.price * item.quantity for item in self.items.all())
+
 class CartItem(models.Model):
     cart = models.ForeignKey(Cart, on_delete=models.CASCADE, related_name='items')
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
+    quantity = models.PositiveIntegerField(default=1) # IMPORTANT: Added quantity field
+
+    class Meta:
+        unique_together = ('cart', 'product') # Ensures a product is only once per cart
 
     def __str__(self):
-        return f"{self.product.name} in {self.cart.user.username}'s cart"
+        return f"{self.product.name} (x{self.quantity}) in {self.cart.user.username}'s cart"
 
 class Wishlist(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='wishlist_items') # Added related_name
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
+    added_at = models.DateTimeField(auto_now_add=True) # Track when added
+
+    class Meta:
+        unique_together = ('user', 'product') # Ensures a product is only once per wishlist
 
     def __str__(self):
         return f"{self.product.name} in {self.user.username}'s wishlist"

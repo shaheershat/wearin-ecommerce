@@ -66,9 +66,8 @@ urlpatterns = [
 
     # --- Cart ---
     path('add-to-cart/<int:product_id>/', user_views.add_to_cart_view, name='add_to_cart'),
-    path('buy-now/<int:product_id>/', user_views.buy_now_view, name='buy_now'),
+    path('buy-now/<int:product_id>/checkout/', user_views.buy_now_checkout_view, name='buy_now_checkout'),
     path('cart/', user_views.cart_page_view, name='cart_page'),
-    path('checkout/', user_views.cart_page_view, name='checkout_page'), # This should likely be a separate view for actual checkout
     path('cart/remove/<int:product_id>/', remove_from_cart_view, name='remove_from_cart'),
 
     # --- Wishlist ---
@@ -95,6 +94,12 @@ urlpatterns = [
 
     # --- Social Login ---
     path('accounts/', include('allauth.urls')),
+
+    path('checkout/', user_views.checkout_view, name='checkout'),
+    path('payment/success/', user_views.payment_success_view, name='payment_success'),
+    path('payment/failed/', user_views.payment_failed_view, name='payment_failed'),
+
+
 ]
 
 # Media files for development

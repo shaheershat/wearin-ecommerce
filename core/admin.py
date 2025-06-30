@@ -3,8 +3,12 @@ from django.db import models
 from django.db.models import Sum
 from decimal import Decimal
 
-# Import your models, including NewsletterSubscriber
-from .models import Product, Order, OrderItem, Address, Category, ProductImage, NewsletterSubscriber # Added NewsletterSubscriber
+# Import ALL your models
+from .models import (
+    Product, Order, OrderItem, Address, Category, ProductImage,
+    NewsletterSubscriber, EmailOTP, OTP, UserProfile, Coupon,
+    Cart, CartItem, Wishlist # Added missing models
+)
 
 class OrderItemInline(admin.TabularInline):
     model = OrderItem
@@ -29,26 +33,19 @@ class OrderAdmin(admin.ModelAdmin):
     readonly_fields = ('total_price',)
 
     def save_model(self, request, obj, form, change):
-
         super().save_model(request, obj, form, change)
-
         if change and 'status' in form.changed_data and obj.status == 'Delivered':
            for item in obj.items.all():
                 if item.product and not item.product.is_sold:
                     item.product.is_sold = True
-                    item.product.save() # Save the product to update its sold status
+                    item.product.save()
 
     def save_formset(self, request, form, formset, change):
-
         super().save_formset(request, form, formset, change)
-
         order = form.instance
         order.refresh_from_db()
-
         total_price_agg = order.items.aggregate(Sum('price_at_purchase'))['price_at_purchase__sum']
-
         order.total_price = total_price_agg if total_price_agg is not None else Decimal('0.00')
-
         order.save()
 
 
@@ -63,13 +60,57 @@ class CategoryAdmin(admin.ModelAdmin):
     list_display = ['name', 'slug']
     prepopulated_fields = {'slug': ('name',)}
 
-# NEW: Register NewsletterSubscriber
 @admin.register(NewsletterSubscriber)
 class NewsletterSubscriberAdmin(admin.ModelAdmin):
     list_display = ('email', 'subscribed_at')
     search_fields = ('email',)
     list_filter = ('subscribed_at',)
 
+# --- NEW REGISTRATIONS FOR UNREGISTERED MODELS ---
 
+@admin.register(EmailOTP)
+class EmailOTPAdmin(admin.ModelAdmin):
+    list_display = ('email', 'otp', 'purpose', 'created_at')
+    list_filter = ('purpose', 'created_at')
+    search_fields = ('email', 'otp')
+    readonly_fields = ('created_at',) # OTPs are usually not edited manually
+
+@admin.register(OTP)
+class OTPAdmin(admin.ModelAdmin):
+    list_display = ('user', 'code', 'purpose', 'created_at', 'is_expired')
+    list_filter = ('purpose', 'created_at')
+    search_fields = ('user__username', 'code')
+    readonly_fields = ('created_at',)
+
+@admin.register(UserProfile)
+class UserProfileAdmin(admin.ModelAdmin):
+    list_display = ('user',) # Display the associated user
+    search_fields = ('user__username', 'user__email')
+
+@admin.register(Coupon)
+class CouponAdmin(admin.ModelAdmin):
+    list_display = ('code', 'discount', 'limit', 'min_purchase', 'valid_from', 'valid_to', 'is_active')
+    list_filter = ('is_active', 'valid_from', 'valid_to')
+    search_fields = ('code',)
+
+@admin.register(Cart)
+class CartAdmin(admin.ModelAdmin):
+    list_display = ('user',)
+    search_fields = ('user__username',)
+
+@admin.register(CartItem)
+class CartItemAdmin(admin.ModelAdmin):
+    list_display = ('cart', 'product')
+    list_filter = ('cart__user',)
+    search_fields = ('cart__user__username', 'product__name')
+
+@admin.register(Wishlist)
+class WishlistAdmin(admin.ModelAdmin):
+    list_display = ('user', 'product')
+    list_filter = ('user',)
+    search_fields = ('user__username', 'product__name')
+
+
+# Models that don't need custom Admin classes (default display is fine)
 admin.site.register(Address)
 admin.site.register(ProductImage)
