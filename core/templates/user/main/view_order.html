@@ -1,0 +1,61 @@
+{% extends 'user/base.html' %}
+{% load custom_filters %}
+{% block content %}
+<div class="max-w-4xl mx-auto bg-white shadow p-6 rounded mt-8">
+
+  <h2 class="text-2xl font-bold mb-6">Order Details</h2>
+
+  <!-- Order Info -->
+  <div class="mb-6">
+    <p><strong>Order ID:</strong> {{ order.id }}</p>
+    <p><strong>Status:</strong> {{ order.status }}</p>
+    <p><strong>Date:</strong> {{ order.created_at|date:"M d, Y" }}</p>
+    <p><strong>Total Price:</strong> ₹{{ order.total_price }}</p>
+  </div>
+
+  <!-- Address -->
+  <div class="mb-6">
+    <h3 class="text-lg font-semibold mb-2">Shipping Address</h3>
+    {% if order.address %}
+      <p>{{ order.address.full_name }}</p>
+      <p>{{ order.address.house_name }}, {{ order.address.street }}</p>
+      <p>{{ order.address.city }}, {{ order.address.state }} - {{ order.address.pincode }}</p>
+      <p>{{ order.address.country }}</p>
+      <p>Phone: {{ order.address.phone }}</p>
+    {% else %}
+      <p class="text-red-600">No address associated with this order.</p>
+    {% endif %}
+  </div>
+
+  <!-- Order Items -->
+  <div>
+    <h3 class="text-lg font-semibold mb-2">Items</h3>
+    <div class="divide-y">
+      {% for item in order.items.all %}
+        <div class="py-4 flex gap-4 items-center">
+          {% if item.product.images.first %}
+            <img src="{{ item.product.images.first.image.url }}" alt="{{ item.product.name }}" class="w-20 h-20 object-cover rounded border">
+          {% else %}
+            <div class="w-20 h-20 bg-gray-200 rounded flex items-center justify-center text-sm text-gray-500">No Image</div>
+          {% endif %}
+          <div class="flex-1">
+            <p class="font-medium">{{ item.product.name }}</p>
+            <p class="text-sm text-gray-600">Price: ₹{{ item.price_at_purchase }}</p>
+            <p class="text-sm text-gray-600">Quantity: {{ item.quantity }}</p>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div class="mt-8 flex justify-end gap-4">
+    <a href="{% url 'my_profile' %}?tab=orders" class="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 transition">← Back to Orders</a>
+
+    <a href="{% url 'download_invoice' order.id %}" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition">
+      📄 Download Invoice
+    </a>
+  </div>
+
+</div>
+{% endblock %}

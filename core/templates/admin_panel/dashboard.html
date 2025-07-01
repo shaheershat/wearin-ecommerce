@@ -30,7 +30,7 @@
         <div class="flex items-center gap-3">
           <img src="{% static 'images/admin.png' %}" class="w-10 h-10 rounded-full" alt="Admin" />
           <div>
-            <p class="font-semibold">Shaheer Sha T</p>
+            <p class="font-semibold">{{ request.user.get_full_name|default:request.user.username }}</p>
             <p class="text-sm text-gray-500">Admin</p>
           </div>
         </div>
@@ -57,7 +57,7 @@
       <div class="flex items-center gap-3">
         <img src="{% static 'images/admin.png' %}" class="w-10 h-10 rounded-full" alt="Admin" />
         <div>
-          <p class="font-semibold">Shaheer Sha T</p>
+          <p class="font-semibold">{{ request.user.get_full_name|default:request.user.username }}</p>
           <p class="text-sm text-gray-500">Admin</p>
         </div>
       </div>

@@ -16,6 +16,7 @@ from django.views.decorators.csrf import csrf_protect
 from django.contrib.auth import get_user
 import json
 from decimal import Decimal
+from core.models import OrderItem
 from core.models import Cart, CartItem
 from django.http import JsonResponse
 from django.core.mail import send_mail
@@ -37,7 +38,66 @@ from core.models import Address, Coupon
 from django.contrib.sessions.models import Session
 from django.contrib.auth.models import User
 from core.models import Cart, CartItem, Product  
+from django.http import FileResponse, Http404
+import os
+from xhtml2pdf import pisa
+from django.http import HttpResponse
+from django.template.loader import get_template
 
+
+def download_invoice_view(request, order_id):
+    order = get_object_or_404(Order, id=order_id, user=request.user)
+
+    # Construct full absolute URL to the logo
+    logo_url = request.build_absolute_uri('/static/images/logo.png')
+
+    template_path = 'user/main/invoice_pdf.html'
+    context = {
+        'order': order,
+        'logo_url': logo_url,  
+        'request': request
+    }
+
+    template = get_template(template_path)
+    html = template.render(context)
+
+    response = HttpResponse(content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="invoice_{order.id}.pdf"'
+
+    pisa_status = pisa.CreatePDF(html, dest=response)
+
+    if pisa_status.err:
+        return HttpResponse('We had some errors <pre>' + html + '</pre>')
+
+    return response
+
+
+@user_login_required
+def view_order_view(request, order_id):
+    order = get_object_or_404(Order, id=order_id, user=request.user)
+    return render(request, 'user/main/view_order.html', {'order': order})
+
+@user_login_required
+def cancel_order_view(request, order_id):
+    order = get_object_or_404(Order, id=order_id, user=request.user)
+    if order.status not in ['Pending', 'Shipped']:
+        messages.error(request, 'This order cannot be cancelled.')
+        return redirect('my_profile')  # Or return JsonResponse
+    order.status = 'Cancelled'
+    order.save()
+    messages.success(request, 'Order has been cancelled.')
+    return redirect('my_profile')
+
+@user_login_required
+def return_order_view(request, order_id):
+    order = get_object_or_404(Order, id=order_id, user=request.user)
+    if order.status != 'Delivered':
+        messages.error(request, 'Only delivered orders can be returned.')
+        return redirect('my_profile')
+    order.status = 'Returned'
+    order.save()
+    messages.success(request, 'Return request submitted.')
+    return redirect('my_profile')
 
 razorpay_client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
 
@@ -160,9 +220,103 @@ def checkout_view(request):
 
 
 @csrf_exempt
+@user_login_required
 def payment_success_view(request):
-    # Optional: Verify signature and update Order model
-    return render(request, 'user/main/payment_success.html')
+    user = request.user
+
+    # Get address ID from request (e.g. hidden input in form or session)
+    address_id = request.POST.get('address_id') or request.session.get('selected_address_id')
+    if not address_id:
+        messages.error(request, "No address selected.")
+        return redirect('checkout')
+
+    try:
+        address = Address.objects.get(id=address_id, user=user)
+    except Address.DoesNotExist:
+        messages.error(request, "Invalid address.")
+        return redirect('checkout')
+
+    cart = request.session.get('cart', {})
+    buy_now = request.session.get('buy_now_item')
+
+    if not cart and not buy_now:
+        messages.error(request, "Your cart is empty.")
+        return redirect('cart_page')
+
+    try:
+        with transaction.atomic():
+            total_price = 0
+            order = Order.objects.create(
+                user=user,
+                address=address,
+                status='Pending',
+                total_price=0  # Will update below
+            )
+
+            # ✅ Buy Now flow
+            if buy_now:
+                product = Product.objects.get(id=buy_now['id'])
+                quantity = buy_now.get('quantity', 1)
+                price = Decimal(product.price)
+
+                OrderItem.objects.create(
+                    order=order,
+                    product=product,
+                    quantity=quantity,
+                    price_at_purchase=price
+                )
+                total_price = price * quantity
+
+                # Mark product as sold
+                product.is_sold = True
+                product.save()
+
+                # Remove from wishlist if exists
+                Wishlist.objects.filter(user=user, product=product).delete()
+
+                # Clear buy now session
+                del request.session['buy_now_item']
+
+            # ✅ Cart flow
+            elif cart:
+                for pid, item in cart.items():
+                    product = Product.objects.get(id=int(pid))
+                    quantity = item['quantity']
+                    price = Decimal(product.price)
+
+                    OrderItem.objects.create(
+                        order=order,
+                        product=product,
+                        quantity=quantity,
+                        price_at_purchase=price
+                    )
+                    total_price += price * quantity
+
+                    # Mark product as sold
+                    product.is_sold = True
+                    product.save()
+
+                    # Remove from wishlist
+                    Wishlist.objects.filter(user=user, product=product).delete()
+
+                # Clear session cart
+                request.session['cart'] = {}
+
+                # Optionally delete from DB cart
+                Cart.objects.filter(user=user).delete()
+
+            # Finalize order total
+            order.total_price = total_price
+            order.save()
+
+            messages.success(request, "Order placed successfully!")
+            return render(request, 'user/main/payment_success.html', {'order': order})
+
+    except Exception as e:
+        print("❌ Order Error:", e)
+        messages.error(request, "An error occurred during order processing.")
+        return redirect('checkout')
+
 
 @csrf_exempt
 def payment_failed_view(request):
@@ -437,7 +591,7 @@ def subscribe_newsletter(request):
 def my_orders(request):
     orders = request.user.order_set.all()
 
-    return render(request, 'user/profile/my_orders.html', {'orders': orders, 'cart_count': cart_count})
+    return render(request, 'user/profile/my_orders.html', {'orders': orders,})
 
 
 # --- Auth Views (No changes to these sections for address functionality directly) ---

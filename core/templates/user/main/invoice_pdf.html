@@ -1,0 +1,97 @@
+{% load custom_filters %}
+{% load static %}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        @font-face {
+            font-family: DejaVuSans;
+            src: url("file:///usr/share/fonts/truetype/dejavu/DejaVuSans.ttf");
+        }
+        body {
+            font-family: DejaVuSans, sans-serif;
+            font-size: 12px;
+            margin: 20px;
+            color: #000;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .logo {
+            width: 120px;
+            height: auto;
+            margin-bottom: 10px;
+        }
+        .section {
+            margin-bottom: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .right {
+            text-align: right;
+        }
+        .bold {
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <img src="{{ logo_url }}" class="logo" alt="Brand Logo">
+        <h2>Invoice</h2>
+        <p><strong>Order ID:</strong> {{ order.id }}</p>
+        <p><strong>Date:</strong> {{ order.created_at|date:"M d, Y" }}</p>
+    </div>
+
+    <div class="section">
+        <h4>Shipping Address</h4>
+        <p class="bold">{{ order.address.full_name }}</p>
+        <p>{{ order.address.house_name }}, {{ order.address.street }}</p>
+        <p>{{ order.address.city }}, {{ order.address.state }} - {{ order.address.pincode }}</p>
+        <p>{{ order.address.country }}</p>
+        <p>Phone: {{ order.address.phone }}</p>
+    </div>
+
+    <div class="section">
+        <h4>Items</h4>
+        <table>
+            <thead>
+                <tr>
+                    <th>Product</th>
+                    <th>Qty</th>
+                    <th>Unit Price</th>
+                    <th>Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in order.items.all %}
+                <tr>
+                    <td>{{ item.product.name }}</td>
+                    <td>{{ item.quantity }}</td>
+                    <td>₹{{ item.price_at_purchase }}</td>
+                    <td>₹{{ item.quantity|multiply:item.price_at_purchase }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="section right">
+        <p><span class="bold">Subtotal:</span> ₹{{ order.total_price }}</p>
+        <p><span class="bold">Shipping:</span> ₹0.00</p>
+        <p class="bold">Total Paid: ₹{{ order.total_price }}</p>
+    </div>
+</body>
+</html>
