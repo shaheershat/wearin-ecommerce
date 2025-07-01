@@ -13,14 +13,23 @@ from django.contrib import messages
 from django.contrib.auth import authenticate # ONLY authenticate here, DO NOT import login/logout
 from django.contrib.auth import get_user_model
 from django.conf import settings
-
 # Import our custom decorators
 from core.decorators import admin_login_required
-
 # Import models and forms
 from core.models import Order, OrderItem, Product, Address, Category, ProductImage, Coupon
 from core.forms import ProductForm, CouponForm
 
+@require_POST
+def admin_update_order_status(request, order_id):
+    order = get_object_or_404(Order, id=order_id)
+    new_status = request.POST.get('status')
+    if new_status in dict(Order.STATUS_CHOICES):
+        order.status = new_status
+        order.save()
+        messages.success(request, f"Order #{order.id} status updated to {new_status}.")
+    else:
+        messages.error(request, "Invalid status selected.")
+    return redirect('admin_order_list')  # Adjust based on your URL name
 
 def is_superuser(user): # This function seems unused, consider removing if not needed.
     return user.is_authenticated and user.is_superuser

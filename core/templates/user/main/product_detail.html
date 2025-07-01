@@ -1,33 +1,28 @@
 {% extends 'user/base.html' %}
 {% load static %}
 
-
 {% block title %}Product Details{% endblock %}
 
 {% block content %}
 <style>
-    .active-thumb {
-        border: 2px solid black;
-    }
+    .active-thumb { border: 2px solid black; }
+    .drawer { transition: transform 0.3s ease-in-out; }
 </style>
 
+<!-- Product Detail -->
 <div class="container mx-auto py-10 px-4">
     <div class="p-6 flex flex-col md:flex-row gap-10">
         <div class="flex gap-4 w-full md:w-1/2 items-start">
             <div class="flex flex-col gap-2" id="thumbnails">
                 {% for img in product.images.all %}
-                <img
-                    src="{{ img.image.url }}"
-                    alt="thumb"
-                    class="thumb w-20 h-28 object-cover rounded-md cursor-pointer border"
-                    onclick="changePreview(this)">
+                <img src="{{ img.image.url }}" class="thumb w-20 h-28 object-cover rounded-md cursor-pointer border" onclick="changePreview(this)">
                 {% endfor %}
             </div>
-
-           <div class="w-full max-w-[600px] aspect-[3/4] border rounded-md overflow-hidden">
-                <img id="mainImage" src="{{ product.images.first.image.url }}" alt="{{ product.name }}" class="w-full h-full object-cover rounded-md">
-           </div>
-
+            <div class="relative w-full max-w-[600px] aspect-[3/4] border rounded-md overflow-hidden group">
+                <img id="mainImage" src="{{ product.images.first.image.url }}" alt="{{ product.name }}"
+                    class="w-full h-full object-cover rounded-md transition-transform duration-200 group-hover:scale-110 cursor-zoom-in"
+                    onmousemove="zoomImage(event)" onmouseleave="resetZoom(event)">
+            </div>
         </div>
 
         <div class="w-full md:w-1/2">
@@ -38,7 +33,7 @@
             <p class="text-sm mb-6"><strong>Description:</strong> {{ product.description }}</p>
 
             <div class="flex gap-4 mt-6">
-                <form method="POST" action="{% url 'add_to_cart' product.id %}">
+                <form method="POST" action="{% url 'add_to_cart' product.id %}" id="add-to-cart-form">
                     {% csrf_token %}
                     <button type="submit" class="bg-black text-white px-6 py-3 rounded hover:bg-gray-800 transition">
                         Add to Cart
@@ -52,29 +47,42 @@
                 </form>
             </div>
         </div>
-
     </div>
 </div>
 
+<!-- Newsletter -->
 <section class="relative h-[747px] md:h-[900px] bg-cover bg-center bg-no-repeat" style="background-image: url('{% static 'images/nsnew.png' %}');">
     <div class="absolute inset-0"></div>
     <div class="relative z-10 flex flex-col items-center justify-center h-full text-center px-4">
         <h3 class="text-3xl font-bold text-black mb-4">Subscribe To Our Newsletter</h3>
         <p class="text-black mb-6">Get the latest updates and exclusive offers directly to your inbox.</p>
-
         <form id="newsletter-form" class="flex flex-col sm:flex-row justify-center items-center max-w-lg mx-auto space-y-3 sm:space-y-0 sm:space-x-4 w-full px-2">
-            {% csrf_token %} {# IMPORTANT: Add CSRF token for POST requests #}
+            {% csrf_token %}
             <input type="email" id="newsletter-email" name="email" placeholder="email@gmail.com"
                    class="flex-grow px-5 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400 w-full sm:w-auto" required>
-            <button type="button" onclick="subscribeNewsletter()"
-                    class="bg-white text-black px-8 py-3 rounded-lg font-medium hover:bg-gray-200 transition-colors shadow">
+            <button type="button" onclick="subscribeNewsletter()" class="bg-white text-black px-8 py-3 rounded-lg font-medium hover:bg-gray-200 transition-colors shadow">
                 Subscribe
             </button>
         </form>
-        {# Message display area #}
         <div id="newsletter-message" class="mt-4 text-center text-sm font-semibold"></div>
     </div>
 </section>
+
+<!-- Mini Cart Drawer -->
+<div id="cart-drawer" class="fixed top-0 right-0 w-80 max-w-full h-full bg-white shadow-lg z-50 transform translate-x-full drawer">
+    <div class="flex flex-col h-full">
+        <div class="flex justify-between items-center p-4 border-b">
+            <h2 class="text-xl font-bold">Your Cart</h2>
+            <button onclick="toggleDrawer(false)" class="text-xl font-bold text-gray-600 hover:text-black">&times;</button>
+        </div>
+        <div id="mini-cart-items" class="flex-1 overflow-y-auto p-4 space-y-3 text-sm text-gray-800"></div>
+        <div class="p-4 border-t">
+            <a href="{% url 'cart_page' %}" class="block w-full text-center bg-gray-200 hover:bg-gray-300 text-black font-medium px-4 py-2 rounded mb-2">View Cart</a>
+            <a href="{% url 'checkout' %}" class="block w-full text-center bg-black hover:bg-gray-900 text-white font-semibold px-4 py-2 rounded">Checkout</a>
+        </div>
+    </div>
+</div>
+<div id="drawer-overlay" class="fixed inset-0 bg-black bg-opacity-30 z-40 hidden" onclick="toggleDrawer(false)"></div>
 
 <script>
     const mainImage = document.getElementById('mainImage');
@@ -87,38 +95,45 @@
     }
 
     window.onload = () => {
-        if (thumbs.length > 0) {
-            thumbs[0].classList.add('active-thumb');
-        }
+        if (thumbs.length > 0) thumbs[0].classList.add('active-thumb');
     }
 
-    // Helper function to get CSRF token (needed for Django AJAX POST requests)
+    function zoomImage(e) {
+        const img = e.target;
+        const rect = img.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const xPercent = (x / rect.width) * 100;
+        const yPercent = (y / rect.height) * 100;
+        img.style.transformOrigin = `${xPercent}% ${yPercent}%`;
+        img.style.transform = "scale(2)";
+    }
+
+    function resetZoom(e) {
+        const img = e.target;
+        img.style.transformOrigin = "center center";
+        img.style.transform = "scale(1)";
+    }
+
     function getCookie(name) {
         let cookieValue = null;
         if (document.cookie && document.cookie !== '') {
-            const cookies = document.cookie.split(';');
-            for (let i = 0; i < cookies.length; i++) {
-                const cookie = cookies[i].trim();
-                // Does this cookie string begin with the name we want?
-                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+            document.cookie.split(';').forEach(cookie => {
+                cookie = cookie.trim();
+                if (cookie.startsWith(name + '=')) {
                     cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                    break;
                 }
-            }
+            });
         }
         return cookieValue;
     }
 
-    // NEW: Newsletter subscription function
     function subscribeNewsletter() {
         const emailInput = document.getElementById('newsletter-email');
         const messageDiv = document.getElementById('newsletter-message');
         const email = emailInput.value;
-
-        // Clear previous messages
         messageDiv.textContent = '';
         messageDiv.classList.remove('text-green-600', 'text-red-600');
-
         if (!email) {
             messageDiv.textContent = 'Please enter your email address.';
             messageDiv.classList.add('text-red-600');
@@ -130,26 +145,89 @@
             headers: {
                 'X-CSRFToken': getCookie('csrftoken'),
                 'X-Requested-With': 'XMLHttpRequest',
-                'Content-Type': 'application/x-www-form-urlencoded', // Use this for simple form data
+                'Content-Type': 'application/x-www-form-urlencoded',
             },
-            body: `email=${encodeURIComponent(email)}`,
+            body: `email=${encodeURIComponent(email)}`
         })
-        .then(response => response.json().then(data => ({ status: response.status, body: data })))
+        .then(res => res.json().then(data => ({ status: res.status, body: data })))
         .then(({ status, body }) => {
             if (status === 200 && body.success) {
                 messageDiv.textContent = body.message;
                 messageDiv.classList.add('text-green-600');
-                emailInput.value = ''; // Clear the input field on success
+                emailInput.value = '';
             } else {
-                messageDiv.textContent = body.message || 'An error occurred during subscription.';
+                messageDiv.textContent = body.message || 'Error.';
                 messageDiv.classList.add('text-red-600');
             }
-        })
-        .catch(error => {
-            console.error('Error subscribing to newsletter:', error);
-            messageDiv.textContent = 'An unexpected error occurred. Please try again.';
+        }).catch(() => {
+            messageDiv.textContent = 'Unexpected error. Try again.';
             messageDiv.classList.add('text-red-600');
         });
     }
+
+    function toggleDrawer(show = true) {
+        const drawer = document.getElementById("cart-drawer");
+        const overlay = document.getElementById("drawer-overlay");
+        if (show) {
+            drawer.classList.remove("translate-x-full");
+            overlay.classList.remove("hidden");
+            loadMiniCartItems(); // 🛒 Load items
+        } else {
+            drawer.classList.add("translate-x-full");
+            overlay.classList.add("hidden");
+        }
+    }
+
+    function loadMiniCartItems() {
+        fetch("{% url 'mini_cart_data' %}")
+            .then(response => response.json())
+            .then(data => {
+                const container = document.getElementById('mini-cart-items');
+                container.innerHTML = '';
+
+                if (data.items.length === 0) {
+                    container.innerHTML = '<p class="text-center text-gray-500 py-6">Your cart is empty.</p>';
+                    return;
+                }
+
+                data.items.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = 'flex items-center gap-4 border-b pb-3';
+                    div.innerHTML = `
+                        <img src="${item.image_url}" class="w-16 h-20 object-cover rounded">
+                        <div class="flex-grow">
+                            <p class="font-semibold">${item.name}</p>
+                            <p class="text-xs text-gray-600">₹${item.price} × ${item.quantity}</p>
+                        </div>
+                        <p class="font-semibold text-sm">₹${item.total}</p>
+                    `;
+                    container.appendChild(div);
+                });
+            }).catch(err => {
+                console.error("Failed to load mini cart:", err);
+            });
+    }
+
+    document.getElementById('add-to-cart-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const form = this;
+        const csrfToken = form.querySelector('[name=csrfmiddlewaretoken]').value;
+
+        fetch(form.action, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+        }).then(response => {
+            if (response.ok) {
+                toggleDrawer(true);
+            } else {
+                alert("Error adding to cart.");
+            }
+        }).catch(error => {
+            console.error("Cart error:", error);
+        });
+    });
 </script>
 {% endblock %}

@@ -33,6 +33,8 @@ urlpatterns = [
     path('dashboard/users/toggle/<int:user_id>/', admin_views.toggle_user_status, name='toggle_user_status'),
     path('dashboard/orders/', admin_views.admin_order_list, name='admin_order_list'),
     path('dashboard/orders/<int:order_id>/', admin_views.admin_order_detail_view, name='admin_order_detail'),
+    path('orders/<int:order_id>/update-status/', admin_views.admin_update_order_status, name='admin_update_order_status'),
+
 
     # --- Coupon Management ---
     path('coupons/', admin_views.coupon_list, name='admin_coupon_list'),
@@ -69,6 +71,8 @@ urlpatterns = [
     path('buy-now/<int:product_id>/checkout/', user_views.buy_now_checkout_view, name='buy_now_checkout'),
     path('cart/', user_views.cart_page_view, name='cart_page'),
     path('cart/remove/<int:product_id>/', remove_from_cart_view, name='remove_from_cart'),
+    path('mini-cart-data/', user_views.mini_cart_data, name='mini_cart_data'),
+
 
     # --- Wishlist ---
     path('wishlist/', wishlist_view, name='wishlist'),

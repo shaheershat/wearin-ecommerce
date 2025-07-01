@@ -10,11 +10,13 @@
   <div class="bg-white p-6 rounded-xl shadow">
     <h3 class="text-xl font-semibold mb-4">Order Summary</h3>
     <p class="mb-2"><strong class="text-gray-700">Order ID:</strong> {{ order.id }}</p>
-    <p class="mb-2"><strong class="text-700">Status:</strong> 
+    <p class="mb-2"><strong class="text-gray-700">Status:</strong> 
       <span class="px-2 py-1 rounded-full text-xs font-semibold
         {% if order.status == 'Pending' %}bg-yellow-100 text-yellow-800
         {% elif order.status == 'Shipped' %}bg-blue-100 text-blue-800
         {% elif order.status == 'Delivered' %}bg-green-100 text-green-800
+        {% elif order.status == 'Cancelled' %}bg-red-100 text-red-800
+        {% elif order.status == 'Out of delivery' %}bg-orange-100 text-orange-800
         {% endif %}">
         {{ order.status }}
       </span>
@@ -29,7 +31,6 @@
     {% if customer %}
       <p class="mb-2"><strong class="text-gray-700">Username:</strong> {{ customer.username }}</p>
       <p class="mb-2"><strong class="text-gray-700">Email:</strong> {{ customer.email }}</p>
-      {# Add more customer details if needed #}
     {% else %}
       <p class="text-gray-500">Customer details not available.</p>
     {% endif %}
@@ -61,7 +62,6 @@
           <li class="flex justify-between items-center border-b pb-2 last:border-b-0 last:pb-0">
             <div>
               <p class="font-medium text-gray-800">
-                {# Corrected syntax for conditional display of product name #}
                 {% if item.product %}{{ item.product.name }}{% else %}Deleted Product{% endif %}
               </p>
               <p class="text-sm text-gray-500">
@@ -69,7 +69,9 @@
               </p>
             </div>
             <p class="font-semibold text-gray-900">₹{{ item.price_at_purchase }}</p>
-            <img src="{{ item.product.images.first.image.url }}" alt="{{ item.product.name }}" class="w-24 h-24 object-cover rounded">
+            {% if item.product %}
+              <img src="{{ item.product.images.first.image.url }}" alt="{{ item.product.name }}" class="w-24 h-24 object-cover rounded">
+            {% endif %}
           </li>
         {% endfor %}
       </ul>

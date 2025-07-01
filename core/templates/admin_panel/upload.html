@@ -42,6 +42,24 @@
     </div>
 </div>
 
+<!-- Crop Modal -->
+<div id="crop-modal" class="fixed inset-0 bg-black bg-opacity-60 hidden z-50 flex items-center justify-center px-4">
+    <div class="bg-white p-6 rounded-lg max-w-3xl w-full relative">
+        <button onclick="closeCropModal()" class="absolute top-2 right-2 text-gray-500 hover:text-black text-xl">&times;</button>
+        <h2 class="text-lg font-semibold mb-4">Crop Image</h2>
+        <div class="w-full">
+            <img id="crop-image" class="max-h-[60vh] mx-auto" />
+        </div>
+        <div class="mt-4 flex justify-end gap-4">
+            <button onclick="applyCrop()" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Crop & Save</button>
+        </div>
+    </div>
+</div>
+
+<!-- Cropper.js CDN -->
+<link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+
 <!-- Scripts -->
 <script>
     const dropZone = document.getElementById('drop-zone');
@@ -54,6 +72,9 @@
     let imagesArray = [];
     let textFile = null;
     let productDetails = [];
+
+    let cropper = null;
+    let currentCropIndex = null;
 
     dropZone.addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
@@ -77,7 +98,7 @@
                 const reader = new FileReader();
                 reader.onload = function (e) {
                     const text = e.target.result;
-                    const rawProducts = text.split(/(?:\r?\n){2,}/); // Split by double newlines
+                    const rawProducts = text.split(/(?:\r?\n){2,}/);
                     productDetails = rawProducts.map(block => {
                         const lines = block.split('\n').map(line => line.trim());
                         const product = {};
@@ -137,7 +158,7 @@
 
                 reader.onload = function (e) {
                     container.innerHTML = `
-                        <img src="${e.target.result}" class="w-full h-32 object-cover rounded pointer-events-none">
+                        <img src="${e.target.result}" onclick="openCropModal(${j})" class="w-full h-32 object-cover rounded cursor-pointer hover:opacity-90 transition" title="Click to crop">
                         <button class="absolute top-1 right-1 bg-red-600 text-white text-xs px-2 py-1 rounded" onclick="removeImageFromPreview(${j})">X</button>
                     `;
                 };
@@ -236,6 +257,47 @@
         setTimeout(() => alertBox.classList.add('hidden'), 5000);
     }
 
+    function openCropModal(index) {
+        currentCropIndex = index;
+        const file = imagesArray[index];
+        const reader = new FileReader();
+
+        reader.onload = function (e) {
+            const image = document.getElementById("crop-image");
+            image.src = e.target.result;
+
+            document.getElementById("crop-modal").classList.remove("hidden");
+
+            image.onload = function () {
+                cropper = new Cropper(image, {
+                    aspectRatio: 1,
+                    viewMode: 1,
+                    autoCropArea: 1,
+                });
+            };
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function closeCropModal() {
+        if (cropper) {
+            cropper.destroy();
+            cropper = null;
+        }
+        document.getElementById("crop-modal").classList.add("hidden");
+    }
+
+    function applyCrop() {
+        if (!cropper) return;
+
+        cropper.getCroppedCanvas().toBlob((blob) => {
+            const newFile = new File([blob], imagesArray[currentCropIndex].name, { type: 'image/jpeg' });
+            imagesArray[currentCropIndex] = newFile;
+            closeCropModal();
+            updatePreview();
+        }, 'image/jpeg', 0.95);
+    }
+
     uploadForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         uploadButton.disabled = true;
@@ -288,6 +350,5 @@
         }
     });
 </script>
-
 
 {% endblock %}
