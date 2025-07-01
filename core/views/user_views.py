@@ -14,9 +14,9 @@ from django.contrib.sessions.backends.db import SessionStore
 from core.decorators import user_login_required
 from django.views.decorators.csrf import csrf_protect
 from django.contrib.auth import get_user
-
 import json
 from decimal import Decimal
+from core.models import Cart, CartItem
 from django.http import JsonResponse
 from django.core.mail import send_mail
 import razorpay
@@ -27,34 +27,137 @@ from core.forms import UserLoginForm, UserRegistrationForm, ProfileForm, Address
 # IMPORTANT: Added NewsletterSubscriber
 from core.models import Product, Category, Wishlist, Order, UserProfile, EmailOTP, Address, NewsletterSubscriber
 from core.utils import send_otp_email
-
 from django.contrib.auth.hashers import make_password
 from django.db import transaction, IntegrityError # IMPORTANT: Added IntegrityError
 import random
 from django.utils import timezone
+import razorpay
+from django.conf import settings
+from core.models import Address, Coupon 
+from django.contrib.sessions.models import Session
+from django.contrib.auth.models import User
+from core.models import Cart, CartItem, Product  
+
 
 razorpay_client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
 
+def mini_cart_data(request):
+    cart = request.session.get('cart', {})
+    items = []
+
+    for product_id, item_data in cart.items():
+        try:
+            product = Product.objects.get(id=product_id)
+            quantity = item_data['quantity'] if isinstance(item_data, dict) else item_data
+            items.append({
+                'id': product.id,
+                'name': product.name,
+                'image_url': product.images.first().image.url if product.images.exists() else '',
+                'price': float(product.price),
+                'quantity': quantity,
+                'total': float(product.price) * quantity,
+            })
+        except Product.DoesNotExist:
+            continue
+
+    return JsonResponse({'items': items})
+
+razorpay_client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+
+@user_login_required
 def checkout_view(request):
     cart = request.session.get('cart', {})
-    if not cart:
+    buy_now = request.session.get('buy_now_item')
+    cart_items = []
+    subtotal = 0
+
+    # ✅ Buy Now logic
+    if buy_now:
+        try:
+            product = Product.objects.get(id=buy_now['id'])
+            item = {
+                'product': product,
+                'quantity': buy_now['quantity'],
+                'total_price': buy_now['price'] * buy_now['quantity']
+            }
+            cart_items.append(item)
+            subtotal = item['total_price']
+        except Product.DoesNotExist:
+            messages.error(request, "Product no longer available.")
+            return redirect('cart_page')
+
+    # ✅ Session Cart logic
+    elif cart:
+        for pid, item in cart.items():
+            try:
+                product = Product.objects.get(id=int(pid))
+                total = item['price'] * item['quantity']
+                cart_items.append({
+                    'product': product,
+                    'quantity': item['quantity'],
+                    'total_price': total
+                })
+                subtotal += total
+            except Product.DoesNotExist:
+                continue
+
+    # ✅ Fallback to DB cart if session cart is empty
+    elif request.user.is_authenticated:
+        try:
+            db_cart = Cart.objects.get(user=request.user)
+            session_cart = {}
+
+            for item in db_cart.items.select_related('product'):
+                product = item.product
+                total = float(product.price) * item.quantity
+                cart_items.append({
+                    'product': product,
+                    'quantity': item.quantity,
+                    'total_price': total
+                })
+                subtotal += total
+
+                # 🔄 Restore DB cart into session
+                session_cart[str(product.id)] = {
+                    'name': product.name,
+                    'price': float(product.price),
+                    'quantity': item.quantity,
+                    'image_url': product.images.first().image.url if product.images.exists() else '',
+                }
+
+            request.session['cart'] = session_cart
+            request.session.modified = True
+
+        except Cart.DoesNotExist:
+            pass
+
+    # ✅ Handle empty or invalid cart
+    if subtotal <= 0 or not cart_items:
+        messages.error(request, "Your cart is empty or contains invalid items.")
         return redirect('cart_page')
 
-    total_price = sum(item['price'] * item['quantity'] for item in cart.values())
+    total_price = subtotal
 
+    # ✅ Razorpay payment
     payment = razorpay_client.order.create({
-        "amount": int(total_price * 100),  # in paise
+        "amount": int(total_price * 100),
         "currency": "INR",
         "payment_capture": "1"
     })
 
-    context = {
-        "cart": cart,
+    addresses = Address.objects.filter(user=request.user)
+    selected = addresses.filter(is_default=True).first()
+
+    return render(request, 'user/main/checkout.html', {
+        "cart_items": cart_items,
+        "subtotal": subtotal,
         "total_price": total_price,
         "order_id": payment['id'],
         "razorpay_key": settings.RAZORPAY_KEY_ID,
-    }
-    return render(request, 'user/main/checkout.html', context)
+        "addresses": addresses,
+        "selected_address_id": selected.id if selected else None
+    })
+
 
 @csrf_exempt
 def payment_success_view(request):
@@ -167,17 +270,13 @@ def my_profile(request):
     add_address_form = AddressForm()
     orders = Order.objects.filter(user=request.user).order_by('-created_at')
 
-    cart = request.session.get('cart', {})
-    cart_count = sum(item.get('quantity', 0) for item in cart.values())
-
+    # ❌ Don't manually calculate or pass cart_count here
     return render(request, 'user/main/profile.html', {
         'profile_form': profile_form,
         'user_addresses': user_addresses,
         'add_address_form': add_address_form,
-        'cart_count': cart_count,
         'orders': orders
     })
-
 @user_login_required
 @require_POST
 def update_profile(request):
@@ -337,8 +436,7 @@ def subscribe_newsletter(request):
 @user_login_required
 def my_orders(request):
     orders = request.user.order_set.all()
-    cart = request.session.get('cart', {})
-    cart_count = sum(item.get('quantity', 0) for item in cart.values())
+
     return render(request, 'user/profile/my_orders.html', {'orders': orders, 'cart_count': cart_count})
 
 
@@ -346,17 +444,16 @@ def my_orders(request):
 User = get_user_model()
 
 def login_view(request):
-    list(messages.get_messages(request))
+    list(messages.get_messages(request))  # Clear any previous messages
 
     user_session_key = request.COOKIES.get('user_sessionid')
     if user_session_key:
         session = SessionStore(session_key=user_session_key)
         user_id = session.get('_auth_user_id')
-
         if user_id:
             try:
                 User.objects.get(pk=user_id)
-                messages.info(request, "You are already logged in as a user.")
+                messages.info(request, "You are already logged in.")
                 return redirect('user_dashboard')
             except User.DoesNotExist:
                 session.flush()
@@ -365,17 +462,35 @@ def login_view(request):
         form = UserLoginForm(request=request, data=request.POST)
         if form.is_valid():
             user = form.get_user()
-
             if user:
                 login(request, user)
                 request.session.save()
 
-                response = redirect('user_dashboard')
-                response.set_cookie(
-                    'user_sessionid',
-                    request.session.session_key
-                )
+                # ✅ Merge DB cart into session cart
+                try:
+                    db_cart = Cart.objects.get(user=user)
+                    session_cart = request.session.get('cart', {})
 
+                    for item in db_cart.items.select_related('product'):
+                        pid = str(item.product.id)
+                        if pid in session_cart:
+                            session_cart[pid]['quantity'] += item.quantity
+                        else:
+                            session_cart[pid] = {
+                                'name': item.product.name,
+                                'price': float(item.product.price),
+                                'quantity': item.quantity,
+                                'image_url': item.product.images.first().image.url if item.product.images.exists() else '',
+                            }
+
+                    request.session['cart'] = session_cart
+                    request.session.modified = True
+                except Cart.DoesNotExist:
+                    pass
+
+                # Set session cookie
+                response = redirect('user_dashboard')
+                response.set_cookie('user_sessionid', request.session.session_key)
                 messages.success(request, f"Welcome, {user.username}!")
                 return response
             else:
@@ -481,14 +596,13 @@ def home_view(request):
     if user:
         wishlisted_product_ids = Wishlist.objects.filter(user=user).values_list('product_id', flat=True)
 
-    cart = request.session.get('cart', {})
-    cart_count = sum(item.get('quantity', 0) for item in cart.values())
+
 
     return render(request, 'user/main/home.html', {
         'new_products': new_products,
         'categories': categories,
         'wishlisted_product_ids': list(wishlisted_product_ids),
-        'cart_count': cart_count,
+        
         'request_user': user
     })
 
@@ -521,8 +635,7 @@ def shop_view(request):
     if user:
         wishlisted_product_ids = Wishlist.objects.filter(user=user).values_list('product_id', flat=True)
 
-    cart = request.session.get('cart', {})
-    cart_count = sum(item.get('quantity', 0) for item in cart.values())
+
 
     sizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL']
 
@@ -530,7 +643,6 @@ def shop_view(request):
         'products': products,
         'categories': categories,
         'sizes': sizes,
-        'cart_count': cart_count,
         'wishlisted_product_ids': list(wishlisted_product_ids),
     })
 
@@ -540,66 +652,83 @@ def product_detail_view(request, id=None):
     if id:
         product = get_object_or_404(Product, id=id)
 
-    cart = request.session.get('cart', {})
-    cart_count = sum(item.get('quantity', 0) for item in cart.values())
+
 
     return render(request, 'user/main/product_detail.html', {
         'product': product,
-        'cart_count': cart_count,
+        
         })
 
 
 def policy_view(request):
-    cart = request.session.get('cart', {})
-    cart_count = sum(item.get('quantity', 0) for item in cart.values())
+
     return render(request, 'user/main/static_pages/policy.html',{
-        'cart_count': cart_count,
+        
     })
 
 
 def contact_view(request):
-    cart = request.session.get('cart', {})
-    cart_count = sum(item.get('quantity', 0) for item in cart.values())
+
     return render(request, 'user/main/static_pages/contact.html',{
-        'cart_count': cart_count,
+        
     })
 
 
 def about_view(request):
-    cart = request.session.get('cart', {})
-    cart_count = sum(item.get('quantity', 0) for item in cart.values())
-    return render(request, 'user/main/static_pages/about.html',{
-        'cart_count': cart_count,
-    })
 
+    return render(request, 'user/main/static_pages/about.html',{
+        
+    })
 
 @user_login_required
 def cart_page_view(request):
-    cart = request.session.get('cart', {})
     cart_items = []
     total_price = 0
 
-    for product_id, item in list(cart.items()):
+    # ✅ IF USER IS LOGGED IN → LOAD FROM DB CART
+    if request.user.is_authenticated:
         try:
-            product_obj = Product.objects.get(id=int(product_id))
-            item_total = item['price'] * item['quantity']
-            item['total'] = item_total
-            item['product_obj'] = product_obj
-            cart_items.append((product_id, item))
-            total_price += item_total
-        except Product.DoesNotExist:
-            if product_id in request.session['cart']:
+            cart = Cart.objects.get(user=request.user)
+            for item in cart.items.select_related('product'):
+                product = item.product
+                item_data = {
+                    'name': product.name,
+                    'price': float(product.price),
+                    'quantity': item.quantity,
+                    'total': float(product.price) * item.quantity,
+                    'image_url': product.images.first().image.url if product.images.exists() else '',
+                }
+                cart_items.append((product.id, item_data))
+                total_price += item_data['total']
+        except Cart.DoesNotExist:
+            cart_items = []
+            total_price = 0
+
+    else:
+        # ✅ FALLBACK TO SESSION CART
+        cart = request.session.get('cart', {})
+        for product_id, item in list(cart.items()):
+            try:
+                product_obj = Product.objects.get(id=int(product_id))
+                item_total = item['price'] * item['quantity']
+                item['total'] = item_total
+                item['product_obj'] = product_obj
+                cart_items.append((product_id, item))
+                total_price += item_total
+            except Product.DoesNotExist:
                 del request.session['cart'][product_id]
                 request.session.modified = True
-                messages.warning(request, f"A product was not found and has been removed from your cart.")
-    cart = request.session.get('cart', {})
-    cart_count = sum(item.get('quantity', 0) for item in cart.values())
+                messages.warning(request, "An item in your cart was removed because it no longer exists.")
+
+    cart_count = sum(item['quantity'] for _, item in cart_items)
+
     context = {
         'cart_items': cart_items,
         'total_price': total_price,
-        'cart_count': cart_count,
+        
     }
     return render(request, 'user/main/cart.html', context)
+
 
 
 @user_login_required
@@ -608,6 +737,7 @@ def add_to_cart_view(request, product_id):
     cart = request.session.get('cart', {})
     product_id_str = str(product_id)
 
+    # ✅ Update session cart
     if product_id_str in cart:
         cart[product_id_str]['quantity'] += 1
         messages.info(request, f"Increased quantity of {product.name} in your cart.")
@@ -621,56 +751,69 @@ def add_to_cart_view(request, product_id):
         messages.success(request, f"{product.name} added to your cart.")
 
     request.session['cart'] = cart
-    return redirect('cart_page')
+    request.session.modified = True
 
+    # ✅ Update DB cart
+    if request.user.is_authenticated:
+        from core.models import Cart, CartItem
+        user_cart, _ = Cart.objects.get_or_create(user=request.user)
+        cart_item, created = CartItem.objects.get_or_create(cart=user_cart, product=product)
+        if not created:
+            cart_item.quantity += 1
+        cart_item.save()
+
+    return redirect('cart_page')
 
 @require_POST
 @user_login_required
 def remove_from_cart_view(request, product_id):
-    cart = request.session.get('cart', {})
     product_id_str = str(product_id)
+    cart = request.session.get('cart', {})
 
+    # ✅ Remove from session
     if product_id_str in cart:
         product_name = cart[product_id_str]['name']
         del cart[product_id_str]
         request.session['cart'] = cart
+        request.session.modified = True
         messages.info(request, f"{product_name} removed from your cart.")
     else:
         messages.warning(request, "Product not found in your cart.")
 
-    return redirect('cart_page')
+    # ✅ Remove from DB
+    if request.user.is_authenticated:
+        from core.models import Cart, CartItem
+        try:
+            user_cart = Cart.objects.get(user=request.user)
+            CartItem.objects.filter(cart=user_cart, product_id=product_id).delete()
+        except Cart.DoesNotExist:
+            pass
 
+    return redirect('cart_page')
 
 @require_POST
 @user_login_required
 def buy_now_checkout_view(request, product_id):
-    if request.method == 'POST':
-        product = get_object_or_404(Product, id=product_id, is_sold=False)
+    product = get_object_or_404(Product, id=product_id, is_sold=False)
 
-        request.session['cart'] = {
-            str(product_id): {
-                'name': product.name,
-                'price': float(product.price),  # 👈 Convert Decimal to float
-                'quantity': 1,
-                'image_url': product.images.first().image.url if product.images.exists() else '',
-            }
-        }
-        request.session.modified = True
-        return redirect('checkout')
+    # Save buy now item as a separate session entry
+    request.session['buy_now_item'] = {
+        'id': product.id,
+        'name': product.name,
+        'price': float(product.price),
+        'quantity': 1,
+        'image_url': product.images.first().image.url if product.images.exists() else '',
+    }
+    request.session.modified = True
 
-    return redirect('product_detail', product_id=product_id)
-
+    return redirect('checkout')
 
 @user_login_required
 def wishlist_view(request):
-    cart = request.session.get('cart', {})
-    cart_count = sum(item.get('quantity', 0) for item in cart.values())
-
     wishlist_items = Wishlist.objects.filter(user=request.user).select_related('product', 'product__category')
 
     context = {
         'wishlist_items': wishlist_items,
-        'cart_count': cart_count,
     }
     return render(request, 'user/main/wishlist.html', context)
 

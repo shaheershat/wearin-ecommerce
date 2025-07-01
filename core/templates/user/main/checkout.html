@@ -1,38 +1,128 @@
 {% extends 'user/base.html' %}
 {% load static %}
-{% block content %}
-<div class="container mx-auto py-10 px-4 text-center">
-  <h2 class="text-2xl font-bold mb-4">Checkout</h2>
-  <p class="text-xl mb-2">Total: ₹{{ total_price }}</p>
-  <button id="rzp-button" class="bg-black text-white px-6 py-2 rounded hover:bg-gray-800">
-    Pay with Razorpay
-  </button>
 
-  <form id="payment-form" action="{% url 'payment_success' %}" method="POST" style="display:none;">
-    {% csrf_token %}
-  </form>
+{% block title %}Checkout{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-12 max-w-4xl">
+    <h2 class="text-3xl font-bold mb-8 text-center">Checkout</h2>
+
+    <!-- Order Summary -->
+    <div class="bg-white shadow rounded-lg p-6 mb-6">
+        <h3 class="text-xl font-semibold mb-4">Order Summary</h3>
+        <div class="space-y-3">
+            {% for item in cart_items %}
+            <div class="flex justify-between text-sm">
+                <div>{{ item.product.name }} × {{ item.quantity }}</div>
+                <div>₹{{ item.total_price }}</div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <hr class="my-4">
+
+        <div class="flex justify-between font-medium text-base">
+            <span>Subtotal:</span>
+            <span>₹{{ subtotal }}</span>
+        </div>
+        {% if discount %}
+        <div class="flex justify-between text-sm text-green-600">
+            <span>Discount:</span>
+            <span>-₹{{ discount }}</span>
+        </div>
+        {% endif %}
+        <div class="flex justify-between text-sm text-gray-500">
+            <span>Shipping:</span>
+            <span>Free</span>
+        </div>
+        <div class="flex justify-between text-xl font-bold mt-2">
+            <span>Total:</span>
+            <span>₹{{ total_price }}</span>
+        </div>
+    </div>
+
+    <!-- Coupon Form -->
+    <div class="bg-white shadow rounded-lg p-6 mb-6">
+        <h3 class="text-xl font-semibold mb-4">Apply Coupon</h3>
+        <form method="get" action="{% url 'checkout' %}" class="flex flex-col sm:flex-row gap-3">
+            <input type="text" name="coupon" value="{{ coupon_applied }}" placeholder="Enter promo code"
+                class="flex-1 px-4 py-2 border border-gray-300 rounded focus:outline-none">
+            <button type="submit"
+                class="px-6 py-2 bg-black text-white rounded hover:bg-gray-800 transition">Apply</button>
+        </form>
+        {% if discount %}
+        <p class="mt-2 text-green-600 text-sm font-semibold">Coupon applied: ₹{{ discount }}</p>
+        {% elif coupon_applied %}
+        <p class="mt-2 text-red-600 text-sm font-semibold">Invalid or expired coupon.</p>
+        {% endif %}
+    </div>
+
+    <!-- Address Section -->
+    <div class="bg-white shadow rounded-lg p-6 mb-6">
+        <h3 class="text-xl font-semibold mb-4">Shipping Address</h3>
+
+        {% if addresses %}
+        <form id="address-select-form" method="post">
+            {% csrf_token %}
+            <div class="space-y-4">
+                {% for address in addresses %}
+                <label class="block p-4 border rounded hover:border-black transition cursor-pointer">
+                    <input type="radio" name="selected_address" value="{{ address.id }}"
+                        {% if address.id == selected_address_id %}checked{% endif %} class="mr-2">
+                      <div class="text-sm text-gray-800 leading-6">
+                          <strong>{{ address.full_name|default_if_none:"Not provided" }}</strong><br>
+                          {{ address.house_name|default_if_none:"" }}, {{ address.street|default_if_none:"" }}, {{ address.city|default_if_none:"" }},
+                          {{ address.state|default_if_none:"" }} , {{ address.postal_code|default_if_none:"" }}, {{ address.country|default_if_none:"" }},
+                          Phone: {{ address.phone|default_if_none:"" }}
+                      </div>
+                </label>
+                {% endfor %}
+            </div>
+        </form>
+        {% else %}
+        <p class="text-sm text-gray-600">No saved addresses.
+            <a href="{% url 'add_address' %}" class="text-blue-600 underline">Add a new address</a>.
+        </p>
+        {% endif %}
+    </div>
+
+    <!-- Payment Button -->
+    <div class="text-center mt-10">
+        <p class="text-lg font-medium mb-4">Click below to pay with Razorpay</p>
+        <button id="rzp-button"
+            class="bg-black text-white px-8 py-3 rounded hover:bg-gray-900 transition w-full max-w-xs mx-auto">
+            Pay Now
+        </button>
+    </div>
+
+    <!-- Hidden Payment Form -->
+    <form id="payment-form" action="{% url 'payment_success' %}" method="POST" style="display:none;">
+        {% csrf_token %}
+    </form>
 </div>
 
+<!-- Razorpay Script -->
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <script>
-const options = {
-    "key": "{{ razorpay_key }}",
-    "amount": "{{ total_price|floatformat:2|add:'0'|floatformat:'0' }}" * 100,
-    "currency": "INR",
-    "name": "WEARIN",
-    "description": "Order Payment",
-    "order_id": "{{ order_id }}",
-    "handler": function (response) {
-        document.getElementById('payment-form').submit();
-    },
-    "theme": {
-        "color": "#000000"
+    const options = {
+        "key": "{{ razorpay_key }}",
+        "amount": "{{ total_price|floatformat:'0' }}" * 100,
+        "currency": "INR",
+        "name": "WEARIN",
+        "description": "Order Payment",
+        "order_id": "{{ order_id }}",
+        "handler": function (response) {
+            document.getElementById('payment-form').submit();
+        },
+        "theme": {
+            "color": "#000000"
+        }
+    };
+
+    const rzp = new Razorpay(options);
+    document.getElementById('rzp-button').onclick = function (e) {
+        rzp.open();
+        e.preventDefault();
     }
-};
-const rzp = new Razorpay(options);
-document.getElementById('rzp-button').onclick = function (e) {
-    rzp.open();
-    e.preventDefault();
-}
 </script>
 {% endblock %}

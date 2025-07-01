@@ -1,36 +1,19 @@
-# my_app/context_processors.py
+# core/context_processors.py
 
-from .models import Cart, Wishlist # Adjust import based on your models' location
+from core.models import Cart, CartItem  # Use correct path to your models
 
-def cart_wishlist_counts(request):
+def cart_context(request):
     cart_count = 0
-    # You can keep this line if you still want to pass it as 0, or remove it entirely
-    wishlist_count = 0 
-    
+
     if request.user.is_authenticated:
         try:
-            # For a typical e-commerce, it's cart items
-            # Assuming user has a reverse relation 'cart_items' to CartItem model
-            cart_count = sum(item.quantity for item in request.user.cart_items.all())
-        except AttributeError:
-            # Handle cases where user might not have 'cart_items' or if the model structure is different
-            print("Warning: request.user.cart_items.all() failed. Check CartItem related_name or model structure.")
-            cart_count = 0
-        except Exception as e:
-            print(f"Error fetching cart count: {e}")
-            cart_count = 0
+            cart = Cart.objects.get(user=request.user)
+            cart_count = CartItem.objects.filter(cart=cart).count()
+        except Cart.DoesNotExist:
+            pass
+    else:
+        cart = request.session.get('cart', {})
+        cart_count = sum(item.get('quantity', 1) for item in cart.values())
 
-        # Since you don't want wishlist count, we can simplify this part or remove it.
-        # If you remove the model import and this block, make sure no other part of your code relies on it.
-        # For safety, we'll just ensure it's set to 0.
-        # You could remove the Wishlist import if you are sure it's not used elsewhere in this file.
-        # try:
-        #     wishlist_count = Wishlist.objects.filter(user=request.user).count()
-        # except Exception as e:
-        #     print(f"Error fetching wishlist count: {e}")
-        #     wishlist_count = 0
-
-    return {
-        'cart_count': cart_count,
-        'wishlist_count': wishlist_count, # Still return it, but it will always be 0
-    }
+    print("🛒 cart_context running, cart_count =", cart_count)  # 👈 Add this line
+    return {'cart_count': cart_count}
