@@ -94,39 +94,63 @@
       </div>
     </div>
 
-    <div id="orders" class="tab-content hidden">
-      <div class="bg-white p-6 rounded shadow">
-        <h3 class="text-lg font-semibold mb-4">Order History</h3>
-        {% for order in orders %}
-          <div class="border p-4 mb-6 rounded bg-gray-50">
-            <p><strong>Order ID:</strong> {{ order.id }}</p>
-            <p><strong>Status:</strong> {{ order.status }}</p>
-            <p><strong>Date:</strong> {{ order.created_at|date:"M d, Y" }}</p>
-            <p><strong>Total:</strong> ₹{{ order.total_price }}</p>
+<div id="orders" class="tab-content hidden">
+  <div class="bg-white p-6 rounded shadow">
+    <h3 class="text-lg font-semibold mb-4">Order History</h3>
+    {% for order in orders %}
+      <div class="border p-4 mb-6 rounded bg-gray-50">
+        <p><strong>Order ID:</strong> {{ order.id }}</p>
+        <p><strong>Status:</strong> {{ order.status }}</p>
+        <p><strong>Date:</strong> {{ order.created_at|date:"M d, Y" }}</p>
+        <p><strong>Total:</strong> ₹{{ order.total_price }}</p>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
-              {% for item in order.items.all %}
-                {% if item.product %}
-                  <div class="border rounded-lg p-3 bg-white flex items-center gap-4">
-                    {% if item.product.images.first %}
-                      <img src="{{ item.product.images.first.image.url }}" alt="{{ item.product.name }}" class="w-20 h-20 object-cover rounded">
-                    {% else %}
-                      <div class="w-20 h-20 bg-gray-200 rounded flex items-center justify-center text-sm text-gray-500">No Image</div>
-                    {% endif %}
-                    <div>
-                      <p class="font-semibold">{{ item.product.name }}</p>
-                      <p class="text-sm text-gray-600">₹{{ item.price_at_purchase }}</p>
-                    </div>
-                  </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
+          {% for item in order.items.all %}
+            {% if item.product %}
+              <div class="border rounded-lg p-3 bg-white flex items-center gap-4">
+                {% if item.product.images.first %}
+                  <img src="{{ item.product.images.first.image.url }}" alt="{{ item.product.name }}" class="w-20 h-20 object-cover rounded">
+                {% else %}
+                  <div class="w-20 h-20 bg-gray-200 rounded flex items-center justify-center text-sm text-gray-500">No Image</div>
                 {% endif %}
-              {% endfor %}
-            </div>
-          </div>
-        {% empty %}
-          <p>No orders yet.</p>
-        {% endfor %}
+                <div>
+                  <p class="font-semibold">{{ item.product.name }}</p>
+                  <p class="text-sm text-gray-600">₹{{ item.price_at_purchase }}</p>
+                </div>
+              </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+
+        <!-- ✅ ACTION BUTTONS -->
+        <div class="flex justify-end gap-4 mt-4">
+          <a href="{% url 'view_order' order.id %}" class="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition">
+              View Order
+          </a>
+
+          {% if order.status == 'Delivered' %}
+          <form method="post" action="{% url 'return_order' order.id %}" onsubmit="return confirm('Are you sure you want to return this order?');">
+              {% csrf_token %}
+              <button type="submit" class="px-4 py-2 text-sm bg-yellow-600 text-white rounded hover:bg-yellow-700 transition">
+                  Return
+              </button>
+          </form>
+          {% elif order.status == 'Pending' or order.status == 'Shipped' %}
+          <form method="post" action="{% url 'cancel_order' order.id %}" onsubmit="return confirm('Are you sure you want to cancel this order?');">
+              {% csrf_token %}
+              <button type="submit" class="px-4 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition">
+                  Cancel
+              </button>
+          </form>
+          {% endif %}
+        </div>
+
       </div>
-    </div>
+    {% empty %}
+      <p>No orders yet.</p>
+    {% endfor %}
+  </div>
+</div>
 
   </div>
 </div>

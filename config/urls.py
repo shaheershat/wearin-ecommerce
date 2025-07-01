@@ -34,6 +34,10 @@ urlpatterns = [
     path('dashboard/orders/', admin_views.admin_order_list, name='admin_order_list'),
     path('dashboard/orders/<int:order_id>/', admin_views.admin_order_detail_view, name='admin_order_detail'),
     path('orders/<int:order_id>/update-status/', admin_views.admin_update_order_status, name='admin_update_order_status'),
+    path('get-categories/', admin_views.get_categories, name='get_categories'),
+    path('create-manual-product/', admin_views.create_manual_product, name='create_manual_product'),
+    path('create-category/', admin_views.create_category, name='create_category'),
+
 
 
     # --- Coupon Management ---
@@ -85,6 +89,11 @@ urlpatterns = [
     path('profile/orders/', user_views.my_orders, name='my_orders'),
     path('profile/update/', update_profile, name='update_profile'), # For User fields update
     path('contact/send/', user_views.send_contact_email, name='send_contact_email'),
+    path('order/<int:order_id>/view/', user_views.view_order_view, name='view_order'),
+    path('order/<int:order_id>/cancel/', user_views.cancel_order_view, name='cancel_order'),
+    path('order/<int:order_id>/return/', user_views.return_order_view, name='return_order'),
+    path('order/<int:order_id>/', user_views.view_order_view, name='view_order'),
+    path('order/<int:order_id>/invoice/', user_views.download_invoice_view, name='download_invoice'),
 
     # New URLs for address management:
     path('profile/address/add/', add_address, name='add_address'),

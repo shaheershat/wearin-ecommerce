@@ -51,3 +51,12 @@ def cart_wishlist_counts(request):
         'cart_count': cart_count,
         'wishlist_count': wishlist_count,
     }
+
+register = template.Library()
+
+@register.filter
+def multiply(value, arg):
+    try:
+        return float(value) * float(arg)
+    except:
+        return ''

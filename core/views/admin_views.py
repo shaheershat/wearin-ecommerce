@@ -4,6 +4,7 @@ from django.db.models import Sum
 from django.utils import timezone
 from django.shortcuts import render, get_object_or_404, redirect
 from collections import defaultdict
+import json 
 from decimal import Decimal
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
@@ -18,6 +19,69 @@ from core.decorators import admin_login_required
 # Import models and forms
 from core.models import Order, OrderItem, Product, Address, Category, ProductImage, Coupon
 from core.forms import ProductForm, CouponForm
+
+@require_POST
+def create_category(request):
+    try:
+        data = json.loads(request.body)
+        category_name = data.get('name').strip()
+
+        if not category_name:
+            return JsonResponse({'status': 'error', 'message': 'Category name cannot be empty.'}, status=400)
+
+        # Check if category already exists (case-insensitive)
+        if Category.objects.filter(name__iexact=category_name).exists():
+            return JsonResponse({'status': 'error', 'message': 'Category with this name already exists.'}, status=409) # 409 Conflict
+
+        category = Category.objects.create(name=category_name)
+        return JsonResponse({'status': 'success', 'message': 'Category created successfully!', 'category_id': category.id}, status=201) # 201 Created
+    except json.JSONDecodeError:
+        return JsonResponse({'status': 'error', 'message': 'Invalid JSON.'}, status=400)
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': f'Server error: {str(e)}'}, status=500)
+
+
+def get_categories(request):
+    categories = Category.objects.all().values('id', 'name') # Get ID and name
+    return JsonResponse({'categories': list(categories)})
+
+@require_POST
+def create_manual_product(request):
+    try:
+        name = request.POST.get('name')
+        category_id = request.POST.get('category')
+        price = request.POST.get('price')
+        size = request.POST.get('size', '') # Optional
+        description = request.POST.get('description', '') # Optional
+        images = request.FILES.getlist('images')
+
+        if not all([name, category_id, price]):
+            return JsonResponse({'status': 'error', 'message': 'Name, Category, and Price are required.'}, status=400)
+
+        try:
+            category = Category.objects.get(id=category_id)
+        except Category.DoesNotExist:
+            return JsonResponse({'status': 'error', 'message': 'Invalid category selected.'}, status=400)
+
+        # Create the product
+        product = Product.objects.create(
+            name=name,
+            category=category,
+            price=float(price), # Ensure price is converted to appropriate type
+            size=size,
+            description=description
+        )
+
+        # Save images for the product
+        for img_file in images:
+            ProductImage.objects.create(product=product, image=img_file)
+
+        return JsonResponse({'status': 'success', 'message': 'Product added manually successfully!'})
+
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': f'Server error: {str(e)}'}, status=500)
+
+
 
 @require_POST
 def admin_update_order_status(request, order_id):
@@ -129,6 +193,28 @@ def admin_dashboard_view(request):
         'total_customers': total_customers,
         'total_pending': total_pending
     })
+
+@admin_login_required
+@require_POST
+def admin_manual_upload(request):
+    name = request.POST.get('name')
+    cat_id = request.POST.get('category')
+    price = request.POST.get('price')
+    size = request.POST.get('size')
+    desc = request.POST.get('description')
+    img = request.FILES.get('image')
+
+    if not (name and cat_id and price and img):
+        return JsonResponse({'status': 'error', 'message': 'All fields are required.'})
+
+    category = get_object_or_404(Category, id=cat_id)
+    product = Product.objects.create(
+        name=name, category=category,
+        price=price, size=size, description=desc,
+        is_sold=False,
+    )
+    ProductImage.objects.create(product=product, image=img)
+    return JsonResponse({'status': 'success'})
 
 
 @admin_login_required

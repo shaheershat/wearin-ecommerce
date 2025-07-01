@@ -112,7 +112,23 @@
         "description": "Order Payment",
         "order_id": "{{ order_id }}",
         "handler": function (response) {
-            document.getElementById('payment-form').submit();
+            const form = document.getElementById('payment-form');
+
+            // Get selected address
+            const selectedAddress = document.querySelector('input[name="selected_address"]:checked');
+            if (!selectedAddress) {
+                alert("Please select a shipping address before proceeding.");
+                return;
+            }
+
+            // Add hidden input for address_id
+            const addressInput = document.createElement('input');
+            addressInput.type = 'hidden';
+            addressInput.name = 'address_id';
+            addressInput.value = selectedAddress.value;
+            form.appendChild(addressInput);
+
+            form.submit();
         },
         "theme": {
             "color": "#000000"
@@ -121,6 +137,11 @@
 
     const rzp = new Razorpay(options);
     document.getElementById('rzp-button').onclick = function (e) {
+        const selectedAddress = document.querySelector('input[name="selected_address"]:checked');
+        if (!selectedAddress) {
+            alert("Please select a shipping address before proceeding.");
+            return;
+        }
         rzp.open();
         e.preventDefault();
     }
