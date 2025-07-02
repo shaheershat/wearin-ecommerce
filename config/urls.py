@@ -1,4 +1,3 @@
-# urls.py (your project's main urls.py or the app's urls.py)
 from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
@@ -16,7 +15,7 @@ from core.views.user_views import (
 )
 
 urlpatterns = [
-    # Django's default admin (can be removed if not needed)
+    # Django's default admin
     path('admin/', admin.site.urls),
 
     # --- Custom Admin Auth ---
@@ -37,8 +36,6 @@ urlpatterns = [
     path('get-categories/', admin_views.get_categories, name='get_categories'),
     path('create-manual-product/', admin_views.create_manual_product, name='create_manual_product'),
     path('create-category/', admin_views.create_category, name='create_category'),
-
-
 
     # --- Coupon Management ---
     path('coupons/', admin_views.coupon_list, name='admin_coupon_list'),
@@ -76,6 +73,9 @@ urlpatterns = [
     path('cart/', user_views.cart_page_view, name='cart_page'),
     path('cart/remove/<int:product_id>/', remove_from_cart_view, name='remove_from_cart'),
     path('mini-cart-data/', user_views.mini_cart_data, name='mini_cart_data'),
+    path('checkout/', user_views.checkout_view, name='checkout'),
+    path('payment/success/', user_views.payment_success_view, name='payment_success'),
+    path('payment/failed/', user_views.payment_failed_view, name='payment_failed'),
 
 
     # --- Wishlist ---
@@ -85,9 +85,8 @@ urlpatterns = [
 
     # --- User Profile & Address Management ---
     path('profile/', user_views.my_profile, name='my_profile'),
-    # path('profile/address/', user_views.my_address, name='my_address'), # This path is not strictly needed if all address management is on my_profile
     path('profile/orders/', user_views.my_orders, name='my_orders'),
-    path('profile/update/', update_profile, name='update_profile'), # For User fields update
+    path('profile/update/', update_profile, name='update_profile'),
     path('contact/send/', user_views.send_contact_email, name='send_contact_email'),
     path('order/<int:order_id>/view/', user_views.view_order_view, name='view_order'),
     path('order/<int:order_id>/cancel/', user_views.cancel_order_view, name='cancel_order'),
@@ -100,19 +99,13 @@ urlpatterns = [
     path('profile/address/<int:address_id>/edit/', edit_address, name='edit_address'),
     path('profile/address/<int:address_id>/set-default/', set_default_address, name='set_default_address'),
     path('profile/address/<int:address_id>/delete/', delete_address, name='delete_address'),
-    path('api/addresses/<int:address_id>/', get_address_data, name='get_address_data'), # API endpoint for AJAX modal
+    path('api/addresses/<int:address_id>/', get_address_data, name='get_address_data'), 
 
     # --- Newsletter Subscription ---
-    path('subscribe/', subscribe_newsletter, name='subscribe_newsletter'), # NEW: Newsletter subscription URL
+    path('subscribe/', subscribe_newsletter, name='subscribe_newsletter'), 
 
     # --- Social Login ---
     path('accounts/', include('allauth.urls')),
-
-    path('checkout/', user_views.checkout_view, name='checkout'),
-    path('payment/success/', user_views.payment_success_view, name='payment_success'),
-    path('payment/failed/', user_views.payment_failed_view, name='payment_failed'),
-
-
 ]
 
 # Media files for development

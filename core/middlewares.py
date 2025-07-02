@@ -1,11 +1,11 @@
 from django.contrib.auth import get_user_model, load_backend
 from django.contrib.sessions.backends.db import SessionStore
 from django.conf import settings
+from django.contrib.auth.models import AnonymousUser
 import logging
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
-
 
 class CustomSessionMiddleware:
     def __init__(self, get_response):
@@ -14,23 +14,27 @@ class CustomSessionMiddleware:
     def __call__(self, request):
         logger.debug(f"Middleware: Incoming Request Path: {request.path}")
 
-        # ✅ Bypass admin login/logout and Allauth flows
+        #  Bypass paths where session should not interfere
         bypass_paths = [
             "/admin/login/", "/admin/logout/",
             "/forgot-password/", "/forgot-password/verify/",
             "/forgot-password/reset/", "/register/", "/register/verify/",
-            "/accounts/google/login/", "/accounts/google/login/callback/"
+            "/accounts/google/login/", "/accounts/google/login/callback/",
+            "/accounts/3rdparty/signup/", "/accounts/login/"
         ]
         if any(request.path.startswith(p) for p in bypass_paths):
             return self.get_response(request)
 
-        # ✅ If already authenticated (Allauth or Django), respect it
-        if hasattr(request, "user") and request.user.is_authenticated:
-            logger.debug(f"Middleware: Skipping custom session - already authenticated user: {request.user}")
-            return self.get_response(request)
+        #  Let Django/Allauth handle authenticated sessions (important for Google login)
+        try:
+            if request.session.get('_auth_user_id'):
+                logger.debug("Middleware: Django session already valid. Skipping manual session handling.")
+                return self.get_response(request)
+        except Exception as e:
+            logger.error(f"Middleware: Error checking session: {e}", exc_info=True)
 
-        # 🧠 Begin custom session logic
-        request.user = None
+        # 🧠 Begin manual session management fallback
+        request.user = AnonymousUser()
         request._is_admin_session = False
 
         admin_session_key = request.COOKIES.get(settings.ADMIN_SESSION_COOKIE_NAME)
@@ -39,7 +43,7 @@ class CustomSessionMiddleware:
 
         logger.debug(f"Middleware: admin_session_key: {admin_session_key}, user_session_key: {user_session_key}")
 
-        # --- Admin session ---
+        # --- Admin session handling ---
         if admin_session_key:
             try:
                 temp_session = SessionStore(session_key=admin_session_key)
@@ -58,16 +62,12 @@ class CustomSessionMiddleware:
                         request._is_admin_session = True
                         current_session_key = admin_session_key
                         logger.debug(f"Middleware: Admin session loaded. User: {user.username}")
-                    else:
-                        temp_session.flush()
-                        logger.warning("Middleware: Invalid admin session or not superuser.")
                 else:
                     temp_session.flush()
-                    logger.debug("Middleware: Invalid admin session data.")
             except Exception as e:
-                logger.error(f"Middleware: Error loading admin session '{admin_session_key}': {e}", exc_info=True)
+                logger.error(f"Middleware: Error loading admin session: {e}", exc_info=True)
 
-        # --- User session ---
+        # --- User session handling ---
         if not current_session_key and user_session_key:
             try:
                 temp_session = SessionStore(session_key=user_session_key)
@@ -85,17 +85,13 @@ class CustomSessionMiddleware:
                         request.user = user
                         current_session_key = user_session_key
                         logger.debug(f"Middleware: User session loaded. User: {user.username}")
-                    else:
-                        temp_session.flush()
-                        logger.warning("Middleware: Invalid user session or is superuser.")
                 else:
                     temp_session.flush()
-                    logger.debug("Middleware: Invalid user session data.")
             except Exception as e:
-                logger.error(f"Middleware: Error loading user session '{user_session_key}': {e}", exc_info=True)
+                logger.error(f"Middleware: Error loading user session: {e}", exc_info=True)
 
         # --- Final session sync ---
-        if request.user and request.user.is_authenticated:
+        if hasattr(request, 'user') and request.user.is_authenticated:
             if request.user.pk != request.session.get('_auth_user_id'):
                 request.session['_auth_user_id'] = request.user.pk
                 request.session.modified = True
@@ -123,9 +119,10 @@ class CustomSessionMiddleware:
 
         logger.debug(f"Middleware: BEFORE get_response - user: {request.user}, is_admin: {request._is_admin_session}")
 
+        # --- Process the response ---
         response = self.get_response(request)
 
-        # --- Save and set session cookie ---
+        # --- Save session if modified ---
         try:
             if request.session.modified or not request.session.session_key:
                 request.session.save()
@@ -133,8 +130,9 @@ class CustomSessionMiddleware:
         except Exception as e:
             logger.error(f"Middleware: Failed to save session: {e}", exc_info=True)
 
+        # --- Set appropriate session cookie ---
         session_key_to_set = request.session.session_key
-        cookie_name = settings.ADMIN_SESSION_COOKIE_NAME if request._is_admin_session else settings.SESSION_COOKIE_NAME
+        cookie_name = settings.ADMIN_SESSION_COOKIE_NAME if getattr(request, '_is_admin_session', False) else settings.SESSION_COOKIE_NAME
 
         if session_key_to_set:
             response.set_cookie(
@@ -142,7 +140,7 @@ class CustomSessionMiddleware:
                 session_key_to_set,
                 max_age=settings.SESSION_COOKIE_AGE,
                 httponly=True,
-                secure=settings.SESSION_COOKIE_SECURE,
+                secure=getattr(settings, 'SESSION_COOKIE_SECURE', False),
                 samesite=getattr(settings, 'SESSION_COOKIE_SAMESITE', 'Lax')
             )
             logger.debug(f"Middleware: Set cookie {cookie_name}={session_key_to_set}")

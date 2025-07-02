@@ -1,21 +1,20 @@
+{% extends 'user/base.html' %}
 {% load static %}
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Payment Successful</title>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-</head>
-<body class="bg-gray-50 flex items-center justify-center min-h-screen">
+
+{% block title %}Payment Successful{% endblock %} {# Added a title block for better SEO/browser tab titles #}
+
+{% block content %}
+<div class="bg-gray-50 flex items-center justify-center min-h-screen">
     <div class="bg-white p-10 rounded-lg shadow-lg text-center max-w-md">
         <div class="flex justify-center mb-4">
-            <img src="{% static 'images/success-icon.png' %}" alt="Success" class="w-20 h-20">
+            {# Ensure this path is correct based on your static files setup #}
+            <img src="{% static 'images/logo.png' %}" alt="Success" class="w-20 h-20">
         </div>
         <h1 class="text-2xl font-bold text-green-600 mb-2">Payment Successful 🎉</h1>
         <p class="text-gray-700 mb-6">Thank you for your purchase! Your order has been placed successfully.</p>
         
         <div class="flex flex-col gap-3">
-            <a href="{% url 'user_profile' %}" class="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded transition">
+            <a href="{% url 'my_profile' %}" class="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded transition">
                 View My Orders
             </a>
             <a href="{% url 'home' %}" class="text-blue-600 hover:underline">
@@ -23,5 +22,5 @@
             </a>
         </div>
     </div>
-</body>
-</html>
+</div>
+{% endblock %}
