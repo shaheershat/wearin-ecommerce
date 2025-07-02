@@ -214,7 +214,7 @@ RAZORPAY_KEY_ID = 'rzp_test_eJqlkY9BUkrY9k'
 RAZORPAY_KEY_SECRET = 'ewDtwYuzfMwBDfjNFiV8bDOk'
 
 
-ACCOUNT_ADAPTER = 'allauth.account.adapter.DefaultAccountAdapter'
+ACCOUNT_ADAPTER = 'core.adapters.CustomAccountAdapter'
 
 ACCOUNT_EMAIL_REQUIRED = True
 ACCOUNT_EMAIL_VERIFICATION = 'none'

@@ -1,13 +1,8 @@
-# core/models.py
 from django.db import models
-from django.contrib.auth.models import User # Or your custom user model
 from django.utils.text import slugify
 from cloudinary.models import CloudinaryField
 from django.utils import timezone
-import random
-import uuid
 from django.contrib.auth import get_user_model
-
 
 User = get_user_model()
 
@@ -29,13 +24,11 @@ class OTP(models.Model):
     def is_expired(self):
         return timezone.now() > self.created_at + timezone.timedelta(minutes=5)
 
-
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
 
     def __str__(self):
         return self.user.username
-
 
 class Coupon(models.Model):
     code = models.CharField(max_length=20, unique=True)
@@ -70,7 +63,6 @@ class Product(models.Model):
     size = models.CharField(max_length=10)
     is_sold = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
-    # Added stock_quantity for better inventory management (optional but highly recommended)
     stock_quantity = models.PositiveIntegerField(default=1)
 
     def __str__(self):
@@ -105,16 +97,15 @@ class Address(models.Model):
     def __str__(self):
         return f"{self.full_name}, {self.street}, {self.city}"
 
-
 class Order(models.Model):
     STATUS_CHOICES = [
         ('Pending', 'Pending'),
         ('Shipped', 'Shipped'),
         ('Out of delivery', 'Out of delivery'),
         ('Delivered', 'Delivered'),
-        ('Cancelled', 'Cancelled'), # Added Cancelled status
+        ('Cancelled', 'Cancelled'),
     ]
-    PAYMENT_STATUS_CHOICES = [ # Added payment status choices
+    PAYMENT_STATUS_CHOICES = [
         ('Pending', 'Pending'),
         ('Success', 'Success'),
         ('Failed', 'Failed'),
@@ -124,23 +115,19 @@ class Order(models.Model):
     address = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, blank=True)
     total_price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Pending')
-    payment_status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default='Pending') # New field
-    razorpay_order_id = models.CharField(max_length=100, blank=True, null=True) # New field
-    razorpay_payment_id = models.CharField(max_length=100, blank=True, null=True) # New field
-    razorpay_signature = models.CharField(max_length=255, blank=True, null=True) # New field
+    payment_status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default='Pending')
+    razorpay_order_id = models.CharField(max_length=100, blank=True, null=True)
+    razorpay_payment_id = models.CharField(max_length=100, blank=True, null=True)
+    razorpay_signature = models.CharField(max_length=255, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True) # Track last update
+    updated_at = models.DateTimeField(auto_now=True)
 
     def save(self, *args, **kwargs):
-        # Update is_sold status when order is delivered (existing logic)
         if self.pk:
             old_order = Order.objects.get(pk=self.pk)
-            # Only if status changes to Delivered and was not Delivered before
             if old_order.status != 'Delivered' and self.status == 'Delivered':
                 for item in self.items.all():
                     if item.product:
-                        # Assuming 'is_sold' means the product is no longer available
-                        # If you have stock quantity, you'd decrement that instead
                         item.product.is_sold = True
                         item.product.save()
         super().save(*args, **kwargs)
@@ -151,11 +138,12 @@ class Order(models.Model):
 class OrderItem(models.Model):
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items')
     product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True)
-    quantity = models.PositiveIntegerField(default=1) # Added quantity
+    quantity = models.PositiveIntegerField(default=1)
     price_at_purchase = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
 
     def __str__(self):
-        return f"{self.product.name if self.product else 'N/A'} (x{self.quantity}) in Order #{self.order.id}"
+        product_name = self.product.name if self.product else "N/A"
+        return f"{product_name} (x{self.quantity}) in Order #{self.order.id}"
 
     def save(self, *args, **kwargs):
         if not self.pk and self.product:
@@ -163,9 +151,9 @@ class OrderItem(models.Model):
         super().save(*args, **kwargs)
 
 class Cart(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='cart') # Added related_name
-    created_at = models.DateTimeField(auto_now_add=True) # Track creation
-    updated_at = models.DateTimeField(auto_now=True) # Track last update
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='cart')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"Cart of {self.user.username}"
@@ -176,26 +164,25 @@ class Cart(models.Model):
 class CartItem(models.Model):
     cart = models.ForeignKey(Cart, on_delete=models.CASCADE, related_name='items')
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
-    quantity = models.PositiveIntegerField(default=1) # IMPORTANT: Added quantity field
+    quantity = models.PositiveIntegerField(default=1)
 
     class Meta:
-        unique_together = ('cart', 'product') # Ensures a product is only once per cart
+        unique_together = ('cart', 'product')
 
     def __str__(self):
         return f"{self.product.name} (x{self.quantity}) in {self.cart.user.username}'s cart"
 
 class Wishlist(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='wishlist_items') # Added related_name
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='wishlist_items')
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
-    added_at = models.DateTimeField(auto_now_add=True) # Track when added
+    added_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ('user', 'product') # Ensures a product is only once per wishlist
+        unique_together = ('user', 'product')
 
     def __str__(self):
         return f"{self.product.name} in {self.user.username}'s wishlist"
 
-# --- NEW MODEL FOR NEWSLETTER ---
 class NewsletterSubscriber(models.Model):
     email = models.EmailField(unique=True)
     subscribed_at = models.DateTimeField(auto_now_add=True)

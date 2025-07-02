@@ -49,7 +49,7 @@ def download_invoice_view(request, order_id):
     order = get_object_or_404(Order, id=order_id, user=request.user)
 
     # Construct full absolute URL to the logo
-    logo_url = request.build_absolute_uri('/static/images/logo.png')
+    logo_url = request.build_absolute_uri('/static/images/logo.jpeg')
 
     template_path = 'user/main/invoice_pdf.html'
     context = {
@@ -131,7 +131,7 @@ def checkout_view(request):
     cart_items = []
     subtotal = 0
 
-    # ✅ Buy Now logic
+    #  Buy Now logic
     if buy_now:
         try:
             product = Product.objects.get(id=buy_now['id'])
@@ -146,7 +146,7 @@ def checkout_view(request):
             messages.error(request, "Product no longer available.")
             return redirect('cart_page')
 
-    # ✅ Session Cart logic
+    #  Session Cart logic
     elif cart:
         for pid, item in cart.items():
             try:
@@ -161,7 +161,7 @@ def checkout_view(request):
             except Product.DoesNotExist:
                 continue
 
-    # ✅ Fallback to DB cart if session cart is empty
+    #  Fallback to DB cart if session cart is empty
     elif request.user.is_authenticated:
         try:
             db_cart = Cart.objects.get(user=request.user)
@@ -191,14 +191,14 @@ def checkout_view(request):
         except Cart.DoesNotExist:
             pass
 
-    # ✅ Handle empty or invalid cart
+    #  Handle empty or invalid cart
     if subtotal <= 0 or not cart_items:
         messages.error(request, "Your cart is empty or contains invalid items.")
         return redirect('cart_page')
 
     total_price = subtotal
 
-    # ✅ Razorpay payment
+    #  Razorpay payment
     payment = razorpay_client.order.create({
         "amount": int(total_price * 100),
         "currency": "INR",
@@ -253,7 +253,7 @@ def payment_success_view(request):
                 total_price=0  # Will update below
             )
 
-            # ✅ Buy Now flow
+            #  Buy Now flow
             if buy_now:
                 product = Product.objects.get(id=buy_now['id'])
                 quantity = buy_now.get('quantity', 1)
@@ -277,7 +277,7 @@ def payment_success_view(request):
                 # Clear buy now session
                 del request.session['buy_now_item']
 
-            # ✅ Cart flow
+            #  Cart flow
             elif cart:
                 for pid, item in cart.items():
                     product = Product.objects.get(id=int(pid))
@@ -620,7 +620,7 @@ def login_view(request):
                 login(request, user)
                 request.session.save()
 
-                # ✅ Merge DB cart into session cart
+                #  Merge DB cart into session cart
                 try:
                     db_cart = Cart.objects.get(user=user)
                     session_cart = request.session.get('cart', {})
@@ -839,7 +839,7 @@ def cart_page_view(request):
     cart_items = []
     total_price = 0
 
-    # ✅ IF USER IS LOGGED IN → LOAD FROM DB CART
+    #  IF USER IS LOGGED IN → LOAD FROM DB CART
     if request.user.is_authenticated:
         try:
             cart = Cart.objects.get(user=request.user)
@@ -859,7 +859,7 @@ def cart_page_view(request):
             total_price = 0
 
     else:
-        # ✅ FALLBACK TO SESSION CART
+        #  FALLBACK TO SESSION CART
         cart = request.session.get('cart', {})
         for product_id, item in list(cart.items()):
             try:
@@ -891,7 +891,7 @@ def add_to_cart_view(request, product_id):
     cart = request.session.get('cart', {})
     product_id_str = str(product_id)
 
-    # ✅ Update session cart
+    #  Update session cart
     if product_id_str in cart:
         cart[product_id_str]['quantity'] += 1
         messages.info(request, f"Increased quantity of {product.name} in your cart.")
@@ -907,7 +907,7 @@ def add_to_cart_view(request, product_id):
     request.session['cart'] = cart
     request.session.modified = True
 
-    # ✅ Update DB cart
+    #  Update DB cart
     if request.user.is_authenticated:
         from core.models import Cart, CartItem
         user_cart, _ = Cart.objects.get_or_create(user=request.user)
@@ -924,7 +924,7 @@ def remove_from_cart_view(request, product_id):
     product_id_str = str(product_id)
     cart = request.session.get('cart', {})
 
-    # ✅ Remove from session
+    #  Remove from session
     if product_id_str in cart:
         product_name = cart[product_id_str]['name']
         del cart[product_id_str]
@@ -934,7 +934,7 @@ def remove_from_cart_view(request, product_id):
     else:
         messages.warning(request, "Product not found in your cart.")
 
-    # ✅ Remove from DB
+    #  Remove from DB
     if request.user.is_authenticated:
         from core.models import Cart, CartItem
         try:

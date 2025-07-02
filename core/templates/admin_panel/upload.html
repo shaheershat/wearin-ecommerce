@@ -5,7 +5,8 @@
 <div id="upload-alert" class="fixed top-5 right-5 p-4 rounded-lg text-white z-50 hidden transition-opacity duration-300"></div>
 
 <div class="max-w-4xl mx-auto py-10 px-4">
-    <div class="flex justify-between items-center mb-6"> <h1 class="text-2xl font-bold">Upload Products</h1>
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-2xl font-bold">Upload Products</h1>
         <button type="button" onclick="openManualEntryModal()" class="bg-purple-600 hover:bg-purple-700 text-white font-semibold px-4 py-2 rounded">
             Add Product Manually
         </button>
@@ -16,18 +17,29 @@
         <input type="file" id="file-input" class="hidden" multiple accept="image/*,.txt" />
     </div>
 
-    <form method="POST" enctype="multipart/form-data" id="bulk-upload-form">
+    <form method="POST" enctype="multipart/form-data" id="upload-form">
         {% csrf_token %}
         <div class="hidden">{{ form.as_p }}</div>
         <div class="flex flex-col sm:flex-row justify-between gap-4 mt-4">
-            <button type="button" onclick="openBulkPreviewModal()" class="w-full sm:w-auto bg-yellow-500 hover:bg-yellow-600 text-white font-semibold px-4 py-2 rounded">
-                Preview
+            <button type="button" onclick="openModal()" class="w-full sm:w-auto bg-yellow-500 hover:bg-yellow-600 text-white font-semibold px-4 py-2 rounded">
+                Preview Bulk
             </button>
-            <button type="submit" id="bulk-upload-button" class="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded">
+            <button type="submit" id="upload-button" class="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded">
                 Upload Bulk
             </button>
         </div>
     </form>
+</div>
+
+<div id="preview-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center px-4">
+    <div class="bg-white p-6 rounded-lg w-full max-w-5xl max-h-[85vh] overflow-y-auto relative">
+        <button onclick="closeModal()" class="absolute top-2 right-2 text-gray-500 hover:text-black text-xl">&times;</button>
+        <h2 class="text-xl font-bold mb-4">Preview Files</h2>
+        <div class="flex justify-end mb-4">
+            <button onclick="saveImageOrder()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded">Save Order</button>
+        </div>
+        <div id="preview-content" class="space-y-8"></div>
+    </div>
 </div>
 
 <div id="manual-entry-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center px-4">
@@ -58,17 +70,6 @@
     </div>
 </div>
 
-<div id="bulk-preview-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center px-4">
-    <div class="bg-white p-6 rounded-lg w-full max-w-5xl max-h-[85vh] overflow-y-auto relative">
-        <button onclick="closeBulkPreviewModal()" class="absolute top-2 right-2 text-gray-500 hover:text-black text-xl">&times;</button>
-        <h2 class="text-xl font-bold mb-4">Preview Bulk Files</h2>
-        <div class="flex justify-end mb-4">
-            <button onclick="saveBulkImageOrder()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded">Save Order</button>
-        </div>
-        <div id="bulk-preview-content" class="space-y-8"></div>
-    </div>
-</div>
-
 <div id="crop-modal" class="fixed inset-0 bg-black bg-opacity-60 hidden z-50 flex items-center justify-center px-4">
     <div class="bg-white p-6 rounded-lg max-w-3xl w-full relative">
         <button onclick="closeCropModal()" class="absolute top-2 right-2 text-gray-500 hover:text-black text-xl">&times;</button>
@@ -86,26 +87,25 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
 
 <script>
-    // --- Global Variables ---
+    // --- Global Variables (Unified & Segregated) ---
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
-    const bulkPreviewContent = document.getElementById('bulk-preview-content');
-    const bulkUploadForm = document.getElementById('bulk-upload-form');
-    const bulkUploadButton = document.getElementById('bulk-upload-button');
+    const previewContent = document.getElementById('preview-content'); // Bulk preview content
+    const uploadForm = document.getElementById('upload-form'); // Bulk upload form
+    const uploadButton = document.getElementById('upload-button'); // Bulk upload button
     const dropZoneText = document.getElementById('drop-zone-text');
 
-    let bulkImagesArray = [];
-    let bulkTextFile = null;
-    let bulkProductDetails = [];
+    let imagesArray = []; // Original bulk images array
+    let textFile = null;  // Original bulk text file
+    let productDetails = []; // Original bulk product details
 
-    let manualImagesArray = [];
+    let manualImagesArray = []; // NEW: Stores images for manual upload
 
     let cropper = null;
-    let currentCropContext = null; // 'bulk' or 'manual'
-    let currentCropIndex = null; // Index within the relevant array (bulkImagesArray or manualImagesArray)
+    let currentCropContext = null; // 'bulk' or 'manual' - NEW
+    let currentCropIndex = null; // Index within the relevant array (imagesArray or manualImagesArray) - MODIFIED
 
-
-    // --- Utility Functions ---
+    // --- Utility Functions (Common for both) ---
     function showAlert(message, isSuccess = true) {
         const alertBox = document.getElementById('upload-alert');
         alertBox.textContent = message;
@@ -121,18 +121,19 @@
         setTimeout(() => alertBox.classList.add('hidden'), 5000);
     }
 
-    // --- Cropping Functions (Unified) ---
-    function openCropModal(index, context) {
+    // --- Cropping Functions (Unified Logic) ---
+    function openCropModal(index, context = 'bulk') { // context parameter added, 'bulk' is default for existing calls
         currentCropIndex = index;
-        currentCropContext = context;
+        currentCropContext = context; // Store the context ('bulk' or 'manual')
         let fileToCrop;
 
         if (context === 'bulk') {
-            fileToCrop = bulkImagesArray[index];
+            fileToCrop = imagesArray[index];
         } else if (context === 'manual') {
             fileToCrop = manualImagesArray[index];
         } else {
-            return; // Should not happen
+            console.error("Invalid cropping context provided:", context);
+            return;
         }
 
         const reader = new FileReader();
@@ -142,14 +143,14 @@
 
             document.getElementById("crop-modal").classList.remove("hidden");
 
-            // Ensure previous cropper instance is destroyed if exists
+            // Destroy existing cropper instance if present
             if (cropper) {
                 cropper.destroy();
             }
 
             image.onload = function () {
                 cropper = new Cropper(image, {
-                    aspectRatio: 1, // You can adjust this as needed
+                    aspectRatio: 1,
                     viewMode: 1,
                     autoCropArea: 1,
                 });
@@ -170,24 +171,25 @@
         if (!cropper) return;
 
         cropper.getCroppedCanvas().toBlob((blob) => {
-            const fileName = (currentCropContext === 'bulk' ? bulkImagesArray : manualImagesArray)[currentCropIndex].name;
+            const fileName = (currentCropContext === 'bulk' ? imagesArray : manualImagesArray)[currentCropIndex].name;
             const newFile = new File([blob], fileName, { type: 'image/jpeg' });
 
             if (currentCropContext === 'bulk') {
-                bulkImagesArray[currentCropIndex] = newFile;
-                updateBulkPreview();
+                imagesArray[currentCropIndex] = newFile;
+                updatePreview(); // Update bulk preview
             } else if (currentCropContext === 'manual') {
                 manualImagesArray[currentCropIndex] = newFile;
-                updateManualImagePreview();
+                updateManualImagePreview(); // Update manual preview
             }
             closeCropModal();
             showAlert("Image cropped successfully!", true);
         }, 'image/jpeg', 0.95);
     }
 
-    // --- Bulk Upload Logic ---
+
+    // --- Bulk Upload Logic (ORIGINAL, NO CHANGES EXCEPT for openCropModal call) ---
     dropZone.addEventListener('click', () => fileInput.click());
-    fileInput.addEventListener('change', (e) => handleBulkFiles(e.target.files));
+    fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
     dropZone.addEventListener('dragover', (e) => {
         e.preventDefault();
         dropZone.classList.add('border-blue-500');
@@ -196,96 +198,98 @@
     dropZone.addEventListener('drop', (e) => {
         e.preventDefault();
         dropZone.classList.remove('border-blue-500');
-        handleBulkFiles(e.dataTransfer.files);
+        handleFiles(e.dataTransfer.files);
     });
 
-    function handleBulkFiles(fileList) {
+    function handleFiles(fileList) {
         for (let file of fileList) {
             if (file.type.startsWith('image/')) {
-                bulkImagesArray.push(file);
+                imagesArray.push(file);
             } else if (file.name.endsWith('.txt')) {
-                bulkTextFile = file;
+                textFile = file;
                 const reader = new FileReader();
                 reader.onload = function (e) {
                     const text = e.target.result;
                     const rawProducts = text.split(/(?:\r?\n){2,}/);
-                    bulkProductDetails = rawProducts.map(block => {
+                    productDetails = rawProducts.map(block => {
                         const lines = block.split('\n').map(line => line.trim());
                         const product = {};
                         lines.forEach(line => {
                             if (line.startsWith('Name:')) product.name = line.replace('Name:', '').trim();
                         });
                         return product;
-                    }).filter(p => p.name);
+                    });
                 };
                 reader.readAsText(file);
             }
         }
-        const numImages = bulkImagesArray.length;
-        const txtFileStatus = bulkTextFile ? `1 text file` : `0 text files`;
+        const numImages = imagesArray.length;
+        const txtFileStatus = textFile ? `1 text file` : `0 text files`;
         dropZoneText.textContent = `${numImages} image(s) and ${txtFileStatus} selected.`;
     }
 
-    function updateBulkPreview() {
-        bulkPreviewContent.innerHTML = '';
+    function updatePreview() {
+        previewContent.innerHTML = '';
 
-        if (bulkTextFile) {
+        if (textFile) {
             const container = document.createElement('div');
             container.classList.add("border", "rounded", "p-2", "bg-gray-50");
             const icon = document.createElement('img');
-            icon.src = "https://cdn-icons-png.flaticon.com/512/3022/3022253.png";
+            icon.src = "https://cdn-icons-png.flaticon.com/512/3022/3022253.png"; // Placeholder for text file icon
             icon.classList.add("w-16", "h-16", "mx-auto");
             const name = document.createElement('p');
-            name.textContent = bulkTextFile.name;
+            name.textContent = textFile.name;
             name.classList.add("text-center", "text-sm", "text-gray-600", "mt-2");
             container.appendChild(icon);
             container.appendChild(name);
-            bulkPreviewContent.appendChild(container);
+            previewContent.appendChild(container);
         }
 
-        let productsToDisplay = bulkProductDetails.length > 0 ? bulkProductDetails : [{ name: "Unnamed Product Set" }];
-
-        productsToDisplay.forEach((product, i) => {
+        for (let i = 0; i < imagesArray.length; i += 3) {
             const modelDiv = document.createElement('div');
             modelDiv.classList.add("p-2", "border", "rounded", "bg-gray-100");
 
             const title = document.createElement('p');
-            title.textContent = product.name || `Product Group ${i + 1}`;
+            const productIndex = Math.floor(i / 3);
+            const product = productDetails[productIndex];
+            title.textContent = product ? product.name : `Product ${productIndex + 1}`;
             title.classList.add("font-semibold", "mb-2", "text-lg");
             modelDiv.appendChild(title);
 
-            const imagesContainer = document.createElement('div');
-            imagesContainer.classList.add("grid", "grid-cols-3", "gap-4");
-            modelDiv.appendChild(imagesContainer);
+            const row = document.createElement('div');
+            row.classList.add("grid", "grid-cols-3", "gap-4");
 
-            bulkImagesArray.forEach((file, imgIndex) => {
+            for (let j = i; j < i + 3 && j < imagesArray.length; j++) {
+                const file = imagesArray[j];
                 const reader = new FileReader();
+
                 const container = document.createElement('div');
                 container.classList.add("border", "rounded", "p-1", "bg-white", "relative");
                 container.setAttribute('draggable', 'true');
-                container.dataset.index = imgIndex;
+                container.dataset.index = j;
 
                 reader.onload = function (e) {
+                    // Call openCropModal with 'bulk' context
                     container.innerHTML = `
-                        <img src="${e.target.result}" onclick="openCropModal(${imgIndex}, 'bulk')" class="w-full h-32 object-cover rounded cursor-pointer hover:opacity-90 transition" title="Click to crop">
-                        <button class="absolute top-1 right-1 bg-red-600 text-white text-xs px-2 py-1 rounded" onclick="removeImageFromBulkPreview(${imgIndex})">X</button>
+                        <img src="${e.target.result}" onclick="openCropModal(${j}, 'bulk')" class="w-full h-32 object-cover rounded cursor-pointer hover:opacity-90 transition" title="Click to crop">
+                        <button class="absolute top-1 right-1 bg-red-600 text-white text-xs px-2 py-1 rounded" onclick="removeImageFromPreview(${j})">X</button>
                     `;
                 };
                 reader.readAsDataURL(file);
-                imagesContainer.appendChild(container);
-            });
+                row.appendChild(container);
+            }
 
-            bulkPreviewContent.appendChild(modelDiv);
-        });
+            modelDiv.appendChild(row);
+            previewContent.appendChild(modelDiv);
+        }
 
-
-        enableBulkPreviewDragSort();
+        enablePreviewDragSort();
     }
 
-    function enableBulkPreviewDragSort() {
+    function enablePreviewDragSort() {
         let draggedItem = null;
 
-        bulkPreviewContent.querySelectorAll('div[draggable]').forEach(item => {
+        previewContent.querySelectorAll('div[draggable]').forEach(item => {
             item.addEventListener('dragstart', () => {
                 draggedItem = item;
                 setTimeout(() => item.classList.add('opacity-50'), 0);
@@ -299,9 +303,9 @@
             item.addEventListener('dragover', (e) => {
                 e.preventDefault();
                 const target = e.target.closest('div[draggable]');
-                if (target && target !== draggedItem && target.parentNode === draggedItem.parentNode) {
-                    const draggedIndex = [...target.parentNode.querySelectorAll('div[draggable]')].indexOf(draggedItem);
-                    const targetIndex = [...target.parentNode.querySelectorAll('div[draggable]')].indexOf(target);
+                if (target && target !== draggedItem) {
+                    const draggedIndex = [...previewContent.querySelectorAll('div[draggable]')].indexOf(draggedItem);
+                    const targetIndex = [...previewContent.querySelectorAll('div[draggable]')].indexOf(target);
 
                     if (draggedIndex < targetIndex) {
                         target.parentNode.insertBefore(draggedItem, target.nextSibling);
@@ -313,56 +317,75 @@
         });
     }
 
-    function saveBulkImageOrder() {
+    function saveImageOrder() {
         const newOrder = [];
-        bulkPreviewContent.querySelectorAll('div[draggable]').forEach(div => {
+        previewContent.querySelectorAll('div[draggable]').forEach(div => {
             const originalIndex = parseInt(div.dataset.index);
-            newOrder.push(bulkImagesArray[originalIndex]);
+            newOrder.push(imagesArray[originalIndex]);
         });
-        bulkImagesArray = newOrder;
-        updateBulkPreview();
+        imagesArray = newOrder;
+        updatePreview();
         showAlert("Image order saved!", true);
     }
 
-    function removeImageFromBulkPreview(index) {
-        bulkImagesArray.splice(index, 1);
-        updateBulkPreview();
+    function removeImageFromPreview(index) {
+        imagesArray.splice(index, 1);
+        updatePreview();
+        // This line `handleFiles([])` seems to re-trigger file handling.
+        // If it's meant to update the dropZoneText, it's fine, but if it affects imagesArray
+        // it might conflict. Removing it for now as splicing already removed the image.
+        // handleFiles([]);
+        const numImages = imagesArray.length;
+        const txtFileStatus = textFile ? `1 text file` : `0 text files`;
+        dropZoneText.textContent = `${numImages} image(s) and ${txtFileStatus} selected.`;
     }
 
-    function openBulkPreviewModal() {
-        if (!bulkTextFile && bulkImagesArray.length === 0 && bulkProductDetails.length === 0) {
-            showAlert("Please add files or products for bulk preview.", false);
+    function openModal() { // This is the bulk preview modal
+        if (!textFile && imagesArray.length === 0) {
+            showAlert("Please add files to preview.", false);
             return;
         }
-        updateBulkPreview();
-        document.getElementById('bulk-preview-modal').classList.remove('hidden');
+        updatePreview();
+        document.getElementById('preview-modal').classList.remove('hidden');
     }
 
-    function closeBulkPreviewModal() {
-        document.getElementById('bulk-preview-modal').classList.add('hidden');
+    function closeModal() { // This closes the bulk preview modal
+        document.getElementById('preview-modal').classList.add('hidden');
     }
 
-    function resetBulkUploader() {
-        bulkImagesArray = [];
-        bulkTextFile = null;
-        bulkProductDetails = [];
+    function resetUploader() { // Resets bulk uploader
+        imagesArray = [];
+        textFile = null;
+        productDetails = [];
         fileInput.value = '';
         dropZoneText.textContent = 'Drag & drop files here or click to upload';
     }
 
-    bulkUploadForm.addEventListener('submit', async (e) => {
+    // Original Bulk Upload Form Submission
+    uploadForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        bulkUploadButton.disabled = true;
-        bulkUploadButton.textContent = 'Uploading...';
+        uploadButton.disabled = true;
+        uploadButton.textContent = 'Uploading...';
 
         const formData = new FormData();
         formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
 
-        if (bulkTextFile) {
-            formData.append('product_file', bulkTextFile);
+        if (!textFile) {
+            showAlert('Please select .txt file for bulk upload.', false);
+            uploadButton.disabled = false;
+            uploadButton.textContent = 'Upload';
+            return;
+        }
+        formData.append('product_file', textFile);
+
+        if (imagesArray.length === 0) {
+            showAlert('Please select product images for bulk upload.', false);
+            uploadButton.disabled = false;
+            uploadButton.textContent = 'Upload';
+            return;
         }
 
-        bulkImagesArray.forEach((img, index) => {
+        imagesArray.forEach((img, index) => {
             formData.append('images', img);
             formData.append('image_order[]', index);
         });
@@ -377,7 +400,7 @@
 
             if (response.ok && data.status === 'success') {
                 showAlert(data.message, true);
-                resetBulkUploader();
+                resetUploader();
             } else {
                 showAlert(data.message || 'An unknown error occurred during bulk upload.', false);
             }
@@ -386,17 +409,16 @@
             console.error('Bulk upload failed:', error);
             showAlert('A network error occurred during bulk upload. Please try again.', false);
         } finally {
-            bulkUploadButton.disabled = false;
-            bulkUploadButton.textContent = 'Upload Bulk';
+            uploadButton.disabled = false;
+            uploadButton.textContent = 'Upload';
         }
     });
 
-
-    // --- Manual Product Entry Logic ---
+    // --- Manual Product Entry Logic (NEW) ---
     const manualImageInput = document.getElementById('manual-image-input');
     const manualImagePreview = document.getElementById('manual-image-preview');
     const manualCategorySelect = document.getElementById('manual-category');
-    const newCategoryInput = document.getElementById('new-category-input'); // New element
+    const newCategoryInput = document.getElementById('new-category-input');
 
     async function openManualEntryModal() {
         document.getElementById("manual-entry-modal").classList.remove("hidden");
@@ -405,8 +427,8 @@
         document.getElementById('manual-price').value = '';
         document.getElementById('manual-size').value = '';
         document.getElementById('manual-description').value = '';
-        manualImagesArray = [];
-        updateManualImagePreview();
+        manualImagesArray = []; // Clear manual images
+        updateManualImagePreview(); // Update preview to show empty
         newCategoryInput.value = ''; // Clear new category input
         newCategoryInput.classList.add('hidden'); // Hide new category input
         manualCategorySelect.value = ''; // Reset select to default
@@ -436,6 +458,7 @@
             container.classList.add("border", "rounded", "p-1", "bg-white", "relative");
 
             reader.onload = function (e) {
+                // Call openCropModal with 'manual' context
                 container.innerHTML = `
                     <img src="${e.target.result}" onclick="openCropModal(${index}, 'manual')" class="w-full h-24 object-cover rounded cursor-pointer hover:opacity-90 transition" title="Click to crop">
                     <button class="absolute top-1 right-1 bg-red-600 text-white text-xs px-2 py-1 rounded" onclick="removeManualImage(${index})">X</button>
@@ -463,7 +486,7 @@
 
     async function loadCategories() {
         try {
-            const response = await fetch("{% url 'get_categories' %}");
+            const response = await fetch("{% url 'get_categories' %}"); // Ensure this URL is correctly defined in Django
             const data = await response.json();
             manualCategorySelect.innerHTML = '<option value="">Select Category</option>'; // Reset
             if (data.categories) {
@@ -486,13 +509,15 @@
         }
     }
 
-
     async function uploadManualProduct() {
         const name = document.getElementById('manual-name').value.trim();
         let categoryId = document.getElementById('manual-category').value;
         const price = document.getElementById('manual-price').value.trim();
         const size = document.getElementById('manual-size').value.trim();
         const description = document.getElementById('manual-description').value.trim();
+
+        const manualUploadButton = document.querySelector('#manual-entry-modal button[onclick="uploadManualProduct()"]');
+        const originalButtonText = manualUploadButton.textContent; // Store original text
 
         // Handle new category creation
         if (categoryId === 'new_category') {
@@ -502,13 +527,11 @@
                 return;
             }
 
-            const createCategoryButton = document.querySelector('#manual-entry-modal button[onclick="uploadManualProduct()"]');
-            const originalButtonText = createCategoryButton.textContent;
-            createCategoryButton.disabled = true;
-            createCategoryButton.textContent = 'Creating Category...';
+            manualUploadButton.disabled = true; // Disable button during category creation
+            manualUploadButton.textContent = 'Creating Category...';
 
             try {
-                const response = await fetch("{% url 'create_category' %}", { // New URL for creating category
+                const response = await fetch("{% url 'create_category' %}", { // Ensure this URL is correctly defined in Django
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -528,26 +551,35 @@
                     newCategoryInput.value = ''; // Clear the input
                 } else {
                     showAlert(data.message || 'Failed to create new category.', false);
-                    createCategoryButton.disabled = false;
-                    createCategoryButton.textContent = originalButtonText;
+                    manualUploadButton.disabled = false;
+                    manualUploadButton.textContent = originalButtonText; // Restore button text
                     return; // Stop the product upload if category creation failed
                 }
             } catch (error) {
                 console.error('Failed to create new category:', error);
                 showAlert('Network error while creating category. Please try again.', false);
-                createCategoryButton.disabled = false;
-                createCategoryButton.textContent = originalButtonText;
+                manualUploadButton.disabled = false;
+                manualUploadButton.textContent = originalButtonText; // Restore button text
                 return; // Stop the product upload if category creation failed
             } finally {
-                 // Reset button text after category creation attempt, even if product upload fails later
-                 createCategoryButton.disabled = false;
-                 createCategoryButton.textContent = originalButtonText;
+                // Button state will be handled by the product upload logic if category creation succeeded
+                // Or restored here if it failed.
             }
         }
 
 
+        // Validation for product fields after category is handled
         if (!name || !categoryId || !price) {
             showAlert('Product Name, Category, and Price are required.', false);
+            manualUploadButton.disabled = false; // Ensure button is re-enabled if validation fails
+            manualUploadButton.textContent = originalButtonText;
+            return;
+        }
+
+        if (manualImagesArray.length === 0) {
+            showAlert('Please add at least one image for the product.', false);
+            manualUploadButton.disabled = false;
+            manualUploadButton.textContent = originalButtonText;
             return;
         }
 
@@ -563,13 +595,12 @@
             formData.append('images', img);
         });
 
-        // Disable button and show loading state
-        const manualUploadButton = document.querySelector('#manual-entry-modal button[onclick="uploadManualProduct()"]');
+        // Set loading state for product upload
         manualUploadButton.disabled = true;
-        manualUploadButton.textContent = 'Uploading Product...'; // Updated text
+        manualUploadButton.textContent = 'Uploading Product...';
 
         try {
-            const response = await fetch("{% url 'create_manual_product' %}", {
+            const response = await fetch("{% url 'create_manual_product' %}", { // Ensure this URL is correctly defined in Django
                 method: 'POST',
                 body: formData,
             });
@@ -579,7 +610,7 @@
             if (response.ok && data.status === 'success') {
                 showAlert(data.message, true);
                 closeManualEntryModal();
-                // Optionally reset manual form fields here
+                // Form fields will be cleared when the modal re-opens via openManualEntryModal()
             } else {
                 showAlert(data.message || 'An unknown error occurred during manual upload.', false);
             }
@@ -589,11 +620,11 @@
             showAlert('A network error occurred during manual product upload. Please try again.', false);
         } finally {
             manualUploadButton.disabled = false;
-            manualUploadButton.textContent = 'Upload Product';
+            manualUploadButton.textContent = originalButtonText; // Restore button text
         }
     }
 
-    // Initial load for categories (if you want to pre-fetch on page load, uncomment this)
+    // Initial load for categories when the page loads (optional, can be done when modal opens as well)
     // document.addEventListener('DOMContentLoaded', loadCategories);
 
 </script>
