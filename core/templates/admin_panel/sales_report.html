@@ -1,0 +1,137 @@
+{% extends 'admin_panel/dashboard.html' %}
+{% block content %}
+<div class="p-6">
+  <h1 class="text-2xl font-bold mb-4">📊 Sales Report</h1>
+
+  <form method="get" class="mb-6 flex items-center gap-3">
+    <input type="date" name="start_date" value="{{ start_date }}" class="input border rounded px-3 py-2" />
+    <input type="date" name="end_date" value="{{ end_date }}" class="input border rounded px-3 py-2" />
+    <button type="submit" class="bg-black text-white px-4 py-2 rounded">Filter</button>
+  </form>
+
+  <!-- Export Buttons -->
+  <div class="mb-6 flex gap-3">
+    <a href="{% url 'export_sales_excel' %}?start_date={{ start_date }}&end_date={{ end_date }}" class="bg-green-500 text-white px-4 py-2 rounded">📥 Export Excel</a>
+    <a href="{% url 'export_sales_pdf' %}?start_date={{ start_date }}&end_date={{ end_date }}" class="bg-red-500 text-white px-4 py-2 rounded">📄 Export PDF</a>
+  </div>
+
+  <!-- Summary -->
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+    <div class="p-4 bg-gray-100 rounded">💰 Total Sales: <strong>₹{{ total_sales }}</strong></div>
+    <div class="p-4 bg-gray-100 rounded">📦 Total Orders: <strong>{{ total_orders }}</strong></div>
+    <div class="p-4 bg-gray-100 rounded">🛍️ Products Sold: <strong>{{ total_products_sold }}</strong></div>
+  </div>
+
+  <!-- Charts -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+    <div class="bg-white p-4 rounded shadow">
+      <h3 class="text-lg font-semibold mb-2">📈 Daily Sales</h3>
+      <canvas id="dailyChart"></canvas>
+    </div>
+    <div class="bg-white p-4 rounded shadow">
+      <h3 class="text-lg font-semibold mb-2">📆 Monthly Sales</h3>
+      <canvas id="monthlyChart"></canvas>
+    </div>
+    <div class="bg-white p-4 rounded shadow">
+      <h3 class="text-lg font-semibold mb-2">📦 Revenue by Category</h3>
+      <canvas id="categoryChart"></canvas>
+    </div>
+    <div class="bg-white p-4 rounded shadow">
+      <h3 class="text-lg font-semibold mb-2">💳 Payment Methods</h3>
+      <canvas id="paymentChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Top Products -->
+  <h2 class="text-lg font-semibold mb-2">Top Selling Products</h2>
+  <ul class="list-disc pl-6 mb-8">
+    {% for item in top_products %}
+      <li>{{ item.product__name }} — {{ item.total_sold }} sold</li>
+    {% empty %}
+      <li>No products sold in this range.</li>
+    {% endfor %}
+  </ul>
+
+  <!-- Orders Table -->
+  <h2 class="text-lg font-semibold mb-2">Orders</h2>
+  <div class="overflow-auto">
+    <table class="w-full border text-left">
+      <thead class="bg-gray-200">
+        <tr>
+          <th class="p-2 border">Order ID</th>
+          <th class="p-2 border">Customer</th>
+          <th class="p-2 border">Amount</th>
+          <th class="p-2 border">Date</th>
+          <th class="p-2 border">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for order in orders %}
+        <tr>
+          <td class="p-2 border">#{{ order.custom_order_id }}</td>
+          <td class="p-2 border">{{ order.user.email }}</td>
+          <td class="p-2 border">₹{{ order.total_price }}</td>
+          <td class="p-2 border">{{ order.created_at|date:"d M Y" }}</td>
+          <td class="p-2 border">✅ Paid</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5" class="p-2 text-center">No orders</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Chart.js CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  const dailyChart = new Chart(document.getElementById('dailyChart').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: {{ daily_labels|safe }},
+      datasets: [{
+        label: '₹ Sales',
+        data: {{ daily_data|safe }},
+        borderColor: '#3b82f6',
+        backgroundColor: 'rgba(59, 130, 246, 0.2)',
+        tension: 0.3,
+        fill: true
+      }]
+    }
+  });
+
+  const monthlyChart = new Chart(document.getElementById('monthlyChart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: {{ monthly_labels|safe }},
+      datasets: [{
+        label: '₹ Sales',
+        data: {{ monthly_data|safe }},
+        backgroundColor: '#10b981'
+      }]
+    }
+  });
+
+  const categoryChart = new Chart(document.getElementById('categoryChart').getContext('2d'), {
+    type: 'doughnut',
+    data: {
+      labels: {{ category_labels|safe }},
+      datasets: [{
+        data: {{ category_data|safe }},
+        backgroundColor: ['#6366f1', '#f59e0b', '#ef4444', '#10b981', '#3b82f6']
+      }]
+    }
+  });
+
+  const paymentChart = new Chart(document.getElementById('paymentChart').getContext('2d'), {
+    type: 'pie',
+    data: {
+      labels: {{ payment_labels|safe }},
+      datasets: [{
+        data: {{ payment_data|safe }},
+        backgroundColor: ['#e11d48', '#0ea5e9', '#14b8a6', '#f43f5e']
+      }]
+    }
+  });
+</script>
+{% endblock %}

@@ -110,6 +110,12 @@ class Order(models.Model):
         ('Success', 'Success'),
         ('Failed', 'Failed'),
     ]
+    PAYMENT_METHOD_CHOICES = [
+    ('COD', 'Cash on Delivery'),
+    ('Razorpay', 'Razorpay'),
+    ]
+
+    payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES, default='COD')
 
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     address = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, blank=True)

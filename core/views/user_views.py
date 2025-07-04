@@ -22,10 +22,7 @@ from django.http import JsonResponse
 from django.core.mail import send_mail
 import razorpay
 from django.views.decorators.csrf import csrf_exempt
-# Import the correct models and forms
-# IMPORTANT: Added NewsletterForm
 from core.forms import UserLoginForm, UserRegistrationForm, ProfileForm, AddressForm, NewsletterForm
-# IMPORTANT: Added NewsletterSubscriber
 from core.models import Product, Category, Wishlist, Order, UserProfile, EmailOTP, Address, NewsletterSubscriber
 from core.utils import send_otp_email
 from django.contrib.auth.hashers import make_password
@@ -177,7 +174,7 @@ def checkout_view(request):
                 })
                 subtotal += total
 
-                # 🔄 Restore DB cart into session
+                # Restore DB cart into session
                 session_cart[str(product.id)] = {
                     'name': product.name,
                     'price': float(product.price),
@@ -424,7 +421,6 @@ def my_profile(request):
     add_address_form = AddressForm()
     orders = Order.objects.filter(user=request.user).order_by('-created_at')
 
-    # ❌ Don't manually calculate or pass cart_count here
     return render(request, 'user/main/profile.html', {
         'profile_form': profile_form,
         'user_addresses': user_addresses,

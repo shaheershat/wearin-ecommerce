@@ -21,7 +21,7 @@
           <a href="{% url 'admin_order_list' %}" class="flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-gray-100 {% if request.resolver_match.url_name == 'admin_order_list' %}bg-gray-200 text-black font-semibold{% endif %}">🚚 <span>Order List</span></a>
           <a href="{% url 'admin_user_list' %}" class="flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-gray-100 {% if request.resolver_match.url_name == 'admin_user_list' %}bg-gray-200 text-black font-semibold{% endif %}">👥 <span>Users</span></a>
           <a href="{% url 'admin_coupon_list' %}" class="flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-gray-100 {% if request.resolver_match.url_name == 'admin_coupon_list' %}bg-gray-200 text-black font-semibold{% endif %}">🎁 <span>Coupons</span></a>
-          <a href="#" class="flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-gray-100 {% if request.resolver_match.url_name == 'admin_sales' %}bg-gray-200 text-black font-semibold{% endif %}">💰 <span>Sales</span></a>{# Assuming 'admin_sales' as URL name if you add it later #}
+          <a href="{% url 'admin_sales' %}" class="flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-gray-100 {% if request.resolver_match.url_name == 'admin_sales' %}bg-gray-200 text-black font-semibold{% endif %}">💰 <span>Sales</span></a>{# Assuming 'admin_sales' as URL name if you add it later #}
           <a href="{% url 'admin_upload_page' %}" class="flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-gray-100 {% if request.resolver_match.url_name == 'admin_upload_page' %}bg-gray-200 text-black font-semibold{% endif %}">📤 <span>PixNPost™</span></a>
           <a href="#" class="flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-gray-100 {% if request.resolver_match.url_name == 'admin_offers' %}bg-gray-200 text-black font-semibold{% endif %}">⚙️ <span>Offers</span></a>{# Assuming 'admin_offers' as URL name if you add it later #}
         </nav>
@@ -48,7 +48,7 @@
         <a href="{% url 'admin_order_list' %}" class="flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-gray-100 {% if request.resolver_match.url_name == 'admin_order_list' %}bg-gray-200 text-black font-semibold{% endif %}">🚚 <span>Order List</span></a>
         <a href="{% url 'admin_user_list' %}" class="flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-gray-100 {% if request.resolver_match.url_name == 'admin_user_list' %}bg-gray-200 text-black font-semibold{% endif %}">👥 <span>Users</span></a>
         <a href="{% url 'admin_coupon_list' %}" class="flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-gray-100 {% if request.resolver_match.url_name == 'admin_coupon_list' %}bg-gray-200 text-black font-semibold{% endif %}">🎁 <span>Coupons</span></a>
-        <a href="#" class="flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-gray-100 {% if request.resolver_match.url_name == 'admin_sales' %}bg-gray-200 text-black font-semibold{% endif %}">💰 <span>Sales</span></a>{# Assuming 'admin_sales' as URL name if you add it later #}
+        <a href="{% url 'admin_sales' %}" class="flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-gray-100 {% if request.resolver_match.url_name == 'admin_sales' %}bg-gray-200 text-black font-semibold{% endif %}">💰 <span>Sales</span></a>{# Assuming 'admin_sales' as URL name if you add it later #}
         <a href="{% url 'admin_upload_page' %}" class="flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-gray-100 {% if request.resolver_match.url_name == 'admin_upload_page' %}bg-gray-200 text-black font-semibold{% endif %}">📤 <span>PixNPost™</span></a>
         <a href="#" class="flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-gray-100 {% if request.resolver_match.url_name == 'admin_offers' %}bg-gray-200 text-black font-semibold{% endif %}">⚙️ <span>Offers</span></a>{# Assuming 'admin_offers' as URL name if you add it later #}
       </nav>
@@ -81,9 +81,6 @@
     function closeSidebar() {
       document.getElementById('mobileSidebar').classList.add('hidden');
     }
-
-    // Keep showTab function in your user/profile.html or user/base.html if other user pages use it.
-    // It's not applicable for this admin navigation as these links go to different pages.
   </script>
 
 </body>

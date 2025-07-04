@@ -1,4 +1,3 @@
-# core/views/admin_views.py
 from django.contrib.auth import login  
 from django.db.models import Sum
 from django.utils import timezone
@@ -11,14 +10,22 @@ from django.views.decorators.http import require_POST
 from django.contrib.auth.models import User
 from datetime import timedelta
 from django.contrib import messages
-from django.contrib.auth import authenticate # ONLY authenticate here, DO NOT import login/logout
+from django.contrib.auth import authenticate
 from django.contrib.auth import get_user_model
 from django.conf import settings
-# Import our custom decorators
 from core.decorators import admin_login_required
-# Import models and forms
 from core.models import Order, OrderItem, Product, Address, Category, ProductImage, Coupon
 from core.forms import ProductForm, CouponForm
+from django.db.models import Count
+from django.utils.timezone import now
+from django.db.models.functions import TruncDate
+from datetime import datetime
+import pandas as pd
+from io import BytesIO
+from django.http import HttpResponse
+from django.db.models.functions import TruncDay, TruncMonth
+from reportlab.pdfgen import canvas
+from core.models import Order
 
 @require_POST
 def create_category(request):
@@ -423,6 +430,92 @@ def batch_upload_view(request):
 
     return render(request, 'admin_panel/upload.html')
 
+def admin_sales_view(request):
+    start_date = request.GET.get('start_date')
+    end_date = request.GET.get('end_date')
+
+    orders = Order.objects.all()
+    if start_date and end_date:
+        orders = orders.filter(created_at__date__range=[start_date, end_date])
+
+    total_sales = orders.aggregate(total=Sum('total_price'))['total'] or 0
+    total_orders = orders.count()
+    total_products_sold = (
+        OrderItem.objects
+        .filter(order__in=orders)
+        .aggregate(qty=Sum('quantity'))['qty'] or 0
+    )
+
+    # Daily Sales Chart
+    daily = (
+        orders
+        .annotate(day=TruncDay('created_at'))
+        .values('day')
+        .annotate(total=Sum('total_price'))
+        .order_by('day')
+    )
+    daily_labels = [x['day'].strftime('%d %b') for x in daily]
+    daily_data = [float(x['total']) for x in daily]  # ✅ Convert Decimal to float
+
+    # Monthly Sales Chart
+    monthly = (
+        orders
+        .annotate(month=TruncMonth('created_at'))
+        .values('month')
+        .annotate(total=Sum('total_price'))
+        .order_by('month')
+    )
+    monthly_labels = [x['month'].strftime('%b %Y') for x in monthly]
+    monthly_data = [float(x['total']) for x in monthly]  # ✅ Convert Decimal to float
+
+    # Top Products
+    top_products = (
+        OrderItem.objects
+        .filter(order__in=orders)
+        .values('product__name')
+        .annotate(total_sold=Sum('quantity'))
+        .order_by('-total_sold')[:5]
+    )
+
+    # Revenue by Category (Pie Chart)
+    category_sales = (
+        OrderItem.objects
+        .filter(order__in=orders)
+        .values('product__category__name')
+        .annotate(total=Sum('price_at_purchase'))
+    )
+    category_labels = [c['product__category__name'] for c in category_sales]
+    category_data = [float(c['total']) for c in category_sales]  # ✅ Decimal to float
+
+    # Payment Breakdown (COD, Razorpay)
+    # Assuming you store method in payment_status or elsewhere — update this field
+    payment_data = (
+        orders
+        .values('payment_status')  # ✅ Use actual field available in your model
+        .annotate(total=Sum('total_price'))
+    )
+    payment_labels = [p['payment_status'] for p in payment_data]
+    payment_totals = [float(p['total']) for p in payment_data]  # ✅ Decimal to float
+
+    context = {
+        'orders': orders,
+        'total_sales': total_sales,
+        'total_orders': total_orders,
+        'total_products_sold': total_products_sold,
+        'top_products': top_products,
+        'start_date': start_date,
+        'end_date': end_date,
+        'daily_labels': json.dumps(daily_labels),
+        'daily_data': json.dumps(daily_data),
+        'monthly_labels': json.dumps(monthly_labels),
+        'monthly_data': json.dumps(monthly_data),
+        'category_labels': json.dumps(category_labels),
+        'category_data': json.dumps(category_data),
+        'payment_labels': json.dumps(payment_labels),
+        'payment_data': json.dumps(payment_totals),
+    }
+
+    return render(request, 'admin_panel/sales_report.html', context)
 
 @admin_login_required
 def admin_user_list(request):
@@ -441,3 +534,54 @@ def toggle_user_status(request, user_id):
     else:
         messages.error(request, "You cannot change your own active status.")
     return redirect('admin_user_list')
+
+
+def export_sales_excel_view(request):
+    orders = Order.objects.select_related('user').prefetch_related('items').all()
+
+    data = []
+    for order in orders:
+        for item in order.items.all():
+            data.append({
+                'Order ID': order.custom_order_id,
+                'Customer': order.user.email,
+                'Product': item.product.name,
+                'Quantity': item.quantity,
+                'Price': item.price,
+                'Total': item.quantity * item.price,
+                'Date': order.created_at.strftime('%Y-%m-%d'),
+                'Payment Method': order.payment_method,
+            })
+
+    df = pd.DataFrame(data)
+    response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition'] = 'attachment; filename=sales_report.xlsx'
+    df.to_excel(response, index=False)
+
+    return response
+
+# Export to PDF
+def export_sales_pdf(request):
+    buffer = BytesIO()
+    p = canvas.Canvas(buffer)
+
+    orders = Order.objects.all()
+    y = 800
+    p.setFont("Helvetica-Bold", 14)
+    p.drawString(200, y, "Sales Report")
+    y -= 40
+
+    p.setFont("Helvetica", 10)
+    for order in orders:
+        p.drawString(40, y, f"Order: #{order.custom_order_id}, Email: {order.user.email}, ₹{order.total_price}, {order.created_at.strftime('%Y-%m-%d')}")
+        y -= 20
+        if y < 40:
+            p.showPage()
+            y = 800
+
+    p.save()
+    buffer.seek(0)
+
+    response = HttpResponse(buffer, content_type='application/pdf')
+    response['Content-Disposition'] = 'attachment; filename="sales_report.pdf"'
+    return response
