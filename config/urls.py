@@ -36,6 +36,10 @@ urlpatterns = [
     path('get-categories/', admin_views.get_categories, name='get_categories'),
     path('create-manual-product/', admin_views.create_manual_product, name='create_manual_product'),
     path('create-category/', admin_views.create_category, name='create_category'),
+    path('dashboard/sales/', admin_views.admin_sales_view, name='admin_sales'),
+    path('dashboard/sales/export-excel/', admin_views.export_sales_excel_view, name='export_sales_excel'),
+    path('dashboard/sales/export-pdf/', admin_views.export_sales_pdf, name='export_sales_pdf'),
+
 
     # --- Coupon Management ---
     path('coupons/', admin_views.coupon_list, name='admin_coupon_list'),
