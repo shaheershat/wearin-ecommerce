@@ -455,7 +455,7 @@ def admin_sales_view(request):
         .order_by('day')
     )
     daily_labels = [x['day'].strftime('%d %b') for x in daily]
-    daily_data = [float(x['total']) for x in daily]  # ✅ Convert Decimal to float
+    daily_data = [float(x['total']) for x in daily]  #  Convert Decimal to float
 
     # Monthly Sales Chart
     monthly = (
@@ -466,7 +466,7 @@ def admin_sales_view(request):
         .order_by('month')
     )
     monthly_labels = [x['month'].strftime('%b %Y') for x in monthly]
-    monthly_data = [float(x['total']) for x in monthly]  # ✅ Convert Decimal to float
+    monthly_data = [float(x['total']) for x in monthly]  #  Convert Decimal to float
 
     # Top Products
     top_products = (
@@ -485,17 +485,17 @@ def admin_sales_view(request):
         .annotate(total=Sum('price_at_purchase'))
     )
     category_labels = [c['product__category__name'] for c in category_sales]
-    category_data = [float(c['total']) for c in category_sales]  # ✅ Decimal to float
+    category_data = [float(c['total']) for c in category_sales]  #  Decimal to float
 
     # Payment Breakdown (COD, Razorpay)
     # Assuming you store method in payment_status or elsewhere — update this field
     payment_data = (
         orders
-        .values('payment_status')  # ✅ Use actual field available in your model
+        .values('payment_status')  #  Use actual field available in your model
         .annotate(total=Sum('total_price'))
     )
     payment_labels = [p['payment_status'] for p in payment_data]
-    payment_totals = [float(p['total']) for p in payment_data]  # ✅ Decimal to float
+    payment_totals = [float(p['total']) for p in payment_data]  #  Decimal to float
 
     context = {
         'orders': orders,
@@ -543,12 +543,12 @@ def export_sales_excel_view(request):
     for order in orders:
         for item in order.items.all():
             data.append({
-                'Order ID': order.custom_order_id,
+                'Order ID': f"#{order.id}",
                 'Customer': order.user.email,
                 'Product': item.product.name,
                 'Quantity': item.quantity,
-                'Price': item.price,
-                'Total': item.quantity * item.price,
+                'Price': item.price_at_purchase,
+                'Total': item.quantity * item.price_at_purchase,
                 'Date': order.created_at.strftime('%Y-%m-%d'),
                 'Payment Method': order.payment_method,
             })
@@ -573,7 +573,7 @@ def export_sales_pdf(request):
 
     p.setFont("Helvetica", 10)
     for order in orders:
-        p.drawString(40, y, f"Order: #{order.custom_order_id}, Email: {order.user.email}, ₹{order.total_price}, {order.created_at.strftime('%Y-%m-%d')}")
+        p.drawString(40, y, f"Order: #{order.id}, Email: {order.user.email}, ₹{order.total_price}, {order.created_at.strftime('%Y-%m-%d')}")
         y -= 20
         if y < 40:
             p.showPage()

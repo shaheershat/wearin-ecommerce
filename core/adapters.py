@@ -21,7 +21,7 @@ class CustomSocialAccountAdapter(DefaultSocialAccountAdapter):
         user = sociallogin.user
         user.email = user.email or sociallogin.account.extra_data.get('email')
 
-        # ✅ Set username if not set
+        #  Set username if not set
         if not user.username:
             user.username = generate_username(user.email or "user")
 
@@ -29,11 +29,11 @@ class CustomSocialAccountAdapter(DefaultSocialAccountAdapter):
         user.save()
         sociallogin.save(request)
 
-        # ✅ Log the user in
+        #  Log the user in
         login(request, user)
         request.session.save()
 
-        # ✅ Set session cookie (for user_sessionid handling)
+        #  Set session cookie (for user_sessionid handling)
         response = HttpResponseRedirect('/user-dashboard/')
         response.set_cookie('user_sessionid', request.session.session_key)
 
