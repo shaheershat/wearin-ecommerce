@@ -3,6 +3,7 @@ from django.utils.text import slugify
 from cloudinary.models import CloudinaryField
 from django.utils import timezone
 from django.contrib.auth import get_user_model
+from decimal import Decimal
 
 User = get_user_model()
 
@@ -200,3 +201,21 @@ class NewsletterSubscriber(models.Model):
         ordering = ['-subscribed_at']
         verbose_name = "Newsletter Subscriber"
         verbose_name_plural = "Newsletter Subscribers"
+
+class Wallet(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='wallet')
+    balance = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+
+    def credit(self, amount):
+        self.balance += Decimal(amount)
+        self.save()
+
+    def debit(self, amount):
+        if self.balance >= Decimal(amount):
+            self.balance -= Decimal(amount)
+            self.save()
+            return True
+        return False
+
+    def __str__(self):
+        return f"{self.user.username}'s Wallet"

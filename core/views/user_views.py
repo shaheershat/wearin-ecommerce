@@ -1018,8 +1018,8 @@ def remove_from_wishlist(request, product_id):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
     
 
-@csrf_protect # Protects against CSRF attacks
-@require_POST # Ensures only POST requests are allowed
+@csrf_protect
+@require_POST
 def send_contact_email(request):
     if not request.META.get('HTTP_X_REQUESTED_WITH') == 'XMLHttpRequest':
         return JsonResponse({'success': False, 'message': 'Invalid request.'}, status=400)
@@ -1048,7 +1048,7 @@ def send_contact_email(request):
             email_message,
             from_email,
             recipient_list,
-            fail_silently=False, # Set to True in production if you don't want exceptions
+            fail_silently=False, 
         )
 
         return JsonResponse({'success': True, 'message': 'Your message has been sent successfully!'})
@@ -1056,6 +1056,5 @@ def send_contact_email(request):
     except json.JSONDecodeError:
         return JsonResponse({'success': False, 'message': 'Invalid JSON format.'}, status=400)
     except Exception as e:
-        # Log the error for debugging
         print(f"Error sending contact email: {e}")
         return JsonResponse({'success': False, 'message': 'An unexpected error occurred. Please try again later.'}, status=500)
