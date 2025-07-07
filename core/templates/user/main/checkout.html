@@ -60,7 +60,6 @@
     <!-- Address Section -->
     <div class="bg-white shadow rounded-lg p-6 mb-6">
         <h3 class="text-xl font-semibold mb-4">Shipping Address</h3>
-
         {% if addresses %}
         <form id="address-select-form" method="post">
             {% csrf_token %}
@@ -69,12 +68,12 @@
                 <label class="block p-4 border rounded hover:border-black transition cursor-pointer">
                     <input type="radio" name="selected_address" value="{{ address.id }}"
                         {% if address.id == selected_address_id %}checked{% endif %} class="mr-2">
-                      <div class="text-sm text-gray-800 leading-6">
-                          <strong>{{ address.full_name|default_if_none:"Not provided" }}</strong><br>
-                          {{ address.house_name|default_if_none:"" }}, {{ address.street|default_if_none:"" }}, {{ address.city|default_if_none:"" }},
-                          {{ address.state|default_if_none:"" }} , {{ address.postal_code|default_if_none:"" }}, {{ address.country|default_if_none:"" }},
-                          Phone: {{ address.phone|default_if_none:"" }}
-                      </div>
+                    <div class="text-sm text-gray-800 leading-6">
+                        <strong>{{ address.full_name|default_if_none:"Not provided" }}</strong><br>
+                        {{ address.house_name|default_if_none:"" }}, {{ address.street|default_if_none:"" }}, {{ address.city|default_if_none:"" }},
+                        {{ address.state|default_if_none:"" }} , {{ address.postal_code|default_if_none:"" }}, {{ address.country|default_if_none:"" }},
+                        Phone: {{ address.phone|default_if_none:"" }}
+                    </div>
                 </label>
                 {% endfor %}
             </div>
@@ -86,25 +85,52 @@
         {% endif %}
     </div>
 
-    <!-- Payment Button -->
-    <div class="text-center mt-10">
-        <p class="text-lg font-medium mb-4">Click below to pay with Razorpay</p>
-        <button id="rzp-button"
-            class="bg-black text-white px-8 py-3 rounded hover:bg-gray-900 transition w-full max-w-xs mx-auto">
-            Pay Now
-        </button>
-    </div>
+    <!-- Payment Method Section -->
+    <div class="bg-white shadow rounded-lg p-6 mb-10">
+        <h3 class="text-xl font-semibold mb-4">Payment Method</h3>
 
-    <!-- Hidden Payment Form -->
-    <form id="payment-form" action="{% url 'payment_success' %}" method="POST" style="display:none;">
-        {% csrf_token %}
-    </form>
+        <form id="payment-form" action="{% url 'payment_success' %}" method="POST">
+            {% csrf_token %}
+
+            <!-- Wallet -->
+            <label class="block p-4 border rounded mb-3 cursor-pointer {% if wallet_balance < total_price %}opacity-50{% endif %}">
+                <input type="radio" name="payment_method" value="wallet"
+                    {% if wallet_balance < total_price %}disabled{% endif %}>
+                <span class="ml-2">Use Wallet (₹{{ wallet_balance }})</span>
+                {% if wallet_balance < total_price %}
+                    <p class="text-sm text-red-500 ml-6">Insufficient balance</p>
+                {% endif %}
+            </label>
+
+            <!-- Razorpay -->
+            <label class="block p-4 border rounded mb-3 cursor-pointer">
+                <input type="radio" name="payment_method" value="razorpay" checked>
+                <span class="ml-2">Pay Online (Razorpay)</span>
+            </label>
+
+            <!-- COD -->
+            <label class="block p-4 border rounded mb-3 cursor-pointer {% if total_price > 1000 %}opacity-50{% endif %}">
+                <input type="radio" name="payment_method" value="cod"
+                    {% if total_price > 1000 %}disabled{% endif %}>
+                <span class="ml-2">Cash on Delivery (COD)</span>
+                {% if total_price > 1000 %}
+                    <p class="text-sm text-red-500 ml-6">COD not available for orders above ₹1000</p>
+                {% endif %}
+            </label>
+
+            <!-- Pay Button -->
+            <button id="rzp-button" type="button"
+                class="bg-black text-white px-8 py-3 rounded hover:bg-gray-900 transition w-full mt-6">
+                Pay Now
+            </button>
+        </form>
+    </div>
 </div>
 
 <!-- Razorpay Script -->
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <script>
-    const options = {
+    const rzp = new Razorpay({
         "key": "{{ razorpay_key }}",
         "amount": "{{ total_price|floatformat:'0' }}" * 100,
         "currency": "INR",
@@ -113,15 +139,12 @@
         "order_id": "{{ order_id }}",
         "handler": function (response) {
             const form = document.getElementById('payment-form');
-
-            // Get selected address
             const selectedAddress = document.querySelector('input[name="selected_address"]:checked');
             if (!selectedAddress) {
-                alert("Please select a shipping address before proceeding.");
+                alert("Please select a shipping address.");
                 return;
             }
 
-            // Add hidden input for address_id
             const addressInput = document.createElement('input');
             addressInput.type = 'hidden';
             addressInput.name = 'address_id';
@@ -130,20 +153,35 @@
 
             form.submit();
         },
-        "theme": {
-            "color": "#000000"
-        }
-    };
+        "theme": { "color": "#000000" }
+    });
 
-    const rzp = new Razorpay(options);
     document.getElementById('rzp-button').onclick = function (e) {
+        const selectedPayment = document.querySelector('input[name="payment_method"]:checked');
         const selectedAddress = document.querySelector('input[name="selected_address"]:checked');
         if (!selectedAddress) {
-            alert("Please select a shipping address before proceeding.");
+            alert("Please select a shipping address.");
             return;
         }
-        rzp.open();
+        if (!selectedPayment) {
+            alert("Please select a payment method.");
+            return;
+        }
+
+        const form = document.getElementById('payment-form');
+        const addressInput = document.createElement('input');
+        addressInput.type = 'hidden';
+        addressInput.name = 'address_id';
+        addressInput.value = selectedAddress.value;
+        form.appendChild(addressInput);
+
+        if (selectedPayment.value === 'razorpay') {
+            rzp.open();
+        } else {
+            form.submit();  // Wallet or COD
+        }
+
         e.preventDefault();
-    }
+    };
 </script>
 {% endblock %}

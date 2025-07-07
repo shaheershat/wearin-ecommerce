@@ -6,6 +6,7 @@ from django.views.decorators.http import require_POST, require_GET
 from django.http import JsonResponse
 from django.urls import reverse
 from django.conf import settings
+from django.db import models
 from django.core.mail import send_mail
 from django.contrib.sessions.backends.db import SessionStore
 from django.contrib.auth import login
@@ -155,14 +156,14 @@ def checkout_view(request):
     cart_items = []
     subtotal = 0
 
-    #  Buy Now logic
+    # Buy Now Logic
     if buy_now:
         try:
             product = Product.objects.get(id=buy_now['id'])
             item = {
                 'product': product,
                 'quantity': buy_now['quantity'],
-                'total_price': buy_now['price'] * buy_now['quantity']
+                'total_price': product.price * buy_now['quantity']
             }
             cart_items.append(item)
             subtotal = item['total_price']
@@ -170,12 +171,12 @@ def checkout_view(request):
             messages.error(request, "Product no longer available.")
             return redirect('cart_page')
 
-    #  Session Cart logic
+    # Session Cart Logic
     elif cart:
         for pid, item in cart.items():
             try:
                 product = Product.objects.get(id=int(pid))
-                total = item['price'] * item['quantity']
+                total = product.price * item['quantity']
                 cart_items.append({
                     'product': product,
                     'quantity': item['quantity'],
@@ -185,12 +186,11 @@ def checkout_view(request):
             except Product.DoesNotExist:
                 continue
 
-    #  Fallback to DB cart if session cart is empty
+    # DB Cart Fallback
     elif request.user.is_authenticated:
         try:
             db_cart = Cart.objects.get(user=request.user)
             session_cart = {}
-
             for item in db_cart.items.select_related('product'):
                 product = item.product
                 total = float(product.price) * item.quantity
@@ -200,29 +200,24 @@ def checkout_view(request):
                     'total_price': total
                 })
                 subtotal += total
-
-                # Restore DB cart into session
                 session_cart[str(product.id)] = {
                     'name': product.name,
                     'price': float(product.price),
                     'quantity': item.quantity,
                     'image_url': product.images.first().image.url if product.images.exists() else '',
                 }
-
             request.session['cart'] = session_cart
             request.session.modified = True
-
         except Cart.DoesNotExist:
             pass
 
-    #  Handle empty or invalid cart
     if subtotal <= 0 or not cart_items:
         messages.error(request, "Your cart is empty or contains invalid items.")
         return redirect('cart_page')
 
     total_price = subtotal
 
-    #  Razorpay payment
+    # Razorpay Order
     payment = razorpay_client.order.create({
         "amount": int(total_price * 100),
         "currency": "INR",
@@ -232,6 +227,12 @@ def checkout_view(request):
     addresses = Address.objects.filter(user=request.user)
     selected = addresses.filter(is_default=True).first()
 
+    # Wallet balance
+    wallet_balance = 0
+    if request.user.is_authenticated:
+        wallet, _ = Wallet.objects.get_or_create(user=request.user)
+        wallet_balance = wallet.balance
+
     return render(request, 'user/main/checkout.html', {
         "cart_items": cart_items,
         "subtotal": subtotal,
@@ -239,17 +240,22 @@ def checkout_view(request):
         "order_id": payment['id'],
         "razorpay_key": settings.RAZORPAY_KEY_ID,
         "addresses": addresses,
-        "selected_address_id": selected.id if selected else None
+        "selected_address_id": selected.id if selected else None,
+        "wallet_balance": wallet_balance
     })
+
 
 
 @csrf_exempt
 @user_login_required
 def payment_success_view(request):
     user = request.user
+    cart = request.session.get('cart', {})
+    buy_now = request.session.get('buy_now_item')
 
-    # Get address ID from request (e.g. hidden input in form or session)
+    payment_method = request.POST.get('payment_method', 'razorpay')
     address_id = request.POST.get('address_id') or request.session.get('selected_address_id')
+
     if not address_id:
         messages.error(request, "No address selected.")
         return redirect('checkout')
@@ -260,24 +266,21 @@ def payment_success_view(request):
         messages.error(request, "Invalid address.")
         return redirect('checkout')
 
-    cart = request.session.get('cart', {})
-    buy_now = request.session.get('buy_now_item')
-
     if not cart and not buy_now:
         messages.error(request, "Your cart is empty.")
         return redirect('cart_page')
 
     try:
         with transaction.atomic():
-            total_price = 0
+            total_price = Decimal('0.00')
             order = Order.objects.create(
                 user=user,
                 address=address,
                 status='Pending',
-                total_price=0  # Will update below
+                total_price=Decimal('0.00')
             )
 
-            #  Buy Now flow
+            # Buy Now Flow
             if buy_now:
                 product = Product.objects.get(id=buy_now['id'])
                 quantity = buy_now.get('quantity', 1)
@@ -290,18 +293,12 @@ def payment_success_view(request):
                     price_at_purchase=price
                 )
                 total_price = price * quantity
-
-                # Mark product as sold
                 product.is_sold = True
                 product.save()
-
-                # Remove from wishlist if exists
                 Wishlist.objects.filter(user=user, product=product).delete()
-
-                # Clear buy now session
                 del request.session['buy_now_item']
 
-            #  Cart flow
+            # Cart Flow
             elif cart:
                 for pid, item in cart.items():
                     product = Product.objects.get(id=int(pid))
@@ -315,21 +312,42 @@ def payment_success_view(request):
                         price_at_purchase=price
                     )
                     total_price += price * quantity
-
-                    # Mark product as sold
                     product.is_sold = True
                     product.save()
-
-                    # Remove from wishlist
                     Wishlist.objects.filter(user=user, product=product).delete()
 
-                # Clear session cart
                 request.session['cart'] = {}
-
-                # Optionally delete from DB cart
                 Cart.objects.filter(user=user).delete()
 
-            # Finalize order total
+            # Payment Method Handling
+            if payment_method == 'wallet':
+                wallet = Wallet.objects.get(user=user)
+                if wallet.balance < total_price:
+                    messages.error(request, "Insufficient wallet balance.")
+                    return redirect('checkout')
+                
+                # Deduct wallet balance
+                wallet.balance -= total_price
+                wallet.save()
+
+                # Record debit transaction
+                WalletTransaction.objects.create(
+                    wallet=wallet,
+                    amount=-total_price,
+                    reason=f"Payment for Order #{order.id}"
+                )
+
+                order.payment_method = 'Wallet'
+
+            elif payment_method == 'cod':
+                if total_price > 1000:
+                    messages.error(request, "COD not available for orders above ₹1000.")
+                    return redirect('checkout')
+                order.payment_method = 'COD'
+
+            else:
+                order.payment_method = 'Razorpay'
+
             order.total_price = total_price
             order.save()
 
@@ -798,7 +816,7 @@ def home_view(request):
 def user_dashboard_view(request):
     return render(request, 'user/main/authenticated_home.html')
 
-
+@user_login_required
 def shop_view(request):
     user = request.user if request.user.is_authenticated else None
     if not user:
@@ -809,38 +827,59 @@ def shop_view(request):
                 user = User.objects.get(pk=user_id)
                 request.user = user
             except User.DoesNotExist:
-                if '_auth_user_id' in request.session:
-                    del request.session['_auth_user_id']
                 request.session.flush()
                 user = None
-                messages.error(request, "Your user session was invalid and has been cleared.")
+                messages.error(request, "Your session expired. Please log in again.")
 
     products = Product.objects.filter(is_sold=False).order_by('-created_at')
     categories = Category.objects.all()
+    sizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL']
 
+    # Filters
+    selected_categories = request.POST.getlist('category') or request.GET.getlist('category')
+    selected_sizes = request.POST.getlist('size[]') or request.GET.getlist('size[]')
+    max_price = request.POST.get('max_price') or request.GET.get('max_price') or '10000'
+
+    # Apply filters
+    q = models.Q()
+    if selected_categories:
+        q &= models.Q(category__id__in=selected_categories)
+    try:
+        q &= models.Q(price__lte=float(max_price))
+    except ValueError:
+        pass
+    if selected_sizes:
+        q &= models.Q(size__in=selected_sizes)
+
+    products = products.filter(q)
+
+    # Wishlist
     wishlisted_product_ids = []
     if user:
         wishlisted_product_ids = Wishlist.objects.filter(user=user).values_list('product_id', flat=True)
 
-
-
-    sizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL']
-
-    return render(request, 'user/main/shop.html', {
+    context = {
         'products': products,
         'categories': categories,
         'sizes': sizes,
         'wishlisted_product_ids': list(wishlisted_product_ids),
-    })
+        'selected_categories': selected_categories,
+        'selected_sizes': selected_sizes,
+        'selected_max_price': max_price,
+    }
+
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+        return render(request, 'user/main/shop_ajax_results.html', context)
+
+    return render(request, 'user/main/shop.html', context)
+
+
 
 
 def product_detail_view(request, id=None):
     product = None
     if id:
         product = get_object_or_404(Product, id=id)
-
-
-
     return render(request, 'user/main/product_detail.html', {
         'product': product,
         

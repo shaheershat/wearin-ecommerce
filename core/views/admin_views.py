@@ -527,13 +527,14 @@ def admin_sales_view(request):
 
     # Payment Breakdown (COD, Razorpay)
     # Assuming you store method in payment_status or elsewhere — update this field
-    payment_data = (
+    payment_data_qs = (
         orders
-        .values('payment_status')  #  Use actual field available in your model
+        .values('payment_method')
         .annotate(total=Sum('total_price'))
     )
-    payment_labels = [p['payment_status'] for p in payment_data]
-    payment_totals = [float(p['total']) for p in payment_data]  #  Decimal to float
+
+    payment_labels = [p['payment_method'] or 'Unknown' for p in payment_data_qs]
+    payment_totals = [float(p['total']) for p in payment_data_qs]
 
     context = {
         'orders': orders,
