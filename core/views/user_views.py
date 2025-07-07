@@ -16,6 +16,7 @@ from django.views.decorators.csrf import csrf_protect
 from django.contrib.auth import get_user
 import json
 from decimal import Decimal
+from core.models import Wallet, WalletTransaction
 from core.models import OrderItem
 from core.models import Cart, CartItem
 from django.http import JsonResponse
@@ -40,7 +41,13 @@ import os
 from xhtml2pdf import pisa
 from django.http import HttpResponse
 from django.template.loader import get_template
+from django.db import transaction
 
+def refund_to_wallet(user, amount):
+    with transaction.atomic():
+        wallet = user.wallet
+        wallet.balance += amount
+        wallet.save()
 
 def download_invoice_view(request, order_id):
     order = get_object_or_404(Order, id=order_id, user=request.user)
@@ -77,21 +84,41 @@ def view_order_view(request, order_id):
 @user_login_required
 def cancel_order_view(request, order_id):
     order = get_object_or_404(Order, id=order_id, user=request.user)
+
     if order.status not in ['Pending', 'Shipped']:
         messages.error(request, 'This order cannot be cancelled.')
-        return redirect('my_profile')  # Or return JsonResponse
+        return redirect('my_profile')
+
     order.status = 'Cancelled'
     order.save()
-    messages.success(request, 'Order has been cancelled.')
+
+    # Refund amount to wallet
+    wallet = request.user.wallet
+    wallet.credit(order.total_price)
+
+    # Add wallet transaction record
+    WalletTransaction.objects.create(
+        wallet=wallet,
+        transaction_type='refund',
+        amount=order.total_price,
+        reason=f"Refund for cancelled order #{order.id}"
+    )
+
+    messages.success(request, f"Order has been cancelled and ₹{order.total_price} has been refunded to your wallet.")
     return redirect('my_profile')
 
-@user_login_required
 def return_order_view(request, order_id):
     order = get_object_or_404(Order, id=order_id, user=request.user)
+    
     if order.status != 'Delivered':
         messages.error(request, 'Only delivered orders can be returned.')
         return redirect('my_profile')
-    order.status = 'Returned'
+
+    if order.return_status == 'Requested':
+        messages.info(request, 'Return already requested.')
+        return redirect('my_profile')
+
+    order.return_status = 'Requested'
     order.save()
     messages.success(request, 'Return request submitted.')
     return redirect('my_profile')
@@ -421,12 +448,22 @@ def my_profile(request):
     add_address_form = AddressForm()
     orders = Order.objects.filter(user=request.user).order_by('-created_at')
 
+    # Ensure Wallet exists for the user
+    wallet, _ = Wallet.objects.get_or_create(user=request.user)
+    wallet_balance = wallet.balance
+
+    # Optional: Show last 10 transactions in wallet tab
+    wallet_transactions = WalletTransaction.objects.filter(wallet=wallet).order_by('-created_at')[:10]
+
     return render(request, 'user/main/profile.html', {
         'profile_form': profile_form,
         'user_addresses': user_addresses,
         'add_address_form': add_address_form,
-        'orders': orders
+        'orders': orders,
+        'wallet_balance': wallet_balance,
+        'wallet_transactions': wallet_transactions,
     })
+
 @user_login_required
 @require_POST
 def update_profile(request):

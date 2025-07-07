@@ -5,6 +5,21 @@ from django.utils import timezone
 from django.contrib.auth import get_user_model
 from decimal import Decimal
 
+class WalletTransaction(models.Model):
+    wallet = models.ForeignKey('Wallet', on_delete=models.CASCADE, related_name='transactions')
+    TRANSACTION_TYPE_CHOICES = (
+        ('credit', 'Credit'),
+        ('debit', 'Debit'),
+        ('refund', 'Refund'),
+    )
+    transaction_type = models.CharField(max_length=10, choices=TRANSACTION_TYPE_CHOICES)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    reason = models.CharField(max_length=255, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.transaction_type.capitalize()} ₹{self.amount} for {self.wallet.user.username}"
+
 User = get_user_model()
 
 class EmailOTP(models.Model):
@@ -115,8 +130,20 @@ class Order(models.Model):
     ('COD', 'Cash on Delivery'),
     ('Razorpay', 'Razorpay'),
     ]
+    RETURN_STATUS_CHOICES = [
+    ('None', 'None'),
+    ('Requested', 'Requested'),
+    ('Approved', 'Approved'),
+    ('Rejected', 'Rejected'),
+    ]
+    return_status = models.CharField(
+    max_length=10,
+    choices=RETURN_STATUS_CHOICES,
+    default='None'
+    )
 
     payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES, default='COD')
+    return_status = models.CharField(max_length=10, choices=RETURN_STATUS_CHOICES, default='None')
 
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     address = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, blank=True)
@@ -143,10 +170,18 @@ class Order(models.Model):
         return f"Order #{self.id} by {self.user.username}"
 
 class OrderItem(models.Model):
+    RETURN_STATUS_CHOICES = [
+        ('None', 'None'),
+        ('Requested', 'Requested'),
+        ('Approved', 'Approved'),
+        ('Rejected', 'Rejected'),
+    ]
+
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items')
     product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True)
     quantity = models.PositiveIntegerField(default=1)
     price_at_purchase = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    return_status = models.CharField(max_length=10, choices=RETURN_STATUS_CHOICES, default='None')  # ✅ New Field
 
     def __str__(self):
         product_name = self.product.name if self.product else "N/A"
@@ -156,6 +191,7 @@ class OrderItem(models.Model):
         if not self.pk and self.product:
             self.price_at_purchase = self.product.price
         super().save(*args, **kwargs)
+
 
 class Cart(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='cart')

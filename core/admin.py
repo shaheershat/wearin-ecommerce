@@ -2,6 +2,8 @@ from django.contrib import admin
 from django.db import models
 from django.db.models import Sum
 from decimal import Decimal
+from django.contrib import messages
+from .models import Order, WalletTransaction, Wallet
 
 # Import ALL your models
 from .models import (
@@ -22,31 +24,6 @@ class OrderItemInline(admin.TabularInline):
         return obj.price_at_purchase if obj.price_at_purchase is not None else 'N/A'
 
     get_price_at_purchase_display.short_description = 'Price at Purchase'
-
-
-@admin.register(Order)
-class OrderAdmin(admin.ModelAdmin):
-    list_display = ['id', 'user', 'status', 'total_price', 'created_at']
-    list_filter = ['status', 'created_at']
-    search_fields = ['id', 'user__username']
-    inlines = [OrderItemInline]
-    readonly_fields = ('total_price',)
-
-    def save_model(self, request, obj, form, change):
-        super().save_model(request, obj, form, change)
-        if change and 'status' in form.changed_data and obj.status == 'Delivered':
-           for item in obj.items.all():
-                if item.product and not item.product.is_sold:
-                    item.product.is_sold = True
-                    item.product.save()
-
-    def save_formset(self, request, form, formset, change):
-        super().save_formset(request, form, formset, change)
-        order = form.instance
-        order.refresh_from_db()
-        total_price_agg = order.items.aggregate(Sum('price_at_purchase'))['price_at_purchase__sum']
-        order.total_price = total_price_agg if total_price_agg is not None else Decimal('0.00')
-        order.save()
 
 
 @admin.register(Product)
@@ -110,6 +87,59 @@ class WishlistAdmin(admin.ModelAdmin):
     list_filter = ('user',)
     search_fields = ('user__username', 'product__name')
 
+@admin.register(Order)
+class OrderAdmin(admin.ModelAdmin):
+    list_display = ('id', 'user', 'status', 'return_status', 'total_price', 'created_at')
+    list_filter = ('status', 'return_status')
+    actions = ['approve_return', 'reject_return']
+    inlines = [OrderItemInline]
+    readonly_fields = ('total_price',)
+
+    def approve_return(self, request, queryset):
+        count = 0
+        for order in queryset:
+            if order.return_status == 'Requested':
+                order.return_status = 'Approved'
+                order.status = 'Returned'
+                order.save()
+
+                wallet, _ = Wallet.objects.get_or_create(user=order.user)
+                wallet.credit(order.total_price)
+
+                WalletTransaction.objects.create(
+                    wallet=wallet,
+                    transaction_type='refund',
+                    amount=order.total_price,
+                    reason=f"Refund for returned Order #{order.id}"
+                )
+
+                count += 1
+        self.message_user(request, f"{count} return(s) approved and refunded.", level=messages.SUCCESS)
+
+    def reject_return(self, request, queryset):
+        count = 0
+        for order in queryset:
+            if order.return_status == 'Requested':
+                order.return_status = 'Rejected'
+                order.save()
+                count += 1
+        self.message_user(request, f"{count} return(s) rejected.", level=messages.WARNING)
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        if change and 'status' in form.changed_data and obj.status == 'Delivered':
+            for item in obj.items.all():
+                if item.product and not item.product.is_sold:
+                    item.product.is_sold = True
+                    item.product.save()
+
+    def save_formset(self, request, form, formset, change):
+        super().save_formset(request, form, formset, change)
+        order = form.instance
+        order.refresh_from_db()
+        total_price_agg = order.items.aggregate(Sum('price_at_purchase'))['price_at_purchase__sum']
+        order.total_price = total_price_agg if total_price_agg is not None else Decimal('0.00')
+        order.save()
 
 # Models that don't need custom Admin classes (default display is fine)
 admin.site.register(Address)

@@ -25,7 +25,45 @@ from io import BytesIO
 from django.http import HttpResponse
 from django.db.models.functions import TruncDay, TruncMonth
 from reportlab.pdfgen import canvas
-from core.models import Order
+from core.models import Order, WalletTransaction, Wallet
+
+
+@admin_login_required
+def approve_return_view(request, order_id):
+    order = get_object_or_404(Order, id=order_id)
+    if order.return_status != 'Requested':
+        messages.error(request, 'Invalid return state.')
+        return redirect('admin_order_list')
+
+    order.return_status = 'Approved'
+    order.status = 'Returned'
+
+    # Refund to wallet
+    wallet, _ = Wallet.objects.get_or_create(user=order.user)
+    wallet.credit(order.total_price)
+    WalletTransaction.objects.create(
+        wallet=wallet,
+        transaction_type='refund',
+        amount=order.total_price,
+        reason=f"Refund for returned Order #{order.id}"
+    )
+    order.save()
+
+    messages.success(request, 'Return approved and wallet refunded.')
+    return redirect('admin_order_list')
+
+@admin_login_required
+def reject_return_view(request, order_id):
+    order = get_object_or_404(Order, id=order_id)
+    if order.return_status != 'Requested':
+        messages.error(request, 'Invalid return state.')
+        return redirect('admin_order_list')
+
+    order.return_status = 'Rejected'
+    order.save()
+
+    messages.warning(request, 'Return request rejected.')
+    return redirect('admin_order_list')
 
 @require_POST
 def create_category(request):
@@ -127,7 +165,7 @@ def admin_login_view(request):
 
             request._is_admin_session = True  # for middleware tracking
 
-            # 🔴 Manually create response to set cookie
+            # Manually create response to set cookie
             response = redirect('admin_dashboard')
 
             response.set_cookie(
