@@ -24,6 +24,7 @@
         <th class="px-4 py-3 text-left">Order ID</th>
         <th class="px-4 py-3 text-left">Customer</th>
         <th class="px-4 py-3 text-left">Status</th>
+        <th class="px-4 py-3 text-left">Return Status</th>
         <th class="px-4 py-3 text-left">Total Price</th>
         <th class="px-4 py-3 text-left">Created At</th>
         <th class="px-4 py-3 text-left">Actions</th>
@@ -45,6 +46,30 @@
             </select>
           </form>
         </td>
+        <td class="px-4 py-2">
+          {% if order.return_status %}
+            <span class="text-sm font-medium 
+              {% if order.return_status == 'Requested' %}text-yellow-600
+              {% elif order.return_status == 'Approved' %}text-green-600
+              {% elif order.return_status == 'Rejected' %}text-red-600
+              {% else %}text-gray-600{% endif %}">
+              {{ order.return_status }}
+            </span>
+
+            {% if order.return_status == 'Requested' %}
+              <form method="POST" action="{% url 'admin_approve_return' order.id %}" class="inline">
+                {% csrf_token %}
+                <button class="ml-2 text-green-600 hover:underline text-sm">Approve</button>
+              </form>
+              <form method="POST" action="{% url 'admin_reject_return' order.id %}" class="inline">
+                {% csrf_token %}
+                <button class="ml-2 text-red-600 hover:underline text-sm">Reject</button>
+              </form>
+            {% endif %}
+          {% else %}
+            <span class="text-sm text-gray-400 italic">—</span>
+          {% endif %}
+        </td>
         <td class="px-4 py-2">₹{{ order.total_price }}</td>
         <td class="px-4 py-2">{{ order.created_at|date:"M d, Y H:i" }}</td>
         <td class="px-4 py-2 space-x-2 whitespace-nowrap">
@@ -53,7 +78,7 @@
       </tr>
       {% empty %}
       <tr>
-        <td colspan="6" class="text-center text-gray-500 py-4">No orders available.</td>
+        <td colspan="7" class="text-center text-gray-500 py-4">No orders available.</td>
       </tr>
       {% endfor %}
     </tbody>

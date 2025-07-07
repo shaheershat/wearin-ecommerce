@@ -39,6 +39,10 @@ urlpatterns = [
     path('dashboard/sales/', admin_views.admin_sales_view, name='admin_sales'),
     path('dashboard/sales/export-excel/', admin_views.export_sales_excel_view, name='export_sales_excel'),
     path('dashboard/sales/export-pdf/', admin_views.export_sales_pdf, name='export_sales_pdf'),
+    path('orders/<int:order_id>/approve-return/', admin_views.approve_return_view, name='admin_approve_return'),
+    path('orders/<int:order_id>/reject-return/', admin_views.reject_return_view, name='admin_reject_return'),
+
+
 
 
     # --- Coupon Management ---
