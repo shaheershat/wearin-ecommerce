@@ -1,28 +1,83 @@
+<!-- Category Filter -->
 <div class="mb-6">
     <h4 class="font-medium text-gray-800 mb-3">Category</h4>
     <ul class="space-y-2 text-sm text-gray-600">
         {% for category in categories %}
-            <li><label><input type="checkbox" class="mr-2 rounded"> {{ category.name }}</label></li>
+            <li>
+                <label>
+                    <input type="checkbox" name="category" value="{{ category.id }}" class="mr-2"
+                        {% if category.id|stringformat:"s" in selected_categories %}checked{% endif %}>
+                    {{ category.name }}
+                </label>
+            </li>
         {% endfor %}
     </ul>
 </div>
 
+<!-- Price Filter -->
 <div class="mb-6">
     <h4 class="font-medium text-gray-800 mb-3">Price Range</h4>
-    <input type="range" min="0" max="1000" value="500"
-           class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
-    <div class="flex justify-between text-sm text-gray-600 mt-2">
-        <span>₹0</span>
-        <span>₹1000</span>
+    <div class="flex items-center gap-4">
+        <span class="text-sm text-gray-600">₹0</span>
+        <input type="range" id="priceSlider" min="0" max="10000" step="100"
+               value="{{ selected_max_price|default:"10000" }}"
+               class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+        <span class="text-sm text-gray-600">₹<span id="priceValue">{{ selected_max_price|default:"10000" }}</span></span>
     </div>
+    <input type="hidden" name="max_price" id="priceInput" value="{{ selected_max_price|default:"10000" }}">
 </div>
 
+<!-- Size Filter -->
 <div class="mb-6">
     <h4 class="font-medium text-gray-800 mb-3">Size</h4>
-    {% comment %} Hardcoded size list instead of trying to use split() {% endcomment %}
     <div class="grid grid-cols-3 gap-2">
         {% for size in sizes %}
-            <button class="border border-gray-300 rounded-lg px-3 py-1 text-sm hover:bg-gray-100">{{ size }}</button>
+            <label class="size-toggle">
+                <input type="checkbox" name="size[]" value="{{ size }}" class="hidden"
+                    {% if size in selected_sizes %}checked{% endif %}>
+                <span class="block text-center rounded-lg px-3 py-1 text-sm cursor-pointer transition-colors
+                    {% if size in selected_sizes %}
+                        bg-gray-900 text-white border-gray-800
+                    {% else %}
+                        border-gray-300
+                    {% endif %}">
+                    {{ size }}
+                </span>
+            </label>
         {% endfor %}
     </div>
 </div>
+
+<!-- JavaScript to handle slider + size toggle -->
+<script>
+    const priceSlider = document.getElementById('priceSlider');
+    const priceInput = document.getElementById('priceInput');
+    const priceValue = document.getElementById('priceValue');
+
+    if (priceSlider && priceInput && priceValue) {
+        priceSlider.addEventListener('input', () => {
+            priceInput.value = priceSlider.value;
+            priceValue.textContent = priceSlider.value;
+        });
+        priceValue.textContent = priceSlider.value;  // Show value on load
+    }
+
+    // Size toggle behavior (for extra interaction if needed)
+    document.querySelectorAll('.size-toggle').forEach(label => {
+        const checkbox = label.querySelector('input[type="checkbox"]');
+        const span = label.querySelector('span');
+
+        span.addEventListener('click', () => {
+            checkbox.checked = !checkbox.checked;
+            span.classList.toggle('bg-gray-900', checkbox.checked);
+            span.classList.toggle('text-white', checkbox.checked);
+            span.classList.toggle('border-gray-800', checkbox.checked);
+            span.classList.toggle('border-gray-300', !checkbox.checked);
+        });
+
+        if (checkbox.checked) {
+            span.classList.add('bg-gray-900', 'text-white', 'border-gray-800');
+            span.classList.remove('border-gray-300');
+        }
+    });
+</script>

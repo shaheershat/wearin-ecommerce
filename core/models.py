@@ -120,6 +120,7 @@ class Order(models.Model):
         ('Out of delivery', 'Out of delivery'),
         ('Delivered', 'Delivered'),
         ('Cancelled', 'Cancelled'),
+        ('Returned', 'Returned'),
     ]
     PAYMENT_STATUS_CHOICES = [
         ('Pending', 'Pending'),
