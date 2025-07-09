@@ -1,3 +1,5 @@
+# settings.py
+
 from pathlib import Path
 import os
 import cloudinary
@@ -9,7 +11,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = 'django-insecure-=7w#3h#riq8x=oe2u&e)y_^)ebj4xx%8d8_18eops^bjn0*%a+'
 DEBUG = True
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost'] # Moved ALLOWED_HOSTS here
+
 
 # Installed apps
 INSTALLED_APPS = [
@@ -28,16 +31,18 @@ INSTALLED_APPS = [
     'allauth.socialaccount',
     'allauth.socialaccount.providers.google',
     'core.apps.CoreConfig',
+    'crispy_forms',
+    'crispy_bootstrap5', # Keep this here
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'core.middlewares.CustomSessionMiddleware',
+    # 'core.middlewares.CustomSessionMiddleware', # <-- IMPORTANT: Commented out or remove this
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'allauth.account.middleware.AccountMiddleware',
+    'allauth.account.middleware.AccountMiddleware', # Allauth middleware should be after AuthenticationMiddleware
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -76,10 +81,11 @@ DATABASES = {
     }
 }
 
-# Session Settings
-SESSION_ENGINE = 'django.contrib.sessions.backends.db'
-SESSION_COOKIE_NAME = 'user_sessionid'
-ADMIN_SESSION_COOKIE_NAME = 'admin_sessionid'
+# Session Settings - Remove manual session cookie names to avoid conflicts
+# Django's SessionMiddleware handles 'sessionid' by default
+# SESSION_ENGINE = 'django.contrib.sessions.backends.db' # This is often default anyway
+# SESSION_COOKIE_NAME = 'user_sessionid' # <-- REMOVED
+# ADMIN_SESSION_COOKIE_NAME = 'admin_sessionid' # <-- REMOVED
 SESSION_COOKIE_AGE = 86400
 SESSION_EXPIRE_AT_BROWSER_CLOSE = False
 SESSION_COOKIE_SAMESITE = 'Lax'
@@ -103,7 +109,7 @@ STATICFILES_DIRS = [BASE_DIR / "core/static"]
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
-SOCIALACCOUNT_ADAPTER = 'core.adapters.CustomSocialAccountAdapter'
+# SOCIALACCOUNT_ADAPTER = 'core.adapters.CustomSocialAccountAdapter'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Cloudinary
@@ -120,7 +126,7 @@ cloudinary.config(
 
 # Sites framework
 SITE_ID = 1
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
+
 
 # Authentication Backends
 AUTHENTICATION_BACKENDS = [
@@ -129,23 +135,21 @@ AUTHENTICATION_BACKENDS = [
 ]
 
 # Redirects
-LOGIN_URL = '/login/'
-LOGIN_REDIRECT_URL = '/'
-LOGOUT_REDIRECT_URL = 'home'
+LOGIN_URL = '/login/' # Your login URL name is 'login' which maps to /login/
+LOGIN_REDIRECT_URL = '/my-home/' # Redirect after successful login
+LOGOUT_REDIRECT_URL = 'home' # Redirect after successful logout
 
 # Allauth Updated Settings
-ACCOUNT_LOGOUT_ON_GET = True
+ACCOUNT_LOGOUT_ON_GET = True # Can be True, but be mindful of direct logout links
 ACCOUNT_AUTHENTICATION_METHOD = 'email'
 ACCOUNT_USERNAME_REQUIRED = False
 ACCOUNT_EMAIL_REQUIRED = True
 ACCOUNT_SIGNUP_FIELDS = ['email']
 
-
 SOCIALACCOUNT_AUTO_SIGNUP = True
 SOCIALACCOUNT_EMAIL_REQUIRED = True
 SOCIALACCOUNT_QUERY_EMAIL = True
-SOCIALACCOUNT_LOGIN_ON_GET = True
-
+SOCIALACCOUNT_LOGIN_ON_GET = True # Consider setting to False for production unless specific need
 
 SOCIALACCOUNT_PROVIDERS = {
     'google': {
@@ -207,14 +211,20 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = 'infoatwearin@gmail.com'
 EMAIL_HOST_PASSWORD = 'xlbp ouqt keab nsod'
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
-ACCOUNT_EMAIL_VERIFICATION = "none"
+ACCOUNT_EMAIL_VERIFICATION = "none" # Important for allauth: "mandatory", "optional", "none"
 
 # Razorpay
 RAZORPAY_KEY_ID = 'rzp_test_eJqlkY9BUkrY9k'
 RAZORPAY_KEY_SECRET = 'ewDtwYuzfMwBDfjNFiV8bDOk'
 
 
-ACCOUNT_ADAPTER = 'core.adapters.CustomAccountAdapter'
+# ACCOUNT_ADAPTER = 'core.adapters.CustomAccountAdapter'
 
-ACCOUNT_EMAIL_REQUIRED = True
-ACCOUNT_EMAIL_VERIFICATION = 'none'
+# CRISPY FORMS SETTINGS (ensure these are at the correct level, not inside a function)
+CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
+CRISPY_TEMPLATE_PACK = "bootstrap5"
+
+# Remove any view functions or decorators from here! They belong in views.py or decorators.py
+# @user_login_required # This was incorrect here
+# def user_dashboard_view(request): # This was incorrect here
+#     return render(request, 'user/main/authenticated_home.html') # This was incorrect here

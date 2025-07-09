@@ -1,8 +1,11 @@
+# config/urls.py
+
 from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
-from core.views.user_views import verify_reset_otp_view
+
+# Import views from core.views.user_views
 from core.views import user_views, admin_views
 from core.views.user_views import (
     register_view, request_register_otp_view, verify_register_otp_view,
@@ -10,8 +13,10 @@ from core.views.user_views import (
     login_view, logout_view, confirm_code_view,
     wishlist_view, toggle_wishlist, remove_from_wishlist,
     remove_from_cart_view, update_profile,
-    add_address, edit_address, set_default_address, delete_address, get_address_data,
-    subscribe_newsletter # IMPORTANT: Added subscribe_newsletter
+    add_address,
+    edit_address, set_default_address, delete_address, get_address_data,
+    subscribe_newsletter,
+    add_address_form_view
 )
 
 urlpatterns = [
@@ -41,9 +46,6 @@ urlpatterns = [
     path('dashboard/sales/export-pdf/', admin_views.export_sales_pdf, name='export_sales_pdf'),
     path('orders/<int:order_id>/approve-return/', admin_views.approve_return_view, name='admin_approve_return'),
     path('orders/<int:order_id>/reject-return/', admin_views.reject_return_view, name='admin_reject_return'),
-
-
-
 
     # --- Coupon Management ---
     path('coupons/', admin_views.coupon_list, name='admin_coupon_list'),
@@ -85,7 +87,6 @@ urlpatterns = [
     path('payment/success/', user_views.payment_success_view, name='payment_success'),
     path('payment/failed/', user_views.payment_failed_view, name='payment_failed'),
 
-
     # --- Wishlist ---
     path('wishlist/', wishlist_view, name='wishlist'),
     path('wishlist/toggle/<int:product_id>/', toggle_wishlist, name='toggle_wishlist'),
@@ -93,7 +94,7 @@ urlpatterns = [
 
     # --- User Profile & Address Management ---
     path('profile/', user_views.my_profile, name='my_profile'),
-    path('profile/orders/', user_views.my_orders, name='my_orders'),
+    # path('profile/orders/', user_views.my_orders, name='my_orders'),
     path('profile/update/', update_profile, name='update_profile'),
     path('contact/send/', user_views.send_contact_email, name='send_contact_email'),
     path('order/<int:order_id>/view/', user_views.view_order_view, name='view_order'),
@@ -102,15 +103,16 @@ urlpatterns = [
     path('order/<int:order_id>/', user_views.view_order_view, name='view_order'),
     path('order/<int:order_id>/invoice/', user_views.download_invoice_view, name='download_invoice'),
 
-    # New URLs for address management:
-    path('profile/address/add/', add_address, name='add_address'),
+    path('profile/address/add/', add_address_form_view, name='add_address_form'),
+    path('api/profile/address/add/', add_address, name='add_address_api'),
+
     path('profile/address/<int:address_id>/edit/', edit_address, name='edit_address'),
     path('profile/address/<int:address_id>/set-default/', set_default_address, name='set_default_address'),
     path('profile/address/<int:address_id>/delete/', delete_address, name='delete_address'),
-    path('api/addresses/<int:address_id>/', get_address_data, name='get_address_data'), 
+    path('api/addresses/<int:address_id>/', get_address_data, name='get_address_data'),
 
     # --- Newsletter Subscription ---
-    path('subscribe/', subscribe_newsletter, name='subscribe_newsletter'), 
+    path('subscribe/', subscribe_newsletter, name='subscribe_newsletter'),
 
     # --- Social Login ---
     path('accounts/', include('allauth.urls')),

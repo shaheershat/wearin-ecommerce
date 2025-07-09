@@ -335,24 +335,41 @@ def admin_order_detail_view(request, order_id):
 @admin_login_required
 def admin_products_view(request):
     products = Product.objects.all().prefetch_related('images')
+    categories = Category.objects.all()  # ✅ For dropdown filter
+
+    # ✅ Get filters
     status = request.GET.get('status')
     date_filter = request.GET.get('date')
+    search_query = request.GET.get('q')
+    category_id = request.GET.get('category')
 
+    # ✅ Filter by availability
     if status == 'available':
         products = products.filter(is_sold=False)
     elif status == 'sold':
         products = products.filter(is_sold=True)
 
-    if date_filter == 'new':
+    # ✅ Filter by date
+    if date_filter in ['new', 'old']:
         cutoff = timezone.now() - timedelta(days=15)
-        products = products.filter(created_at__gte=cutoff)
-    elif date_filter == 'old':
-        cutoff = timezone.now() - timedelta(days=15)
-        products = products.filter(created_at__lt=cutoff)
+        if date_filter == 'new':
+            products = products.filter(created_at__gte=cutoff)
+        elif date_filter == 'old':
+            products = products.filter(created_at__lt=cutoff)
+
+    # ✅ Search by product name
+    if search_query:
+        products = products.filter(name__icontains=search_query)
+
+    # ✅ Filter by category
+    if category_id:
+        products = products.filter(category_id=category_id)
 
     products = products.order_by('-id')
-    return render(request, 'admin_panel/product_list.html', {'products': products})
-
+    return render(request, 'admin_panel/product_list.html', {
+        'products': products,
+        'categories': categories  # ✅ Send categories to template
+    })
 
 @admin_login_required
 def edit_product_view(request, pk):

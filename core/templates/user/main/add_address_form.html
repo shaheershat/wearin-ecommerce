@@ -1,0 +1,78 @@
+{% extends 'user/base.html' %}
+{% load crispy_forms_tags %} {# Optional: if you use django-crispy-forms #}
+
+{% block title %}Add New Address{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-12 max-w-2xl">
+    <h2 class="text-3xl font-bold mb-8 text-center">Add New Address</h2>
+
+    <form id="addAddressForm" method="post" action="{% url 'add_address_api' %}" class="bg-white shadow rounded-lg p-6">
+        {% csrf_token %}
+        {{ form|crispy }} {# Or use {{ form.as_p }} for basic rendering #}
+
+        <div id="form-errors" class="text-red-500 text-sm mt-2"></div>
+
+        <button type="submit" class="mt-6 w-full bg-black text-white py-3 rounded hover:bg-gray-800 transition">Save Address</button>
+    </form>
+</div>
+
+<script>
+    document.getElementById('addAddressForm').addEventListener('submit', function(event) {
+        event.preventDefault(); // Prevent default form submission
+
+        const form = event.target;
+        const formData = new FormData(form);
+        const formErrorsDiv = document.getElementById('form-errors');
+        formErrorsDiv.innerHTML = ''; // Clear previous errors
+
+        fetch(form.action, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'X-Requested-With': 'XMLHttpRequest' // Important for Django's is_ajax() check
+            },
+            body: formData
+        })
+        .then(response => response.json().then(data => ({ status: response.status, body: data })))
+        .then(({ status, body }) => {
+            if (status === 200 && body.success) {
+                alert(body.message); // Show success message
+                if (body.redirect_url) {
+                    window.location.href = body.redirect_url; // Redirect to checkout
+                } else {
+                    window.location.href = "{% url 'my_profile' %}"; // Fallback redirect
+                }
+            } else {
+                // Handle errors
+                let errorMessage = body.message || 'An unknown error occurred.';
+                if (body.errors) {
+                    for (const field in body.errors) {
+                        errorMessage += `<br>${field}: ${body.errors[field].join(', ')}`;
+                    }
+                }
+                formErrorsDiv.innerHTML = errorMessage;
+            }
+        })
+        .catch(error => {
+            console.error('Error adding address:', error);
+            formErrorsDiv.innerHTML = 'An unexpected error occurred. Please try again.';
+        });
+    });
+
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+</script>
+{% endblock %}
