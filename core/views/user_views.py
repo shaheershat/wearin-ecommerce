@@ -1,4 +1,3 @@
-
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import authenticate
 from django.contrib.auth import get_user_model
@@ -6,10 +5,11 @@ from django.contrib import messages
 from django.views.decorators.http import require_POST, require_GET
 from django.http import JsonResponse
 from django.urls import reverse
+from django.db.models import Q
 from django.conf import settings
+from django.contrib.auth.backends import ModelBackend 
 from django.db import models
 from django.core.mail import send_mail
-from django.contrib.sessions.backends.db import SessionStore
 from django.contrib.auth import login
 from django.contrib.auth import get_user_model
 from django.contrib.sessions.backends.db import SessionStore
@@ -33,7 +33,6 @@ from django.db import transaction, IntegrityError # IMPORTANT: Added IntegrityEr
 import random
 from django.utils import timezone
 import razorpay
-from django.conf import settings
 from core.models import Address, Coupon 
 from django.contrib.sessions.models import Session
 from django.contrib.auth.models import User
@@ -109,6 +108,7 @@ def cancel_order_view(request, order_id):
     messages.success(request, f"Order has been cancelled and ₹{order.total_price} has been refunded to your wallet.")
     return redirect('my_profile')
 
+@user_login_required
 def return_order_view(request, order_id):
     order = get_object_or_404(Order, id=order_id, user=request.user)
     
@@ -127,6 +127,7 @@ def return_order_view(request, order_id):
 
 razorpay_client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
 
+@user_login_required
 def mini_cart_data(request):
     cart = request.session.get('cart', {})
     items = []
@@ -504,8 +505,15 @@ def update_profile(request):
 
 
 @user_login_required
+def add_address_form_view(request):
+    form = AddressForm()
+    return render(request, 'user/main/add_address_form.html', {'form': form})
+
+# Your existing add_address view (for AJAX POST submissions)
+@user_login_required
 @require_POST
 def add_address(request):
+    # This view will be called via AJAX from add_address_form.html or other places
     if request.user.addresses.count() >= 3:
         return JsonResponse({'success': False, 'message': 'You can add a maximum of 3 addresses.'}, status=400)
 
@@ -515,11 +523,12 @@ def add_address(request):
             address = form.save(commit=False)
             address.user = request.user
 
+            # Logic to set default address
             if address.is_default or not request.user.addresses.exists():
                 request.user.addresses.update(is_default=False)
                 address.is_default = True
             address.save()
-            return JsonResponse({'success': True, 'message': 'Address added successfully!'})
+            return JsonResponse({'success': True, 'message': 'Address added successfully!', 'redirect_url': reverse('checkout')})
     else:
         errors = form.errors.as_dict()
         message = 'Please correct the errors below.'
@@ -639,40 +648,35 @@ def subscribe_newsletter(request):
     return JsonResponse({'success': False, 'message': 'Invalid request.'}, status=400)
 
 
-@user_login_required
-def my_orders(request):
-    orders = request.user.order_set.all()
+# @user_login_required
+# def my_orders(request):
+#     orders = request.user.order_set.all()
 
-    return render(request, 'user/profile/my_orders.html', {'orders': orders,})
+#     return render(request, 'user/profile/my_orders.html', {'orders': orders,})
 
 
 # --- Auth Views (No changes to these sections for address functionality directly) ---
-User = get_user_model()
+User = get_user_model() # Get the custom user model if you have one
 
+# Your login_view
 def login_view(request):
-    list(messages.get_messages(request))  # Clear any previous messages
-
-    user_session_key = request.COOKIES.get('user_sessionid')
-    if user_session_key:
-        session = SessionStore(session_key=user_session_key)
-        user_id = session.get('_auth_user_id')
-        if user_id:
-            try:
-                User.objects.get(pk=user_id)
-                messages.info(request, "You are already logged in.")
-                return redirect('user_dashboard')
-            except User.DoesNotExist:
-                session.flush()
+    # Check if the user is ALREADY authenticated using Django's built-in check
+    if request.user.is_authenticated:
+        messages.info(request, "You are already logged in.")
+        # Redirect to the 'next' URL if provided, otherwise to LOGIN_REDIRECT_URL (set in settings)
+        next_url = request.GET.get('next', 'user_dashboard')
+        return redirect(next_url)
 
     if request.method == 'POST':
         form = UserLoginForm(request=request, data=request.POST)
         if form.is_valid():
             user = form.get_user()
             if user:
-                login(request, user)
-                request.session.save()
+                # *** FIX APPLIED HERE: Specify the backend explicitly ***
+                login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+                # No need for manual request.session.save() or response.set_cookie() here
 
-                #  Merge DB cart into session cart
+                # Merge DB cart into session cart (this logic is fine, keep it)
                 try:
                     db_cart = Cart.objects.get(user=user)
                     session_cart = request.session.get('cart', {})
@@ -694,43 +698,37 @@ def login_view(request):
                 except Cart.DoesNotExist:
                     pass
 
-                # Set session cookie
-                response = redirect('user_dashboard')
-                response.set_cookie('user_sessionid', request.session.session_key)
                 messages.success(request, f"Welcome, {user.username}!")
-                return response
+                next_url = request.GET.get('next', 'user_dashboard') # Get 'next' if present, otherwise default
+                return redirect(next_url)
             else:
                 messages.error(request, 'Invalid credentials.')
         else:
-            messages.error(request, 'Invalid username or password.')
+            # Form errors will be handled by the template if you display them
+            messages.error(request, 'Invalid username or password.') # Generic message for invalid form
     else:
         form = UserLoginForm()
 
     return render(request, 'user/auth/login.html', {'form': form})
 
 
+# Your register_view
 def register_view(request):
-    list(messages.get_messages(request))
+    list(messages.get_messages(request)) # Clear messages if any from previous redirects
 
-    user_id = request.session.get('_auth_user_id')
-    if user_id:
-        User = get_user_model()
-        try:
-            User.objects.get(pk=user_id)
-            messages.info(request, "You are already logged in.")
-            return redirect('user_dashboard')
-        except User.DoesNotExist:
-            if '_auth_user_id' in request.session:
-                del request.session['_auth_user_id']
-            request.session.flush()
-            messages.error(request, "Your previous user session was invalid. Please register or log in.")
+    if request.user.is_authenticated:
+        messages.info(request, "You are already logged in.")
+        return redirect('user_dashboard') # Redirect if already logged in
 
     if request.method == 'POST':
         form = UserRegistrationForm(data=request.POST)
         if form.is_valid():
             user = form.save()
-            request.session['_auth_user_id'] = user.pk
+            # After registration, log the user in automatically
+            # *** FIX APPLIED HERE: Specify the backend explicitly ***
+            login(request, user, backend='django.contrib.auth.backends.ModelBackend')
             messages.success(request, "Account created successfully! Welcome to WEARIN.")
+            # Redirect to user_dashboard after successful registration and login
             return redirect('user_dashboard')
         else:
             for field, errors in form.errors.items():
@@ -743,6 +741,10 @@ def register_view(request):
         form = UserRegistrationForm()
 
     return render(request, 'user/auth/register.html', {'form': form})
+
+@user_login_required
+def user_dashboard_view(request):
+    return render(request, 'user/main/authenticated_home.html')
 
 
 def forgot_password_view(request):
@@ -832,7 +834,11 @@ def shop_view(request):
                 user = None
                 messages.error(request, "Your session expired. Please log in again.")
 
-    products = Product.objects.filter(is_sold=False).order_by('-created_at')
+    # --- MODIFIED LINE FOR RANDOM ORDERING ---
+    # products = Product.objects.filter(is_sold=False).order_by('-created_at') # Original line
+    products = Product.objects.filter(is_sold=False).order_by('?') # Changed to randomize
+    # --- END MODIFIED LINE ---
+
     categories = Category.objects.all()
     sizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL']
 
@@ -841,18 +847,45 @@ def shop_view(request):
     selected_sizes = request.POST.getlist('size[]') or request.GET.getlist('size[]')
     max_price = request.POST.get('max_price') or request.GET.get('max_price') or '10000'
 
+    # --- DEBUGGING STEP: Print the raw GET parameters and the search_query ---
+    print(f"Request GET parameters: {request.GET}")
+    search_query = request.GET.get('query')
+    print(f"Search Query obtained: '{search_query}'")
+    # --- END DEBUGGING STEP ---
+
+
     # Apply filters
-    q = models.Q()
+    q = Q() # Initialize an empty Q object
+    
     if selected_categories:
-        q &= models.Q(category__id__in=selected_categories)
+        q &= Q(category__id__in=selected_categories)
+        print(f"Applied category filter: {selected_categories}")
+
     try:
-        q &= models.Q(price__lte=float(max_price))
+        if max_price: # Only apply if max_price is not empty
+            q &= Q(price__lte=Decimal(max_price)) # Use Decimal for price comparison if your model uses DecimalField
+            print(f"Applied max_price filter: {max_price}")
     except ValueError:
-        pass
+        print("Invalid max_price value provided.")
+        pass # Handle case where max_price is not a valid number
+
     if selected_sizes:
-        q &= models.Q(size__in=selected_sizes)
+        q &= Q(size__in=selected_sizes)
+        print(f"Applied size filter: {selected_sizes}")
+
+    # Apply Search Query Filter
+    if search_query:
+        print(f"Applying search filter for query: '{search_query}'")
+        q &= (Q(name__icontains=search_query) |
+              Q(description__icontains=search_query))
+    else:
+        print("No search query provided.")
+
 
     products = products.filter(q)
+    print(f"Total products after all filters: {products.count()}")
+    # --- END DEBUGGING STEP ---
+
 
     # Wishlist
     wishlisted_product_ids = []
@@ -867,14 +900,13 @@ def shop_view(request):
         'selected_categories': selected_categories,
         'selected_sizes': selected_sizes,
         'selected_max_price': max_price,
+        'search_query': search_query, # Pass search_query to template to pre-fill the search box
     }
 
     if request.headers.get('x-requested-with') == 'XMLHttpRequest':
         return render(request, 'user/main/shop_ajax_results.html', context)
 
     return render(request, 'user/main/shop.html', context)
-
-
 
 
 def product_detail_view(request, id=None):

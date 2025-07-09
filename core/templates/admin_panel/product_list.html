@@ -1,20 +1,27 @@
 {% extends 'admin_panel/dashboard.html' %}
-
+{% load custom_filters %}
 {% block content %}
 <h1 class="text-2xl font-bold mb-6">All Products</h1>
 
 <div class="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-4">
   <form method="get" class="flex flex-wrap items-center gap-2">
-    <label for="status" class="text-sm text-gray-600">Filter:</label>
+    <input type="text" name="q" placeholder="Search by name" value="{{ request.GET.q }}" class="border border-gray-300 rounded px-2 py-1 text-sm" />
+
+    <select name="category" class="border border-gray-300 rounded px-2 py-1 text-sm">
+      <option value="">All Categories</option>
+      {% for cat in categories %}
+        <option value="{{ cat.id }}" {% if request.GET.category == cat.id|stringformat:"s" %}selected{% endif %}>{{ cat.name }}</option>
+      {% endfor %}
+    </select>
 
     <select name="status" id="status" class="border border-gray-300 rounded px-2 py-1 text-sm">
-      <option value="">All</option>
+      <option value="">All Status</option>
       <option value="available" {% if request.GET.status == 'available' %}selected{% endif %}>Available</option>
       <option value="sold" {% if request.GET.status == 'sold' %}selected{% endif %}>Sold</option>
     </select>
 
     <select name="date" id="date" class="border border-gray-300 rounded px-2 py-1 text-sm">
-      <option value="">All</option>
+      <option value="">All Dates</option>
       <option value="new" {% if request.GET.date == 'new' %}selected{% endif %}>New (last 15 days)</option>
       <option value="old" {% if request.GET.date == 'old' %}selected{% endif %}>Old</option>
     </select>
@@ -23,12 +30,16 @@
   </form>
 </div>
 
-{% if request.GET.status or request.GET.date %}
+{% if request.GET.status or request.GET.date or request.GET.q or request.GET.category %}
 <div class="mb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
   <p class="text-sm text-gray-600">
     Showing:
-    {% if request.GET.status %}{{ request.GET.status|title }}{% endif %}
-    {% if request.GET.date %} Products - {{ request.GET.date|title }}{% endif %}
+    {% if request.GET.q %}Search: "{{ request.GET.q }}" {% endif %}
+    {% if request.GET.category %}
+      Category: {{ categories|get_category_name:request.GET.category }}
+    {% endif %}
+    {% if request.GET.status %}Status: {{ request.GET.status|title }}{% endif %}
+    {% if request.GET.date %}, Date: {{ request.GET.date|title }}{% endif %}
   </p>
   <a href="{% url 'admin_product_list' %}" class="text-blue-500 text-sm hover:underline">Clear Filters</a>
 </div>

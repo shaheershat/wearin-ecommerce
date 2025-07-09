@@ -80,6 +80,8 @@ class Product(models.Model):
     is_sold = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     stock_quantity = models.PositiveIntegerField(default=1)
+    is_reserved = models.BooleanField(default=False) 
+    reserved_at = models.DateTimeField(null=True, blank=True)
 
     def __str__(self):
         return self.name

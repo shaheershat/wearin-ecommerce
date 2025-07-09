@@ -32,72 +32,183 @@
     #mobileMenu {
       max-height: 90vh;
       overflow-y: auto;
+      /* Ensure it's hidden by default and slides out/in */
+      transform: translateX(100%); /* Start off-screen to the right */
+      transition: transform 0.3s ease-out;
+    }
+    #mobileMenu.open {
+      transform: translateX(0); /* Slide into view */
+    }
+
+    /* Hide the scrollbar but allow scrolling */
+    #mobileMenu::-webkit-scrollbar {
+        display: none; /* For Chrome, Safari, and Opera */
+    }
+    #mobileMenu {
+        -ms-overflow-style: none;  /* For Internet Explorer and Edge */
+        scrollbar-width: none;  /* For Firefox */
+    }
+
+    /* CSS for mobile search overlay */
+    .mobile-search-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: white;
+        display: flex;
+        align-items: center;
+        padding: 0 1rem;
+        box-sizing: border-box;
+        transform: translateX(100%); /* Start off-screen to the right */
+        transition: transform 0.3s ease-out;
+        z-index: 10;
+        /* Ensure it's hidden by default */
+        display: none; /* Add this to ensure it's hidden visually from the start */
+    }
+
+    .mobile-search-overlay.open {
+        transform: translateX(0);
+        display: flex; /* Show it when 'open' */
+    }
+    /* Hide specific elements when search overlay is open */
+    .header-content-mobile.search-open {
+        opacity: 0;
+        pointer-events: none; /* Disable clicks */
+        transform: translateX(-100%); /* Slide out to the left */
+        transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+    }
+
+    /* Ensure desktop search bar is hidden on mobile */
+    @media (max-width: 767px) { /* Adjust breakpoint as per md: in tailwind */
+        .desktop-search-form {
+            display: none !important; /* Ensure it's hidden */
+        }
     }
   </style>
 </head>
 
 <body class="bg-white text-gray-800">
   <header class="sticky top-0 bg-white shadow-sm z-50">
-    <div class="container mx-auto px-4 py-4 flex justify-between items-center">
-      <div class="text-2xl font-bold uppercase tracking-wider">
-        <a href="{% url 'home' %}" class="hover:text-gray-600">WEARIN</a>
-      </div>
-
-      <nav class="hidden md:flex space-x-8 font-medium absolute left-1/2 -translate-x-1/2">
-        <a href="{% url 'home' %}" class="hover:text-gray-600">Home</a>
-        <a href="{% url 'shop' %}" class="hover:text-gray-600">Shop</a>
-        <div class="relative group" onmouseover="openDropdown()" onmouseout="closeDropdown()">
-          <button id="pagesDropdownBtn" class="flex items-center hover:text-gray-600 focus:outline-none">
-            Pages
-            <svg class="w-4 h-4 ml-1 transform group-hover:rotate-180 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-          <div id="pagesDropdownMenu" class="dropdown-menu absolute left-1/2 -translate-x-1/2 mt-2 w-40 bg-white rounded-md shadow-lg py-1 z-20 border border-gray-100">
-            <a href="{% url 'policy' %}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Policy</a>
-            <a href="{% url 'contact' %}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Contact</a>
-            <a href="{% url 'about' %}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">About Us</a>
+    <div class="container mx-auto px-4 py-4 flex justify-between items-center relative"> {# Added relative here #}
+      {# This div will contain the original header content for mobile #}
+      <div id="headerContentMobile" class="header-content-mobile w-full flex justify-between items-center">
+          <div class="text-2xl font-bold uppercase tracking-wider">
+            <a href="{% url 'home' %}" class="hover:text-gray-600">WEARIN</a>
           </div>
-        </div>
-      </nav>
 
-      <div class="hidden md:flex items-center space-x-4">
-        {% if user.is_authenticated %}
-          <a href="{% url 'wishlist' %}" class="relative transition-transform duration-200">
-            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 32 32">
-              <path fill="#1C1C1C" d="M27.683 5.392a7.738 7.738 0 0 0-11.188 0l-.495.51-.494-.51c-3.09-3.189-8.099-3.189-11.188 0s-3.09 8.36 0 11.549l.494.51L16 29l11.188-11.549.494-.51c3.09-3.189 3.09-8.36.001-11.549z"></path>
-            </svg>
-          </a>
-          <a href="{% url 'cart_page' %}" class="relative">
-            <svg class="w-7 h-7 fill-black" viewBox="0 0 16 16">
-              <path d="M14 13.1V12H4.6l.6-1.1 9.2-.9L16 4H3.7L3 1H0v1h2.2l2.1 8.4L3 13v1.5c0 .8.7 1.5 1.5 1.5S6 15.3 6 14.5 5.3 13 4.5 13H12v1.5c0 .8.7 1.5 1.5 1.5s1.5-.7 1.5-1.5c0-.7-.4-1.2-1-1.4z" />
-            </svg>
-            {% if cart_count > 0 %}
-            <span class="absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center shadow-md">
-              {{ cart_count }}
-            </span>
+          <nav class="hidden md:flex space-x-8 font-medium absolute left-1/2 -translate-x-1/2">
+            <a href="{% url 'home' %}" class="hover:text-gray-600">Home</a>
+            <a href="{% url 'shop' %}" class="hover:text-gray-600">Shop</a>
+            <div class="relative group" onmouseover="openPagesDropdown()" onmouseout="closePagesDropdown()">
+              <button id="pagesDropdownBtn" class="flex items-center hover:text-gray-600 focus:outline-none">
+                Pages
+                <svg class="w-4 h-4 ml-1 transform group-hover:rotate-180 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              <div id="pagesDropdownMenu" class="dropdown-menu absolute left-1/2 -translate-x-1/2 mt-2 w-40 bg-white rounded-md shadow-lg py-1 z-20 border border-gray-100">
+                <a href="{% url 'policy' %}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Policy</a>
+                <a href="{% url 'contact' %}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Contact</a>
+                <a href="{% url 'about' %}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">About Us</a>
+              </div>
+            </div>
+          </nav>
+
+          <div class="hidden md:flex items-center space-x-4 desktop-search-form"> {# Added desktop-search-form class #}
+            <form action="{% url 'shop' %}" method="get" class="flex items-center relative">
+                <input type="text" name="query" placeholder="Search products..." class="border border-gray-300 rounded-md px-3 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-black"
+                       value="{{ search_query|default_if_none:'' }}">
+                <button type="submit" class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                </button>
+            </form>
+
+            {% if user.is_authenticated %}
+              <a href="{% url 'wishlist' %}" class="relative transition-transform duration-200">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 32 32">
+                  <path fill="#1C1C1C" d="M27.683 5.392a7.738 7.738 0 0 0-11.188 0l-.495.51-.494-.51c-3.09-3.189-8.099-3.189-11.188 0s-3.09 8.36 0 11.549l.494.51L16 29l11.188-11.549.494-.51c3.09-3.189 3.09-8.36.001-11.549z"></path>
+                </svg>
+              </a>
+              <a href="{% url 'cart_page' %}" class="relative">
+                <svg class="w-7 h-7 fill-black" viewBox="0 0 16 16">
+                  <path d="M14 13.1V12H4.6l.6-1.1 9.2-.9L16 4H3.7L3 1H0v1h2.2l2.1 8.4L3 13v1.5c0 .8.7 1.5 1.5 1.5S6 15.3 6 14.5 5.3 13 4.5 13H12v1.5c0 .8.7 1.5 1.5 1.5s1.5-.7 1.5-1.5c0-.7-.4-1.2-1-1.4z" />
+                </svg>
+                {% if cart_count > 0 %}
+                <span class="absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center shadow-md">
+                  {{ cart_count }}
+                </span>
+                {% endif %}
+              </a>
+
+              {# NEW PROFILE DROPDOWN START #}
+              <div class="relative group" onmouseover="openProfileDropdown()" onmouseout="closeProfileDropdown()">
+                <button id="profileDropdownBtn" class="flex items-center justify-center hover:text-gray-600 focus:outline-none">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" id="person" class="w-7 h-7">
+                      <g><path d="M12 11a4 4 0 1 0-4-4 4 4 0 0 0 4 4zm6 10a1 1 0 0 0 1-1 7 7 0 0 0-14 0 1 1 0 0 0 1 1z"></path></g>
+                  </svg>
+                  <span class="sr-only">Profile</span>
+                  <svg class="w-4 h-4 ml-1 transform group-hover:rotate-180 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                <div id="profileDropdownMenu" class="dropdown-menu absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-20 border border-gray-100">
+                    <div class="px-4 py-2 text-sm text-gray-700 border-b border-gray-100">
+                        Hello, {{ user.username|default:"User" }}
+                    </div>
+                    <a href="{% url 'my_profile' %}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Your Account</a>
+                    <a href="{% url 'my_profile' %}?tab=orders" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Your Orders</a>
+                    {# Add more profile-related links here if needed, e.g., Addresses, Payment methods #}
+                    <a href="{% url 'logout' %}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 border-t border-gray-100 mt-1 pt-2">Logout</a>
+                </div>
+              </div>
+              {# NEW PROFILE DROPDOWN END #}
+
+            {% else %}
+              <a href="{% url 'login' %}" class="bg-black text-white px-3 py-1 rounded text-sm">Sign In</a>
+              <a href="{% url 'register' %}" class="border border-black text-black px-3 py-1 rounded text-sm">Sign Up</a>
             {% endif %}
-          </a>
-          <a href="{% url 'my_profile' %}" class="hover:text-gray-600 font-medium flex items-center justify-center">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" id="person" class="w-7 h-7">
-                <g><path d="M12 11a4 4 0 1 0-4-4 4 4 0 0 0 4 4zm6 10a1 1 0 0 0 1-1 7 7 0 0 0-14 0 1 1 0 0 0 1 1z"></path></g>
-            </svg>
-            <span class="sr-only">Profile</span>
-          </a>
-          <a href="{% url 'logout' %}" class="text-sm hover:text-gray-600 font-medium">Logout</a>
-        {% else %}
-          <a href="{% url 'login' %}" class="bg-black text-white px-3 py-1 rounded text-sm">Sign In</a>
-          <a href="{% url 'register' %}" class="border border-black text-black px-3 py-1 rounded text-sm">Sign Up</a>
-        {% endif %}
+          </div>
+
+          <div class="md:hidden flex items-center space-x-3">
+              <button onclick="toggleMobileSearch()" class="text-2xl focus:outline-none">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+              </button>
+              <button onclick="toggleMobileMenu()" class="text-3xl focus:outline-none">
+                ☰
+              </button>
+          </div>
       </div>
 
-      <button onclick="toggleMobileMenu()" class="md:hidden text-2xl focus:outline-none">
-        ☰
-      </button>
+      {# Mobile search bar as an overlay #}
+      <div id="mobileSearchOverlay" class="mobile-search-overlay md:hidden">
+          <form action="{% url 'shop' %}" method="get" class="flex-grow relative"> {# flex-grow to make form fill space #}
+              <input type="text" name="query" placeholder="Search products..." class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-black"
+                     value="{{ search_query|default_if_none:'' }}">
+              <button type="submit" class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+              </button>
+          </form>
+          {# Close button for the search bar #}
+          <button onclick="toggleMobileSearch()" class="ml-4 text-gray-600 hover:text-gray-900 focus:outline-none">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+          </button>
+      </div>
     </div>
   </header>
 
-  <div id="mobileMenu" class="fixed top-20 right-4 w-64 bg-white rounded-lg shadow-lg border border-gray-200 z-50 hidden flex-col p-4 space-y-4">
+  {# Main mobile menu #}
+  {# Ensure 'hidden' class is present by default. Remove it if it was somehow missing #}
+  <div id="mobileMenu" class="fixed top-20 right-4 w-64 bg-white rounded-lg shadow-lg border border-gray-200 z-50 flex-col p-4 space-y-4 hidden">
     <a href="{% url 'home' %}" class="block text-gray-800 hover:text-gray-600">Home</a>
     <a href="{% url 'shop' %}" class="block text-gray-800 hover:text-gray-600">Shop</a>
     <a href="{% url 'policy' %}" class="block text-gray-800 hover:text-gray-600">Policy</a>
@@ -107,6 +218,7 @@
       <a href="{% url 'wishlist' %}" class="block text-gray-800 hover:text-gray-600">Wishlist</a>
       <a href="{% url 'cart_page' %}" class="block text-gray-800 hover:text-gray-600">Cart</a>
       <a href="{% url 'my_profile' %}" class="block text-gray-800 hover:text-gray-600">Profile</a>
+      <a href="{% url 'my_profile' %}?tab=orders" class="block text-gray-800 hover:text-gray-600">My Orders</a> {# Added My Orders to mobile menu #}
       <a href="{% url 'logout' %}" class="block text-gray-800 hover:text-gray-600">Logout</a>
     {% else %}
       <a href="{% url 'login' %}" class="block text-gray-800 hover:text-gray-600">Sign In</a>
@@ -168,25 +280,83 @@
 
   <script>
     function toggleMobileMenu() {
-      const menu = document.getElementById('mobileMenu');
-      menu.classList.toggle('hidden');
+      const mobileMenu = document.getElementById('mobileMenu');
+      const mobileSearchOverlay = document.getElementById('mobileSearchOverlay');
+      const headerContentMobile = document.getElementById('headerContentMobile');
+
+      // Toggle 'open' class for the menu for sliding effect
+      mobileMenu.classList.toggle('open');
+      // Also toggle 'hidden' for initial state and accessibility
+      mobileMenu.classList.toggle('hidden');
+
+
+      // Ensure search overlay is closed if menu is opened
+      if (mobileMenu.classList.contains('open')) {
+          mobileSearchOverlay.classList.remove('open');
+          mobileSearchOverlay.classList.add('hidden'); // Ensure it's visually hidden
+          headerContentMobile.classList.remove('search-open'); // Ensure header content is visible
+      }
     }
 
-    function openDropdown() {
+    // Function for 'Pages' dropdown
+    function openPagesDropdown() { // Renamed for clarity
       document.getElementById('pagesDropdownMenu').classList.add('open');
     }
 
-    function closeDropdown() {
+    function closePagesDropdown() { // Renamed for clarity
       document.getElementById('pagesDropdownMenu').classList.remove('open');
     }
 
+    // Function for 'Profile' dropdown
+    function openProfileDropdown() { // New function
+      document.getElementById('profileDropdownMenu').classList.add('open');
+    }
+
+    function closeProfileDropdown() { // New function
+      document.getElementById('profileDropdownMenu').classList.remove('open');
+    }
+
+
     window.addEventListener('click', function (event) {
-      const dropdown = document.getElementById('pagesDropdownMenu');
-      const button = document.getElementById('pagesDropdownBtn');
-      if (dropdown && button && !button.contains(event.target) && !dropdown.contains(event.target)) {
-        closeDropdown();
+      // Handle 'Pages' dropdown
+      const pagesDropdown = document.getElementById('pagesDropdownMenu');
+      const pagesButton = document.getElementById('pagesDropdownBtn');
+      if (pagesDropdown && pagesButton && !pagesButton.contains(event.target) && !pagesDropdown.contains(event.target)) {
+        closePagesDropdown();
+      }
+
+      // Handle 'Profile' dropdown
+      const profileDropdown = document.getElementById('profileDropdownMenu');
+      const profileButton = document.getElementById('profileDropdownBtn');
+      if (profileDropdown && profileButton && !profileButton.contains(event.target) && !profileDropdown.contains(event.target)) {
+        closeProfileDropdown();
       }
     });
+
+    function toggleMobileSearch() {
+        const mobileSearchOverlay = document.getElementById('mobileSearchOverlay');
+        const headerContentMobile = document.getElementById('headerContentMobile');
+        const mobileSearchInput = mobileSearchOverlay.querySelector('input[name="query"]');
+        const mobileMenu = document.getElementById('mobileMenu'); // Get mobile menu
+
+        // Toggle 'open' class for the search overlay
+        mobileSearchOverlay.classList.toggle('open');
+        // Also toggle 'hidden' for initial state and accessibility
+        mobileSearchOverlay.classList.toggle('hidden');
+
+
+        // Toggle 'search-open' class on the main header content
+        headerContentMobile.classList.toggle('search-open');
+
+        // Ensure mobile menu is closed if search is opened
+        if (mobileSearchOverlay.classList.contains('open')) {
+            mobileMenu.classList.remove('open');
+            mobileMenu.classList.add('hidden'); // Ensure it's visually hidden
+            mobileSearchInput.focus();
+        } else {
+            mobileSearchInput.blur();
+        }
+    }
   </script>
 </body>
 </html>

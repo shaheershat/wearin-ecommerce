@@ -60,3 +60,14 @@ def multiply(value, arg):
         return float(value) * float(arg)
     except:
         return ''
+
+from django import template
+
+register = template.Library()
+
+@register.filter
+def get_category_name(categories, id):
+    try:
+        return next(c.name for c in categories if str(c.id) == str(id))
+    except StopIteration:
+        return ""
