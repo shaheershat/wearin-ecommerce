@@ -386,16 +386,41 @@ def request_register_otp_view(request):
 def verify_register_otp_view(request):
     email = request.session.get('otp_email')
     if not email:
-        return redirect('request_register_otp')
+        return redirect('register')
 
     if request.method == 'POST':
         entered_otp = request.POST.get('otp')
+
         try:
             otp_obj = EmailOTP.objects.get(email=email, otp=entered_otp, purpose="register")
-            return redirect('register')
+            user_data = request.session.get('pending_user_data')
+
+            if not user_data:
+                messages.error(request, "Session expired. Please register again.")
+                return redirect('register')
+
+            # Create user now
+            form = UserRegistrationForm(user_data)
+            if form.is_valid():
+                user = form.save()
+                login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+
+                # Clean session
+                request.session.pop('pending_user_data', None)
+                request.session.pop('otp_email', None)
+
+                messages.success(request, "Registration successful!")
+                return redirect('user_dashboard')
+            else:
+                messages.error(request, "Invalid session data.")
+                return redirect('register')
+
         except EmailOTP.DoesNotExist:
             messages.error(request, "Invalid OTP. Please try again.")
-    return render(request, 'user/auth/verify_register_otp.html', {"email": email})
+
+    return render(request, 'user/auth/verify_register_otp.html', {'email': email})
+
+
 
 # ------------------- OTP Forgot Password Views (No change needed) -------------------
 def request_reset_otp_view(request):
@@ -714,29 +739,32 @@ def login_view(request):
 
 # Your register_view
 def register_view(request):
-    list(messages.get_messages(request)) # Clear messages if any from previous redirects
-
     if request.user.is_authenticated:
-        messages.info(request, "You are already logged in.")
-        return redirect('user_dashboard') # Redirect if already logged in
+        return redirect('user_dashboard')
 
     if request.method == 'POST':
-        form = UserRegistrationForm(data=request.POST)
+        form = UserRegistrationForm(request.POST)
         if form.is_valid():
-            user = form.save()
-            # After registration, log the user in automatically
-            # *** FIX APPLIED HERE: Specify the backend explicitly ***
-            login(request, user, backend='django.contrib.auth.backends.ModelBackend')
-            messages.success(request, "Account created successfully! Welcome to WEARIN.")
-            # Redirect to user_dashboard after successful registration and login
-            return redirect('user_dashboard')
+            email = form.cleaned_data['email']
+            request.session['pending_user_data'] = form.cleaned_data
+            request.session['otp_email'] = email
+
+            otp = str(random.randint(100000, 999999))
+            EmailOTP.objects.update_or_create(
+                email=email,
+                defaults={"otp": otp, "purpose": "register", "created_at": timezone.now()}
+            )
+
+            send_otp_email(email, otp)
+            return redirect('verify_register_otp')
+
         else:
             for field, errors in form.errors.items():
                 for error in errors:
-                    messages.error(request, f"{field.replace('_', ' ').title()}: {error}")
-            if form.non_field_errors():
-                for error in form.non_field_errors():
-                    messages.error(request, f"Error: {error}")
+                    messages.error(request, f"{field.title()}: {error}")
+            for error in form.non_field_errors():
+                messages.error(request, f"Error: {error}")
+
     else:
         form = UserRegistrationForm()
 
