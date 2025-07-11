@@ -142,6 +142,25 @@
             addressInput.value = selectedAddress.value;
             form.appendChild(addressInput);
 
+            // Add Razorpay payment details to the form
+            const rzpPaymentIdInput = document.createElement('input');
+            rzpPaymentIdInput.type = 'hidden';
+            rzpPaymentIdInput.name = 'razorpay_payment_id';
+            rzpPaymentIdInput.value = response.razorpay_payment_id;
+            form.appendChild(rzpPaymentIdInput);
+
+            const rzpSignatureInput = document.createElement('input');
+            rzpSignatureInput.type = 'hidden';
+            rzpSignatureInput.name = 'razorpay_signature';
+            rzpSignatureInput.value = response.razorpay_signature;
+            form.appendChild(rzpSignatureInput);
+
+            const rzpOrderIdInput = document.createElement('input');
+            rzpOrderIdInput.type = 'hidden';
+            rzpOrderIdInput.name = 'razorpay_order_id';
+            rzpOrderIdInput.value = "{{ order_id }}"; // Use the order_id from context
+            form.appendChild(rzpOrderIdInput);
+
             form.submit();
         },
         "theme": { "color": "#000000" }
@@ -169,7 +188,14 @@
         if (selectedPayment.value === 'razorpay') {
             rzp.open();
         } else {
-            form.submit();  // Wallet or COD
+            // For Wallet or COD, explicitly set the method value on the form before submission
+            const paymentMethodInput = document.createElement('input');
+            paymentMethodInput.type = 'hidden';
+            paymentMethodInput.name = 'payment_method';
+            paymentMethodInput.value = selectedPayment.value;
+            form.appendChild(paymentMethodInput);
+
+            form.submit();
         }
 
         e.preventDefault();

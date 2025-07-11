@@ -1,0 +1,6 @@
+<p>Hi {{ user.first_name|default:user.username }},</p>
+<p>This is to confirm that <strong>{{ product.name }}</strong> has been successfully removed from your shopping cart.</p>
+<p>If you removed it accidentally, you can always visit our shop to find other great items:</p>
+<p><a href="{{ domain }}{% url 'shop' %}">Continue Shopping</a></p>
+<p>Regards,</p>
+<p>Your Store Team</p>
