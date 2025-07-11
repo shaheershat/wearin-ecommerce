@@ -32,7 +32,8 @@ INSTALLED_APPS = [
     'allauth.socialaccount.providers.google',
     'core.apps.CoreConfig',
     'crispy_forms',
-    'crispy_bootstrap5', # Keep this here
+    'crispy_bootstrap5',
+    'django_celery_beat',
 ]
 
 MIDDLEWARE = [
@@ -223,8 +224,20 @@ RAZORPAY_KEY_SECRET = 'ewDtwYuzfMwBDfjNFiV8bDOk'
 # CRISPY FORMS SETTINGS (ensure these are at the correct level, not inside a function)
 CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
 CRISPY_TEMPLATE_PACK = "bootstrap5"
+ADMIN_SESSION_COOKIE_NAME = 'admin_sessionid'
 
 # Remove any view functions or decorators from here! They belong in views.py or decorators.py
 # @user_login_required # This was incorrect here
 # def user_dashboard_view(request): # This was incorrect here
 #     return render(request, 'user/main/authenticated_home.html') # This was incorrect here
+
+CELERY_BROKER_URL = 'redis://localhost:6379/0'  # Use your Redis URL
+CELERY_RESULT_BACKEND = 'redis://localhost:6379/0' # Use your Redis URL
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'Asia/Kolkata'  # Match your Django TIME_ZONE
+CELERY_ENABLE_UTC = False  # Set to False if using local time zone
+
+# For email absolute URLs (necessary for emails sent by Celery tasks)
+SITE_URL = 'http://127.0.0.1:8000' # Change to your domain in production

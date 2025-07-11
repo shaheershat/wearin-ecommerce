@@ -1,21 +1,39 @@
 {% extends 'user/base.html' %}
 {% load static %}
 
-{% block title %}Product Details{% endblock %}
+{% block title %}Product Details - {{ product.name }}{% endblock %}
 
 {% block content %}
 <style>
     .active-thumb { border: 2px solid black; }
     .drawer { transition: transform 0.3s ease-in-out; }
+    /* New styles for reservation info */
+    .reservation-info {
+        background-color: #fff3cd; /* Light yellow background */
+        border: 1px solid #ffeeba;
+        color: #856404;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        margin-bottom: 1.5rem;
+        font-weight: bold;
+    }
+    .sold-info {
+        background-color: #f8d7da; /* Light red background */
+        border: 1px solid #f5c6cb;
+        color: #721c24;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        margin-bottom: 1.5rem;
+        font-weight: bold;
+    }
 </style>
 
-<!-- Product Detail -->
 <div class="container mx-auto py-10 px-4">
     <div class="p-6 flex flex-col md:flex-row gap-10">
         <div class="flex gap-4 w-full md:w-1/2 items-start">
             <div class="flex flex-col gap-2" id="thumbnails">
                 {% for img in product.images.all %}
-                <img src="{{ img.image.url }}" class="thumb w-20 h-28 object-cover rounded-md cursor-pointer border" onclick="changePreview(this)">
+                <img src="{{ img.image.url }}" class="thumb w-20 h-28 object-cover rounded-md cursor-pointer border {% if forloop.first %}active-thumb{% endif %}" onclick="changePreview(this)">
                 {% endfor %}
             </div>
             <div class="relative w-full max-w-[600px] aspect-[3/4] border rounded-md overflow-hidden group">
@@ -32,25 +50,79 @@
             <p class="text-sm mb-1"><strong>Size:</strong> {{ product.size }}</p>
             <p class="text-sm mb-6"><strong>Description:</strong> {{ product.description }}</p>
 
-            <div class="flex gap-4 mt-6">
-                <form method="POST" action="{% url 'add_to_cart' product.id %}" id="add-to-cart-form">
-                    {% csrf_token %}
-                    <button type="submit" class="bg-black text-white px-6 py-3 rounded hover:bg-gray-800 transition">
-                        Add to Cart
-                    </button>
-                </form>
-                <form method="POST" action="{% url 'buy_now_checkout' product.id %}">
-                    {% csrf_token %}
-                    <button type="submit" class="bg-yellow-400 text-black px-6 py-3 rounded hover:bg-yellow-500 transition">
-                        Buy Now
-                    </button>
-                </form>
-            </div>
+            {# --- Reservation Status Display --- #}
+            {% if product.is_sold %}
+                <div class="sold-info">
+                    This item has been **SOLD OUT**.
+                </div>
+                <button type="button" class="bg-gray-400 text-white px-6 py-3 rounded cursor-not-allowed" disabled>
+                    Sold Out
+                </button>
+            {% elif is_reserved_by_current_user %} {# Check context variable passed from view #}
+                <div class="reservation-info">
+                    This item is reserved for you!
+                    <span id="reservation-timer"></span>
+                </div>
+                <p class="text-sm text-gray-700 mb-4">Complete your purchase within the timer to secure this item.</p>
+                <div class="flex gap-4 mt-6">
+                    <form method="POST" action="{% url 'add_to_cart' product.id %}" id="add-to-cart-form">
+                        {% csrf_token %}
+                        <button type="submit" class="bg-black text-white px-6 py-3 rounded hover:bg-gray-800 transition">
+                            Update Cart (Extend Reservation)
+                        </button>
+                    </form>
+                    <form method="POST" action="{% url 'buy_now_checkout' product.id %}">
+                        {% csrf_token %}
+                        <button type="submit" class="bg-yellow-400 text-black px-6 py-3 rounded hover:bg-yellow-500 transition">
+                            Proceed to Checkout
+                        </button>
+                    </form>
+                </div>
+            {% elif product.is_currently_reserved %} {# Check if reserved by someone else (including expired for others) #}
+                <div class="reservation-info">
+                    This item is currently **RESERVED** by another customer.
+                </div>
+                <p class="text-sm text-gray-700 mb-4">You cannot add this item to your cart at the moment.</p>
+                <div class="flex gap-4 mt-6">
+                    {# Only show Notify Me if user is logged in AND not already subscribed #}
+                    {% if request.user.is_authenticated %}
+                        {% if not has_subscribed_for_notification %} {# Context variable from view #}
+                            <button type="button" id="notify-me-button" data-product-id="{{ product.id }}" 
+                                    class="bg-blue-600 text-white px-6 py-3 rounded hover:bg-blue-700 transition">
+                                Notify Me When Available
+                            </button>
+                            <p id="notify-me-message" class="text-sm mt-2"></p>
+                        {% else %}
+                            <button type="button" class="bg-gray-400 text-white px-6 py-3 rounded cursor-not-allowed" disabled>
+                                Already Notified
+                            </button>
+                        {% endif %}
+                    {% else %}
+                        <p class="text-sm text-gray-700">Please <a href="{% url 'login' %}" class="text-blue-600 hover:underline">login</a> to get notified when this item becomes available.</p>
+                    {% endif %}
+                </div>
+            {% else %}
+                {# Product is available and not reserved by anyone #}
+                <div class="flex gap-4 mt-6">
+                    <form method="POST" action="{% url 'add_to_cart' product.id %}" id="add-to-cart-form">
+                        {% csrf_token %}
+                        <button type="submit" class="bg-black text-white px-6 py-3 rounded hover:bg-gray-800 transition">
+                            Add to Cart
+                        </button>
+                    </form>
+                    <form method="POST" action="{% url 'buy_now_checkout' product.id %}">
+                        {% csrf_token %}
+                        <button type="submit" class="bg-yellow-400 text-black px-6 py-3 rounded hover:bg-yellow-500 transition">
+                            Buy Now
+                        </button>
+                    </form>
+                </div>
+            {% endif %}
+            {# --- End Reservation Status Display --- #}
         </div>
     </div>
 </div>
 
-<!-- Newsletter -->
 <section class="relative h-[747px] md:h-[900px] bg-cover bg-center bg-no-repeat" style="background-image: url('{% static 'images/nsnew.png' %}');">
     <div class="absolute inset-0"></div>
     <div class="relative z-10 flex flex-col items-center justify-center h-full text-center px-4">
@@ -68,7 +140,6 @@
     </div>
 </section>
 
-<!-- Mini Cart Drawer -->
 <div id="cart-drawer" class="fixed top-0 right-0 w-80 max-w-full h-full bg-white shadow-lg z-50 transform translate-x-full drawer">
     <div class="flex flex-col h-full">
         <div class="flex justify-between items-center p-4 border-b">
@@ -94,8 +165,16 @@
         clickedThumb.classList.add('active-thumb');
     }
 
+    // --- Initial setup for thumbnails and reservation timer ---
     window.onload = () => {
         if (thumbs.length > 0) thumbs[0].classList.add('active-thumb');
+
+        // Check if reservation timer should start
+        const reservationExpiresInSeconds = parseInt("{{ reservation_expires_in_seconds|default:0 }}"); // Use default:0
+        const isReservedByCurrentUser = "{{ is_reserved_by_current_user }}" === "True";
+        if (isReservedByCurrentUser && reservationExpiresInSeconds > 0) {
+            startReservationTimer(reservationExpiresInSeconds);
+        }
     }
 
     function zoomImage(e) {
@@ -171,7 +250,7 @@
         if (show) {
             drawer.classList.remove("translate-x-full");
             overlay.classList.remove("hidden");
-            loadMiniCartItems(); // 🛒 Load items
+            loadMiniCartItems(); // 🛒 Load items when drawer opens
         } else {
             drawer.classList.add("translate-x-full");
             overlay.classList.add("hidden");
@@ -208,7 +287,7 @@
             });
     }
 
-    document.getElementById('add-to-cart-form').addEventListener('submit', function(e) {
+    document.getElementById('add-to-cart-form')?.addEventListener('submit', function(e) {
         e.preventDefault();
         const form = this;
         const csrfToken = form.querySelector('[name=csrfmiddlewaretoken]').value;
@@ -220,14 +299,86 @@
                 'X-Requested-With': 'XMLHttpRequest'
             },
         }).then(response => {
+            // Check for a successful status code (2xx range)
             if (response.ok) {
-                toggleDrawer(true);
+                // Parse JSON response for messages and potential redirect URL
+                return response.json().then(data => {
+                    if (data.message) {
+                        alert(data.message); // Show success/info message from backend
+                    }
+                    if (data.redirect_url) {
+                        window.location.href = data.redirect_url; // Redirect if backend specifies
+                    } else {
+                        window.location.reload(); // Otherwise, reload the current page
+                    }
+                    toggleDrawer(true); // Open cart drawer
+                });
             } else {
-                alert("Error adding to cart.");
+                // If there's an error response, parse JSON for error message
+                return response.json().then(data => {
+                    alert(data.message || "Error adding to cart.");
+                }).catch(() => {
+                    alert("Error processing cart request."); // Fallback for non-JSON errors
+                });
             }
         }).catch(error => {
             console.error("Cart error:", error);
+            alert("Network error. Please try again.");
         });
     });
+
+    // --- JavaScript for Reservation Timer ---
+    function startReservationTimer(duration) {
+        const timerDisplay = document.getElementById('reservation-timer');
+        let timer = duration;
+        
+        const countdown = setInterval(() => {
+            const minutes = Math.floor(timer / 60);
+            const seconds = timer % 60;
+
+            timerDisplay.textContent = `Time left: ${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+
+            if (--timer < 0) {
+                clearInterval(countdown);
+                timerDisplay.textContent = "Reservation expired!";
+                // Reload the page after a short delay to reflect expired status
+                setTimeout(() => window.location.reload(), 1000); 
+            }
+        }, 1000);
+    }
+
+    // --- JavaScript for Notify Me button ---
+    document.getElementById('notify-me-button')?.addEventListener('click', function() {
+        const productId = this.dataset.productId;
+        const messageDiv = document.getElementById('notify-me-message');
+        messageDiv.textContent = ''; // Clear previous messages
+        messageDiv.classList.remove('text-green-600', 'text-red-600');
+
+        fetch(`{% url 'notify_me' 0 %}`.replace('0', productId), { // Dynamic URL creation
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'X-Requested-With': 'XMLHttpRequest',
+                'Content-Type': 'application/json', // Sending JSON body
+            },
+            body: JSON.stringify({ product_id: productId }) // Send product_id as JSON
+        })
+        .then(response => response.json().then(data => ({ status: response.status, body: data })))
+        .then(({ status, body }) => {
+            if (status === 200 && body.success) {
+                messageDiv.textContent = body.message;
+                messageDiv.classList.add('text-green-600');
+                document.getElementById('notify-me-button').disabled = true; // Disable button
+            } else {
+                messageDiv.textContent = body.message || 'Error subscribing.';
+                messageDiv.classList.add('text-red-600');
+            }
+        }).catch(error => {
+            console.error("Notify Me error:", error);
+            messageDiv.textContent = 'Network error. Please try again.';
+            messageDiv.classList.add('text-red-600');
+        });
+    });
+
 </script>
 {% endblock %}

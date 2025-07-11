@@ -16,7 +16,8 @@ from core.views.user_views import (
     add_address,
     edit_address, set_default_address, delete_address, get_address_data,
     subscribe_newsletter,
-    add_address_form_view
+    add_address_form_view,
+    notify_me_view,
 )
 
 urlpatterns = [
@@ -86,6 +87,7 @@ urlpatterns = [
     path('checkout/', user_views.checkout_view, name='checkout'),
     path('payment/success/', user_views.payment_success_view, name='payment_success'),
     path('payment/failed/', user_views.payment_failed_view, name='payment_failed'),
+    path('notify-me/<int:product_id>/', notify_me_view, name='notify_me'),
 
     # --- Wishlist ---
     path('wishlist/', wishlist_view, name='wishlist'),

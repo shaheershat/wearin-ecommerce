@@ -1,43 +1,99 @@
 {% extends 'user/base.html' %}
 {% load static %}
+
+{% block title %}Your Cart{% endblock %}
+
 {% block content %}
-<div class="container mx-auto py-10 px-4">
-    <h2 class="text-2xl font-bold mb-6">Your Cart</h2>
+<div class="container mx-auto px-4 py-10 max-w-4xl">
+    <h2 class="text-3xl font-bold mb-8 text-center">Your Shopping Cart</h2>
 
     {% if cart_items %}
     <div class="space-y-6">
-        {% for product_id, item in cart_items %}
+        {% for item in cart_items %}
         <div class="flex flex-col md:flex-row justify-between items-center border p-4 rounded-lg shadow-sm bg-white">
-            <div class="w-24 h-24 mb-4 md:mb-0">
+            <div class="w-24 h-24 mb-4 md:mb-0 flex-shrink-0">
                 <img src="{{ item.image_url }}" class="object-cover w-full h-full rounded" alt="{{ item.name }}">
             </div>
 
-            <div class="flex-1 md:ml-6">
+            <div class="flex-1 md:ml-6 text-center md:text-left">
                 <h3 class="text-lg font-semibold">{{ item.name }}</h3>
                 <p class="text-green-600 font-medium">₹{{ item.price }}</p>
                 <p class="text-sm text-gray-500">Quantity: {{ item.quantity }}</p>
                 <p class="text-sm text-gray-500">Total: ₹{{ item.total }}</p>
+
+                {# --- Reservation Status and Timer for Cart Item --- #}
+                {% if item.is_reserved_by_current_user %}
+                    <p class="text-sm text-red-600 mt-2 font-bold">
+                        Reserved for you! Time left: <span id="cart-item-timer-{{ item.product_id }}"></span>
+                    </p>
+                {% elif item.is_sold %}
+                    <p class="text-sm text-red-600 mt-2 font-bold">This item has been **SOLD OUT** and has been removed from your cart.</p>
+                    {# Note: The view already removes it, this message confirms it to the user. #}
+                {% elif item.is_reserved_by_other %}
+                    <p class="text-sm text-red-600 mt-2 font-bold">This item is now **RESERVED** by another customer and has been removed from your cart.</p>
+                    {# Note: The view already removes it, this message confirms it to the user. #}
+                {% endif %}
+                {# --- End Reservation Status and Timer for Cart Item --- #}
             </div>
 
             <div class="flex space-x-2 mt-4 md:mt-0">
-                <form method="POST" action="{% url 'remove_from_cart' product_id %}">
+                <form method="POST" action="{% url 'remove_from_cart' item.product_id %}">
+                    {# Use item.product_id here as that's what's passed in the context #}
                     {% csrf_token %}
-                    <button class="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600">Remove</button>
+                    <button type="submit" class="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600">Remove</button>
                 </form>
             </div>
         </div>
         {% endfor %}
     </div>
 
-    <div class="mt-10 border-t pt-6 text-right">
-        <h3 class="text-xl font-bold">Subtotal: ₹{{ total_price }}</h3>
-        <a href="{% url 'checkout' %}" class="mt-4 inline-block px-6 py-2 bg-black text-white rounded hover:bg-gray-800">
-  Proceed to Checkout
-</a>
+    <div class="mt-8 p-6 bg-white shadow rounded-lg flex flex-col md:flex-row justify-between items-center">
+        <h3 class="text-xl font-bold">Cart Total: <span class="text-green-600">₹{{ total_price }}</span></h3>
+        <a href="{% url 'checkout' %}" class="mt-4 md:mt-0 px-8 py-3 bg-black text-white rounded hover:bg-gray-900 transition">Proceed to Checkout</a>
     </div>
 
     {% else %}
-    <p>Your cart is empty.</p>
+    <div class="text-center py-10 bg-white shadow rounded-lg">
+        <p class="text-gray-600 text-lg mb-4">Your cart is empty.</p>
+        <a href="{% url 'shop' %}" class="text-blue-600 hover:underline">Continue Shopping</a>
+    </div>
     {% endif %}
 </div>
+
+<script>
+    // JavaScript for reservation timers
+    document.addEventListener('DOMContentLoaded', function() {
+        const cartItemsData = JSON.parse('{{ cart_items|safe }}'); // Parse the JSON string
+
+        cartItemsData.forEach(item => {
+            if (item.is_reserved_by_current_user && item.reservation_time_left_seconds > 0) {
+                startCartItemTimer(item.product_id, item.reservation_time_left_seconds);
+            }
+        });
+    });
+
+    function startCartItemTimer(productId, duration) {
+        const timerDisplay = document.getElementById(`cart-item-timer-${productId}`);
+        let timer = duration;
+
+        const countdown = setInterval(() => {
+            const minutes = Math.floor(timer / 60);
+            const seconds = timer % 60;
+
+            if (timerDisplay) { // Ensure the element exists
+                timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            }
+
+            if (--timer < 0) {
+                clearInterval(countdown);
+                if (timerDisplay) {
+                    timerDisplay.textContent = "Expired!";
+                }
+                // When a reservation expires in the cart, it's best to reload the page
+                // so the backend can re-evaluate and clean up the cart item.
+                setTimeout(() => window.location.reload(), 1000);
+            }
+        }, 1000);
+    }
+</script>
 {% endblock %}
