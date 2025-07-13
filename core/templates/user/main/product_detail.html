@@ -6,7 +6,8 @@
 {% block content %}
 <style>
     .active-thumb { border: 2px solid black; }
-    .drawer { transition: transform 0.3s ease-in-out; }
+    /* The .drawer class is no longer needed here if the mini-cart is in base.html */
+    /* .drawer { transition: transform 0.3s ease-in-out; } */
     /* New styles for reservation info */
     .reservation-info {
         background-color: #fff3cd; /* Light yellow background */
@@ -65,7 +66,8 @@
                 </div>
                 <p class="text-sm text-gray-700 mb-4">Complete your purchase within the timer to secure this item.</p>
                 <div class="flex gap-4 mt-6">
-                    <form method="POST" action="{% url 'add_to_cart' product.id %}" id="add-to-cart-form">
+                    {# Use the same form class as in the base.html JavaScript expects #}
+                    <form method="POST" action="{% url 'add_to_cart' product.id %}" class="add-to-cart-form" data-product-id="{{ product.id }}">
                         {% csrf_token %}
                         <button type="submit" class="bg-black text-white px-6 py-3 rounded hover:bg-gray-800 transition">
                             Update Cart (Extend Reservation)
@@ -104,7 +106,8 @@
             {% else %}
                 {# Product is available and not reserved by anyone #}
                 <div class="flex gap-4 mt-6">
-                    <form method="POST" action="{% url 'add_to_cart' product.id %}" id="add-to-cart-form">
+                    {# Use the same form class as in the base.html JavaScript expects #}
+                    <form method="POST" action="{% url 'add_to_cart' product.id %}" class="add-to-cart-form" data-product-id="{{ product.id }}">
                         {% csrf_token %}
                         <button type="submit" class="bg-black text-white px-6 py-3 rounded hover:bg-gray-800 transition">
                             Add to Cart
@@ -140,6 +143,8 @@
     </div>
 </section>
 
+{# REMOVE THE OLD CART DRAWER HTML FROM HERE. IT'S NOW IN BASE.HTML #}
+{#
 <div id="cart-drawer" class="fixed top-0 right-0 w-80 max-w-full h-full bg-white shadow-lg z-50 transform translate-x-full drawer">
     <div class="flex flex-col h-full">
         <div class="flex justify-between items-center p-4 border-b">
@@ -154,6 +159,7 @@
     </div>
 </div>
 <div id="drawer-overlay" class="fixed inset-0 bg-black bg-opacity-30 z-40 hidden" onclick="toggleDrawer(false)"></div>
+#}
 
 <script>
     const mainImage = document.getElementById('mainImage');
@@ -170,7 +176,8 @@
         if (thumbs.length > 0) thumbs[0].classList.add('active-thumb');
 
         // Check if reservation timer should start
-        const reservationExpiresInSeconds = parseInt("{{ reservation_expires_in_seconds|default:0 }}"); // Use default:0
+        // Ensure reservation_expires_in_seconds is correctly passed from the view
+        const reservationExpiresInSeconds = parseInt("{{ reservation_expires_in_seconds|default:0 }}");
         const isReservedByCurrentUser = "{{ is_reserved_by_current_user }}" === "True";
         if (isReservedByCurrentUser && reservationExpiresInSeconds > 0) {
             startReservationTimer(reservationExpiresInSeconds);
@@ -244,13 +251,17 @@
         });
     }
 
+    // --- IMPORTANT: These functions should be in base.html if the mini-cart modal is there. ---
+    // If you keep them here, ensure they are compatible with the base.html mini-cart.
+    // I recommend moving them to the <script> block in base.html.
+    /*
     function toggleDrawer(show = true) {
-        const drawer = document.getElementById("cart-drawer");
-        const overlay = document.getElementById("drawer-overlay");
+        const drawer = document.getElementById("cart-drawer"); // This ID refers to the old drawer
+        const overlay = document.getElementById("drawer-overlay"); // This ID refers to the old overlay
         if (show) {
             drawer.classList.remove("translate-x-full");
             overlay.classList.remove("hidden");
-            loadMiniCartItems(); // 🛒 Load items when drawer opens
+            // loadMiniCartItems(); // 🛒 This is the correct call to refresh mini-cart
         } else {
             drawer.classList.add("translate-x-full");
             overlay.classList.add("hidden");
@@ -261,15 +272,15 @@
         fetch("{% url 'mini_cart_data' %}")
             .then(response => response.json())
             .then(data => {
-                const container = document.getElementById('mini-cart-items');
+                const container = document.getElementById('mini-cart-items'); // This ID refers to the old container
                 container.innerHTML = '';
 
-                if (data.items.length === 0) {
+                if (data.items.length === 0) { // Should be data.cart_items_data
                     container.innerHTML = '<p class="text-center text-gray-500 py-6">Your cart is empty.</p>';
                     return;
                 }
 
-                data.items.forEach(item => {
+                data.items.forEach(item => { // Should be data.cart_items_data
                     const div = document.createElement('div');
                     div.className = 'flex items-center gap-4 border-b pb-3';
                     div.innerHTML = `
@@ -278,7 +289,7 @@
                             <p class="font-semibold">${item.name}</p>
                             <p class="text-xs text-gray-600">₹${item.price} × ${item.quantity}</p>
                         </div>
-                        <p class="font-semibold text-sm">₹${item.total}</p>
+                        <p class="font-semibold text-sm">₹${item.total}</p> // 'total' might not be directly available, calculate
                     `;
                     container.appendChild(div);
                 });
@@ -286,46 +297,17 @@
                 console.error("Failed to load mini cart:", err);
             });
     }
+    */
+    // --- END: Functions to be moved to base.html ---
 
-    document.getElementById('add-to-cart-form')?.addEventListener('submit', function(e) {
-        e.preventDefault();
-        const form = this;
-        const csrfToken = form.querySelector('[name=csrfmiddlewaretoken]').value;
 
-        fetch(form.action, {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': csrfToken,
-                'X-Requested-With': 'XMLHttpRequest'
-            },
-        }).then(response => {
-            // Check for a successful status code (2xx range)
-            if (response.ok) {
-                // Parse JSON response for messages and potential redirect URL
-                return response.json().then(data => {
-                    if (data.message) {
-                        alert(data.message); // Show success/info message from backend
-                    }
-                    if (data.redirect_url) {
-                        window.location.href = data.redirect_url; // Redirect if backend specifies
-                    } else {
-                        window.location.reload(); // Otherwise, reload the current page
-                    }
-                    toggleDrawer(true); // Open cart drawer
-                });
-            } else {
-                // If there's an error response, parse JSON for error message
-                return response.json().then(data => {
-                    alert(data.message || "Error adding to cart.");
-                }).catch(() => {
-                    alert("Error processing cart request."); // Fallback for non-JSON errors
-                });
-            }
-        }).catch(error => {
-            console.error("Cart error:", error);
-            alert("Network error. Please try again.");
-        });
-    });
+    // This script block should primarily contain page-specific JS
+    // The AJAX form submission for add-to-cart needs to be in base.html or a globally loaded JS file
+    // since the mini-cart logic is now global.
+
+    // If you prefer to keep the add-to-cart form handler here,
+    // make sure the elements it interacts with (`cartCountSpan`, `miniCartModal`, etc.)
+    // are accessible (e.g., defined in global scope or passed to functions).
 
     // --- JavaScript for Reservation Timer ---
     function startReservationTimer(duration) {
@@ -379,6 +361,14 @@
             messageDiv.classList.add('text-red-600');
         });
     });
+
+    // IMPORTANT: The main AJAX form handler for "Add to Cart" should now be placed
+    // within the <script> block in your base.html file, as it interacts with the
+    // global mini-cart elements.
+    // The `document.querySelectorAll('.add-to-cart-form').forEach(...)` code
+    // I provided previously should be in base.html.
+    // This template only needs to ensure its forms have the correct class: `add-to-cart-form`
+    // and `data-product-id`.
 
 </script>
 {% endblock %}

@@ -5,13 +5,16 @@ import os
 import cloudinary
 import cloudinary.uploader
 import cloudinary.api
-
+from datetime import timedelta # Import timedelta for Celery Beat schedule
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = 'django-insecure-=7w#3h#riq8x=oe2u&e)y_^)ebj4xx%8d8_18eops^bjn0*%a+'
+
+# SECURITY WARNING: don't run with debug true in production!
 DEBUG = True
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost'] # Moved ALLOWED_HOSTS here
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
 
 
 # Installed apps
@@ -30,16 +33,15 @@ INSTALLED_APPS = [
     'allauth.account',
     'allauth.socialaccount',
     'allauth.socialaccount.providers.google',
-    'core.apps.CoreConfig',
+    'core.apps.CoreConfig', # Your core app
     'crispy_forms',
     'crispy_bootstrap5',
-    'django_celery_beat',
+    'django_celery_beat', # Celery Beat for periodic tasks
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    # 'core.middlewares.CustomSessionMiddleware', # <-- IMPORTANT: Commented out or remove this
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -48,6 +50,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
+# This check relates to admin site and is generally fine to silence if you understand it.
 SILENCED_SYSTEM_CHECKS = ['admin.E410']
 
 ROOT_URLCONF = 'config.urls'
@@ -82,14 +85,13 @@ DATABASES = {
     }
 }
 
-# Session Settings - Remove manual session cookie names to avoid conflicts
-# Django's SessionMiddleware handles 'sessionid' by default
-# SESSION_ENGINE = 'django.contrib.sessions.backends.db' # This is often default anyway
-# SESSION_COOKIE_NAME = 'user_sessionid' # <-- REMOVED
-# ADMIN_SESSION_COOKIE_NAME = 'admin_sessionid' # <-- REMOVED
-SESSION_COOKIE_AGE = 86400
+# Session Settings
+SESSION_COOKIE_AGE = 86400 # 24 hours
 SESSION_EXPIRE_AT_BROWSER_CLOSE = False
 SESSION_COOKIE_SAMESITE = 'Lax'
+# Removed redundant/conflicting session cookie names, Django defaults are usually fine.
+# ADMIN_SESSION_COOKIE_NAME will default to Django's standard for admin pages.
+
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -100,9 +102,9 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'Asia/Kolkata'
+TIME_ZONE = 'Asia/Kolkata' # Ensure this matches your Celery TIME_ZONE
 USE_I18N = True
-USE_TZ = True
+USE_TZ = True # Use timezone-aware datetimes
 
 # Static and Media files
 STATIC_URL = 'static/'
@@ -110,14 +112,14 @@ STATICFILES_DIRS = [BASE_DIR / "core/static"]
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
-# SOCIALACCOUNT_ADAPTER = 'core.adapters.CustomSocialAccountAdapter'
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Cloudinary
+# Cloudinary Configuration
 CLOUDINARY_STORAGE = {
     'CLOUD_NAME': 'dzpksiomk',
     'API_KEY': '632675563128142',
-    'API_SECRET': 'UEND0Y8VjyLI9uNA9CWAC4DkcZM'
+    'API_SECRET': 'UEND0Y8VjyLI9uNA9CWAC4DkcZM' # SECURITY WARNING: Use environment variables for production!
 }
 cloudinary.config(
     cloud_name=CLOUDINARY_STORAGE['CLOUD_NAME'],
@@ -125,11 +127,11 @@ cloudinary.config(
     api_secret=CLOUDINARY_STORAGE['API_SECRET']
 )
 
-# Sites framework
+# Sites framework (required by allauth)
 SITE_ID = 1
 
 
-# Authentication Backends
+# Authentication Backends (required by allauth)
 AUTHENTICATION_BACKENDS = [
     'django.contrib.auth.backends.ModelBackend',
     'allauth.account.auth_backends.AuthenticationBackend',
@@ -138,19 +140,22 @@ AUTHENTICATION_BACKENDS = [
 # Redirects
 LOGIN_URL = '/login/' # Your login URL name is 'login' which maps to /login/
 LOGIN_REDIRECT_URL = '/my-home/' # Redirect after successful login
-LOGOUT_REDIRECT_URL = 'home' # Redirect after successful logout
+LOGOUT_REDIRECT_URL = 'home' # Redirect after successful logout (should be a URL name or path)
 
-# Allauth Updated Settings
-ACCOUNT_LOGOUT_ON_GET = True # Can be True, but be mindful of direct logout links
-ACCOUNT_AUTHENTICATION_METHOD = 'email'
-ACCOUNT_USERNAME_REQUIRED = False
-ACCOUNT_EMAIL_REQUIRED = True
-ACCOUNT_SIGNUP_FIELDS = ['email']
+# Django-allauth Updated Settings (addressed warnings)
+ACCOUNT_LOGOUT_ON_GET = True # Consider changing to False for production for CSRF protection
+ACCOUNT_LOGIN_METHODS = ['email'] # Replaces ACCOUNT_AUTHENTICATION_METHOD
+ACCOUNT_SIGNUP_FIELDS = ['email'] # Consistent signup fields
+
+# Removed deprecated settings:
+# ACCOUNT_AUTHENTICATION_METHOD = 'email'
+# ACCOUNT_USERNAME_REQUIRED = False
+# ACCOUNT_EMAIL_REQUIRED = True
 
 SOCIALACCOUNT_AUTO_SIGNUP = True
 SOCIALACCOUNT_EMAIL_REQUIRED = True
 SOCIALACCOUNT_QUERY_EMAIL = True
-SOCIALACCOUNT_LOGIN_ON_GET = True # Consider setting to False for production unless specific need
+SOCIALACCOUNT_LOGIN_ON_GET = True # Consider changing to False for production for CSRF protection
 
 SOCIALACCOUNT_PROVIDERS = {
     'google': {
@@ -159,7 +164,7 @@ SOCIALACCOUNT_PROVIDERS = {
     }
 }
 
-# Logging
+# Logging Configuration
 import logging
 LOGGING = {
     'version': 1,
@@ -201,43 +206,60 @@ LOGGING = {
             'level': 'INFO',
             'propagate': False,
         },
+        # Add logger for your Celery tasks and management commands
+        'django.db.backends': { # Good for seeing database queries in DEBUG
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
     },
 }
 
-# Email
+# Email Settings
+# For development, print emails to console. For production, use SMTP.
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+
+# Define these variables even if not directly used by console.EmailBackend
+# They are needed if DEFAULT_FROM_EMAIL references EMAIL_HOST_USER,
+# or for when you switch to SMTP in production.
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'infoatwearin@gmail.com'
-EMAIL_HOST_PASSWORD = 'xlbp ouqt keab nsod'
-DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
-ACCOUNT_EMAIL_VERIFICATION = "none" # Important for allauth: "mandatory", "optional", "none"
+EMAIL_HOST_USER = 'infoatwearin@gmail.com' # This variable is now explicitly defined
+EMAIL_HOST_PASSWORD = 'xlbp ouqt keab nsod' # SECURITY WARNING: Use environment variables for production!
 
-# Razorpay
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER # This line will now work without NameError
+
+ACCOUNT_EMAIL_VERIFICATION = "none" # "mandatory", "optional", "none" - set as per your needs
+
+# Razorpay API Keys (SECURITY WARNING: Use environment variables for production!)
 RAZORPAY_KEY_ID = 'rzp_test_eJqlkY9BUkrY9k'
 RAZORPAY_KEY_SECRET = 'ewDtwYuzfMwBDfjNFiV8bDOk'
 
-
-# ACCOUNT_ADAPTER = 'core.adapters.CustomAccountAdapter'
-
-# CRISPY FORMS SETTINGS (ensure these are at the correct level, not inside a function)
+# CRISPY FORMS SETTINGS
 CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
 CRISPY_TEMPLATE_PACK = "bootstrap5"
-ADMIN_SESSION_COOKIE_NAME = 'admin_sessionid'
 
-# Remove any view functions or decorators from here! They belong in views.py or decorators.py
-# @user_login_required # This was incorrect here
-# def user_dashboard_view(request): # This was incorrect here
-#     return render(request, 'user/main/authenticated_home.html') # This was incorrect here
-
-CELERY_BROKER_URL = 'redis://localhost:6379/0'  # Use your Redis URL
-CELERY_RESULT_BACKEND = 'redis://localhost:6379/0' # Use your Redis URL
+# Celery Configuration
+CELERY_BROKER_URL = 'redis://localhost:6379/0'  # Make sure Redis is running
+CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'Asia/Kolkata'  # Match your Django TIME_ZONE
 CELERY_ENABLE_UTC = False  # Set to False if using local time zone
 
-# For email absolute URLs (necessary for emails sent by Celery tasks)
-SITE_URL = 'http://127.0.0.1:8000' # Change to your domain in production
+# Celery Beat Schedule - For periodic tasks like expiring reservations
+CELERY_BEAT_SCHEDULE = {
+    'run-expire-reservations': { # This is the unique name/key for the task entry
+        'task': 'django.core.management.call_command', # Task to run a Django management command
+        'args': ['expire_reservations'], # Name of your management command
+        'schedule': timedelta(minutes=1), # Schedule to run every 1 minute
+        'options': {'queue': 'default'}, # Optional: specify a queue
+        # REMOVE THIS LINE: 'name': 'Expire Product Reservations', # This is redundant and causes the error
+    },
+    # Add other periodic tasks here if you have them
+}
+
+# For email absolute URLs (necessary for emails sent by Celery tasks or when generating links)
+SITE_URL = 'http://127.0.0.1:8000' # SECURITY WARNING: Change to your actual domain in production!

@@ -157,34 +157,35 @@ def admin_login_view(request):
         user = authenticate(request, username=username, password=password)
 
         if user and user.is_superuser:
-            login(request, user)
+            login(request, user) # This handles setting the session cookie automatically
 
-            # Set admin session flag and save session
+            # Set admin session flag and save session (these are for your custom logic, keep them)
             request.session['_auth_admin_id'] = user.pk
             request.session.save()
 
             request._is_admin_session = True  # for middleware tracking
 
-            # Manually create response to set cookie
-            response = redirect('admin_dashboard')
-
-            response.set_cookie(
-                settings.ADMIN_SESSION_COOKIE_NAME,  # typically 'admin_sessionid'
-                request.session.session_key,
-                max_age=settings.SESSION_COOKIE_AGE,
-                httponly=True,
-                secure=settings.SESSION_COOKIE_SECURE,
-                samesite=getattr(settings, 'SESSION_COOKIE_SAMESITE', 'Lax'),
-            )
+            # --- REMOVE THE ENTIRE response.set_cookie BLOCK BELOW ---
+            # You do NOT need to manually set the session cookie here.
+            # Django's login() function and SessionMiddleware handle it.
+            # response = redirect('admin_dashboard') # This line also becomes redundant here.
+            # response.set_cookie(
+            #     settings.ADMIN_SESSION_COOKIE_NAME,  # This setting no longer exists
+            #     request.session.session_key,
+            #     max_age=settings.SESSION_COOKIE_AGE,
+            #     httponly=True,
+            #     secure=settings.SESSION_COOKIE_SECURE,
+            #     samesite=getattr(settings, 'SESSION_COOKIE_SAMESITE', 'Lax'),
+            # )
+            # --- END REMOVE BLOCK ---
 
             messages.success(request, f"Successfully signed in as administrator: {user.username}.")
-            return response
+            return redirect('admin_dashboard') # Directly redirect after login
 
         else:
             messages.error(request, "Invalid credentials or not an administrator.")
 
     return render(request, 'admin_panel/admin_login.html')
-
 
 
 @admin_login_required

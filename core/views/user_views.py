@@ -19,6 +19,7 @@ from django.views.decorators.csrf import csrf_protect
 from django.contrib.auth import get_user
 import json
 from decimal import Decimal
+from django.db.models import Sum
 import logging
 
 logger = logging.getLogger(__name__)
@@ -1191,75 +1192,58 @@ def about_view(request):
     return render(request, 'user/main/static_pages/about.html',{
     })
 
+# core/views/user_views.py (or wherever cart_page_view is defined)
+
 @user_login_required
 def cart_page_view(request):
+    print("***************** cart_page_view IS BEING CALLED *****************") # Keep this
     cart_items_for_template = []
     total_price = Decimal('0.00')
     cart_count = 0
 
     try:
-        # Get the user's cart
         cart = Cart.objects.get(user=request.user)
         
-        # Use a transaction block to ensure atomicity if cleaning up cart items
         with transaction.atomic():
             items_to_delete_from_cart = []
             
-            # Iterate through cart items and apply reservation/sold checks
-            # Use select_related('product') for efficiency and select_for_update() if modifying items in loop
-            # (though for simple deletion, not strictly necessary, but good practice if more complex logic is added)
             for item in cart.items.select_related('product'):
                 product = item.product
                 
-                # Check 1: Product is sold
+                # ... (your existing logic for is_sold, reserved_by_other, current user reservation check) ...
                 if product.is_sold:
                     messages.warning(request, f"'{product.name}' is no longer available as it has been sold.")
                     items_to_delete_from_cart.append(item.id)
-                    continue # Skip to next item
+                    continue
                 
-                # Check 2: Product is reserved by someone else, or current user's reservation expired
-                # The 'is_currently_reserved' property handles both 'reserved_by_user is not None'
-                # and 'reservation_expires_at > timezone.now()'.
+                is_reserved_by_current_user_flag = False
+                time_left_seconds = 0
+                
                 if product.is_currently_reserved:
                     if product.reserved_by_user != request.user:
-                        # Reserved by another user
                         messages.warning(request, f"'{product.name}' is currently reserved by another customer and has been removed from your cart.")
                         items_to_delete_from_cart.append(item.id)
-                        continue # Skip to next item
-                    elif not (product.reserved_by_user == request.user and product.reservation_expires_at > timezone.now()):
-                        # Reserved by current user, but reservation expired
-                        messages.warning(request, f"Your reservation for '{product.name}' has expired and it was removed from your cart.")
-                        # This product's reservation should be released by the Celery task,
-                        # but for immediate UI consistency, we can also remove it here.
-                        # It's crucial that product.release_reservation() is called via Celery task.
-                        # For now, we'll just remove it from the cart display.
-                        items_to_delete_from_cart.append(item.id)
-                        # Optionally: If you want to force immediate release and notification
-                        # product.release_reservation() # This would trigger the email to others
-                        continue # Skip to next item
+                        continue
+                    elif product.reserved_by_user == request.user:
+                        is_reserved_by_current_user_flag = True
+                        time_left_seconds = product.get_reservation_time_left_seconds()
                 
-                # If product is valid for display in the cart (not sold, not reserved by others,
-                # or reserved by current user and not expired), add it to the list.
-                # Calculate time left for display
-                time_left_seconds = product.get_reservation_time_left_seconds() if product.is_currently_reserved and product.reserved_by_user == request.user else 0
-
                 item_total = product.price * item.quantity
                 
                 cart_items_for_template.append({
-                    'product': product, # Full Product object
                     'product_id': product.id,
                     'name': product.name,
                     'price': float(product.price),
                     'quantity': item.quantity,
                     'total': float(item_total),
                     'image_url': product.images.first().image.url if product.images.exists() else '',
-                    'is_reserved_by_current_user': (product.is_currently_reserved and product.reserved_by_user == request.user),
+                    'is_reserved_by_current_user': is_reserved_by_current_user_flag,
                     'is_sold': product.is_sold,
                     'is_reserved_by_other': (product.is_currently_reserved and product.reserved_by_user != request.user),
-                    'reservation_time_left_seconds': time_left_seconds, # Pass time left for countdown
+                    'reservation_time_left_seconds': time_left_seconds,
                 })
-                total_price += item_total # Only add valid items to total price
-                cart_count += item.quantity # Only count valid items
+                total_price += item_total
+                cart_count += item.quantity
 
             # Delete invalid items from the database cart
             if items_to_delete_from_cart:
@@ -1267,8 +1251,24 @@ def cart_page_view(request):
                 messages.info(request, "Some items were removed from your cart due to availability changes.")
 
     except Cart.DoesNotExist:
-        # No cart exists for the user, cart_items_for_template and total_price remain empty
         pass
+
+    # NEW DEBUGGING PRINTS HERE
+    print(f"DEBUG: Length of cart_items_for_template list: {len(cart_items_for_template)}")
+    if cart_items_for_template:
+        print("DEBUG: Content of the FIRST item in cart_items_for_template:")
+        # This will print the dictionary representation directly, without needing JSON.dumps
+        print(cart_items_for_template[0])
+        try:
+            print("Cart Items Data for Template (JSON check):")
+            # This is the line that wasn't showing output
+            print(json.dumps(cart_items_for_template, indent=2))
+            print("DEBUG: json.dumps executed successfully.")
+        except Exception as e:
+            # If there's an error in json.dumps, it will be caught and printed here.
+            print(f"ERROR: An error occurred during json.dumps: {e}")
+    else:
+        print("DEBUG: cart_items_for_template list is empty. This means no valid items were found for the cart.")
 
     context = {
         'cart_items': cart_items_for_template,
@@ -1279,73 +1279,134 @@ def cart_page_view(request):
 
 
 
-@require_POST # Ensure it only accepts POST requests
+@require_POST
 @user_login_required
-@transaction.atomic # Crucial: Wrap the entire view in an atomic transaction
+@transaction.atomic
 def add_to_cart_view(request, product_id):
-    # Use select_for_update() to lock the product row immediately
-    # This prevents other concurrent requests from modifying this product's state
-    # while we are checking and updating its reservation.
     try:
+        # Use select_for_update to lock the product row during the transaction
+        # This prevents race conditions where multiple users try to reserve the same unique product.
         product = Product.objects.select_for_update().get(id=product_id)
     except Product.DoesNotExist:
         message = "Product not found."
+        logger.warning(f"Attempt to add non-existent product ID {product_id} to cart by user {request.user.username}")
         messages.error(request, message)
         return JsonResponse({'success': False, 'message': message}, status=404)
 
-    # --- Reservation Check ---
+    # --- Initial Product State Checks ---
     if product.is_sold:
         message = f"'{product.name}' is already sold."
+        logger.info(f"User {request.user.username} tried to add sold product {product.name} (ID: {product.id}) to cart.")
         messages.error(request, message)
         return JsonResponse({'success': False, 'message': message}, status=400)
-    
-    # Check if product is currently reserved by ANYONE (active reservation)
-    if product.is_currently_reserved:
-        if product.reserved_by_user == request.user:
-            # Case 1: Product is reserved by the current user.
-            # Just extend the reservation time.
-            product.reservation_expires_at = timezone.now() + timedelta(minutes=CART_RESERVATION_TIME_MINUTES)
-            product.save()
-            message = f"'{product.name}' is already in your cart. Reservation time extended!"
-            messages.info(request, message)
-            # No need to create/update CartItem here as it already exists for this user.
-            return JsonResponse({'success': True, 'message': message})
-        else:
-            # Case 2: Product is reserved by another user.
-            message = f"'{product.name}' is currently reserved by another customer. Please try again later or click 'Notify Me'."
-            messages.warning(request, message)
-            return JsonResponse({'success': False, 'message': message}, status=409) # 409 Conflict
-    
-    # Case 3: Product is NOT sold and NOT actively reserved by anyone.
-    # Proceed to reserve it for the current user.
-    product.reserved_by_user = request.user
-    product.reservation_expires_at = timezone.now() + timedelta(minutes=CART_RESERVATION_TIME_MINUTES)
-    product.is_reserved = True # Set this flag for consistency
-    product.save()
 
-    # --- Update DB cart ---
     # Get or create the user's cart
     user_cart, _ = Cart.objects.get_or_create(user=request.user)
-    
+
+    # Define the reservation expiry time
+    new_reservation_expires_at = timezone.now() + timedelta(minutes=CART_RESERVATION_TIME_MINUTES)
+
     # Get or create the CartItem for this product in the user's cart.
-    # Since it's a single-item reservation, quantity will always be 1.
-    cart_item, created = CartItem.objects.get_or_create(cart=user_cart, product=product, defaults={'quantity': 1})
-    
-    if not created:
-        # If CartItem already existed (shouldn't happen if logic is perfect, but defensive)
-        # Ensure quantity is 1 for single item reservation.
-        if cart_item.quantity != 1:
-            cart_item.quantity = 1
-            cart_item.save()
-        message = f"'{product.name}' was already in your cart, but its reservation has been updated."
-        messages.info(request, message)
+    # For a single-item reservation, quantity will typically be 1.
+    # Set default reservation status on creation.
+    cart_item, created_cart_item = CartItem.objects.get_or_create(
+        cart=user_cart,
+        product=product,
+        user=request.user,  # <--- THIS IS THE **ESSENTIAL LINE TO ADD/CHANGE**
+        defaults={
+            'quantity': 1,
+            'is_reserved': True, # Mark as reserved by default when adding
+            'reserved_until': new_reservation_expires_at # Set initial expiry
+        }
+    )
+
+    # --- Reservation Logic ---
+    if product.is_currently_reserved:
+        if product.reserved_by_user == request.user:
+            # Case 1: Product is already reserved by the current user.
+            # Extend the reservation time for both Product and CartItem.
+            product.reservation_expires_at = new_reservation_expires_at
+            cart_item.reserved_until = new_reservation_expires_at
+            # Ensure is_reserved is True on cart_item if it somehow became False
+            cart_item.is_reserved = True
+
+            product.save(update_fields=['reservation_expires_at'])
+            cart_item.save(update_fields=['reserved_until', 'is_reserved'])
+
+            message = f"'{product.name}' is already in your cart. Reservation time extended!"
+            logger.info(f"User {request.user.username} extended reservation for product {product.name} (ID: {product.id}).")
+            messages.info(request, message)
+        else:
+            # Case 2: Product is reserved by another user.
+            message = f"'{product.name}' is currently reserved by another customer. Please try again later."
+            logger.warning(f"User {request.user.username} tried to add product {product.name} (ID: {product.id}) reserved by another user ({product.reserved_by_user.username}).")
+            messages.warning(request, message)
+            return JsonResponse({'success': False, 'message': message}, status=409)
     else:
-        # New item added to cart and reserved
+        # Case 3: Product is NOT sold and NOT actively reserved by anyone.
+        # Reserve it for the current user.
+        product.reserved_by_user = request.user
+        product.reservation_expires_at = new_reservation_expires_at
+        product.save(update_fields=['reserved_by_user', 'reservation_expires_at'])
+
+        # If cart_item was just created, its defaults already set is_reserved and reserved_until.
+        # If it already existed but was not reserved (e.g., old expired item), update it here.
+        if not created_cart_item: # If item already existed
+            cart_item.is_reserved = True
+            cart_item.reserved_until = new_reservation_expires_at
+            cart_item.save(update_fields=['is_reserved', 'reserved_until'])
+
         message = f"'{product.name}' has been reserved for you for {CART_RESERVATION_TIME_MINUTES} minutes and added to your cart."
+        logger.info(f"User {request.user.username} reserved product {product.name} (ID: {product.id}).")
         messages.success(request, message)
 
-    # Return JSON response. The frontend JavaScript will handle the redirect/reload.
-    return JsonResponse({'success': True, 'message': message, 'redirect_url': '/cart/'}) # Optionally include redirect_url
+    # --- Prepare data for JSON response (Mini-Cart Update) ---
+    # Recalculate total quantity of items in the cart (including non-reserved items)
+    updated_cart_count = user_cart.items.aggregate(total_quantity=Sum('quantity'))['total_quantity'] or 0
+
+    # Recalculate total price of the entire cart and get data for all items
+    cart_total_price = Decimal('0.00')
+    current_cart_items_data = [] # This will hold data for all items currently in the user's cart
+
+    # Iterate through all items in the user's cart to prepare data for the mini-cart
+    # Use select_related('product', 'product__images') if images are directly related
+    # or ensure Product.images.exists() is performant.
+    for item in user_cart.items.select_related('product').all():
+        # Only include items that are not sold and, if reserved, are reserved by the current user.
+        # Items reserved by others or expired should not be shown in the current user's active cart.
+        if not item.product.is_sold and (not item.product.is_currently_reserved or item.product.reserved_by_user == request.user):
+            cart_total_price += item.product.price * item.quantity
+
+            # Determine reservation time left for *this specific item* in the mini-cart
+            time_left_seconds = 0
+            is_reserved_by_current_user = False
+            if item.product.is_currently_reserved and item.product.reserved_by_user == request.user:
+                time_left_seconds = item.product.get_reservation_time_left_seconds()
+                is_reserved_by_current_user = True
+
+            item_data = {
+                'product_id': item.product.id,
+                'name': item.product.name,
+                'price': float(item.product.price),
+                'quantity': item.quantity,
+                'image_url': item.product.images.first().image.url if item.product.images.exists() else '',
+                'is_reserved_by_current_user': is_reserved_by_current_user,
+                'reservation_time_left_seconds': time_left_seconds,
+            }
+            current_cart_items_data.append(item_data)
+        else:
+            # OPTIONAL: If an item in the cart is now sold or reserved by others, you might want
+            # to automatically remove it from the cart here for a very clean UX.
+            # E.g., item.delete()
+            pass # Or handle expired/sold items in the cart if your system allows
+
+    return JsonResponse({
+        'success': True,
+        'message': message, # Message to show the user (e.g., "Added to cart!")
+        'cart_count': updated_cart_count,
+        'cart_items_data': current_cart_items_data, # Data for all valid items in cart to populate mini-cart
+        'cart_total_price': float(cart_total_price),
+    })
 
 @require_POST
 @user_login_required

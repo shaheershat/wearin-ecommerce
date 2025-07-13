@@ -2,10 +2,7 @@
 from celery import shared_task # Import shared_task decorator
 from django.utils import timezone
 from django.db import transaction # Import for atomic operations
-
-# We will import Product, CartItem, NotificationSubscription directly within
-# the product.release_reservation() method to avoid circular imports if
-# core.models imports core.tasks or core.emails.
+from core.models import Product # Import Product at the top for clarity
 
 import logging
 
@@ -20,31 +17,36 @@ def release_expired_reservations_task():
     logger.info("Starting release_expired_reservations_task...")
     now = timezone.now()
 
-    # Get products that are reserved, their reservation has expired, and are not yet sold
-    # Use select_for_update to lock rows during this critical operation to prevent race conditions.
-    # This ensures that while we are processing a product's reservation, no other process
-    # (e.g., an add_to_cart request) can modify it.
-    from core.models import Product # Import Product here, within the function or at the top
+    # Wrap the entire query and processing in a single atomic transaction.
+    # This ensures that select_for_update is used within a transaction,
+    # and all subsequent database operations for this task are atomic.
+    with transaction.atomic(): # <--- Move this block UP to wrap the query
+        products_to_release = Product.objects.select_for_update().filter(
+            reserved_by_user__isnull=False,  # Must be reserved by someone
+            reservation_expires_at__lte=now, # Reservation has expired or passed
+            is_sold=False                   # And not already marked as sold
+        )
 
-    products_to_release = Product.objects.select_for_update().filter(
-        reserved_by_user__isnull=False,  # Must be reserved by someone
-        reservation_expires_at__lte=now, # Reservation has expired or passed
-        is_sold=False                   # And not already marked as sold
-    )
+        if not products_to_release.exists():
+            logger.info("No expired product reservations found.")
+            return # Exit the task if no products found
 
-    if not products_to_release.exists():
-        logger.info("No expired product reservations found.")
-        return
+        logger.info(f"Found {products_to_release.count()} product(s) with expired reservations.")
 
-    for product in products_to_release:
-        with transaction.atomic(): # Ensure each product's release is atomic
+        for product in products_to_release:
+            # Each product's release operation is now part of the outer transaction.
+            # The product.release_reservation() method itself does not need its own
+            # @transaction.atomic decorator if it's always called within this outer one.
             logger.info(f"Processing expired reservation for product: {product.name} (ID: {product.id})")
-            
-            # The release_reservation method on the Product model now handles
-            # clearing reservation fields, sending emails, and removing cart items.
-            # This design keeps the model responsible for its own state changes.
-            product.release_reservation()
-            
-            logger.info(f"Successfully released reservation for product: {product.name}.")
+
+            try:
+                # The release_reservation method on the Product model handles
+                # clearing reservation fields, sending emails, and removing cart items.
+                product.release_reservation()
+                logger.info(f"Successfully released reservation for product: {product.name}.")
+
+            except Exception as e:
+                # Log any errors that occur during the release_reservation process for a specific product
+                logger.error(f"Error releasing reservation for product {product.name} (ID: {product.id}): {e}", exc_info=True)
 
     logger.info("Finished release_expired_reservations_task.")

@@ -5,7 +5,8 @@ from django.conf import settings
 from django.utils.html import strip_tags
 from celery import shared_task # Import shared_task
 from django.utils import timezone # Import timezone
-
+import logging
+from core.models import Product, User
 # We will import Product and NotificationSubscription locally within the tasks
 # to prevent potential circular import issues.
 from django.contrib.auth import get_user_model
