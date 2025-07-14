@@ -1,3 +1,4 @@
+# core/models.py
 from django.db import models
 from django.utils.text import slugify
 from cloudinary.models import CloudinaryField
@@ -5,6 +6,10 @@ from django.utils import timezone
 from django.contrib.auth import get_user_model
 from decimal import Decimal
 from datetime import timedelta # Import timedelta
+from django.urls import reverse # Import reverse for get_absolute_url
+import logging
+
+logger = logging.getLogger(__name__) # Setup logger for models.py
 
 class WalletTransaction(models.Model):
     wallet = models.ForeignKey('Wallet', on_delete=models.CASCADE, related_name='transactions')
@@ -21,7 +26,7 @@ class WalletTransaction(models.Model):
     def __str__(self):
         return f"{self.transaction_type.capitalize()} ₹{self.amount} for {self.wallet.user.username}"
 
-User = get_user_model()
+User = get_user_model() # Define User here once
 
 class EmailOTP(models.Model):
     email = models.EmailField()
@@ -72,19 +77,17 @@ class Category(models.Model):
     def __str__(self):
         return self.name
 
-User = get_user_model()
 
 class Product(models.Model):
     name = models.CharField(max_length=255)
     description = models.TextField()
     price = models.DecimalField(max_digits=10, decimal_places=2)
-    category = models.ForeignKey('Category', on_delete=models.CASCADE) # Assuming Category model
+    category = models.ForeignKey('Category', on_delete=models.CASCADE)
     size = models.CharField(max_length=10)
     is_sold = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     stock_quantity = models.PositiveIntegerField(default=1)
     
-    # Fields for reservation logic (keep these, as they hold the state)
     reserved_by_user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='reserved_products')
     reservation_expires_at = models.DateTimeField(null=True, blank=True)
 
@@ -92,14 +95,10 @@ class Product(models.Model):
         return self.name
 
     def get_absolute_url(self):
-        return reverse('product_detail', args=[self.id])
+        return reverse('product_detail', args=[self.id]) # Make sure 'product_detail' exists in your urls.py
 
-    # --- New/Updated Properties for Reservation Logic ---
     @property
     def is_currently_reserved(self):
-        """
-        Checks if the product is actively reserved by any user (i.e., not expired and not sold).
-        """
         if self.is_sold:
             return False
         
@@ -109,103 +108,93 @@ class Product(models.Model):
 
     @property
     def is_available_for_purchase(self):
-        """
-        Checks if the product can be added to cart or bought by anyone.
-        This means it's not sold and not currently reserved.
-        """
         return not self.is_sold and not self.is_currently_reserved
 
     def get_reservation_time_left_seconds(self):
-        """
-        Returns the time left in seconds for the current reservation,
-        or 0 if expired/not reserved/sold.
-        """
         if self.is_currently_reserved:
             time_left = self.reservation_expires_at - timezone.now()
             return max(0, int(time_left.total_seconds()))
         return 0
 
     def release_reservation(self):
-        """
-        Releases the reservation on this product, making it available again.
-        This method should primarily be called by the Celery task (or cron job).
-        It also triggers notifications for waiting users.
-        """
+        logger.info(f"Attempting to release reservation for product: {self.name} (ID: {self.id})")
+
         # Only proceed if it was actually reserved by a user and not already sold
         if self.reserved_by_user and not self.is_sold:
             # Import tasks/emails locally to avoid circular import issues
             from core.emails import send_reservation_expired_email, send_product_available_email
             from core.models import NotificationSubscription, CartItem # Make sure CartItem is imported
 
-            # Store the user who *was* reserving before clearing the fields
             previous_reserved_user = self.reserved_by_user
-            previous_reserved_user_email = previous_reserved_user.email # Cache email before clearing user object
             
             # 1. Clear reservation fields on the Product
             self.reserved_by_user = None
             self.reservation_expires_at = None
             self.save(update_fields=['reserved_by_user', 'reservation_expires_at']) # Save specific fields
+            logger.info(f"Reservation fields cleared for product {self.name}.")
 
             # 2. Remove the product from the expired user's cart
-            # This is crucial for freeing up stock and cart display
             if previous_reserved_user:
-                # Assuming CartItem has a 'user' ForeignKey to User model (as suggested previously)
-                # and 'product' ForeignKey to Product model, and 'is_reserved' boolean field.
                 deleted_count, _ = CartItem.objects.filter(
-                    user=previous_reserved_user, 
+                    user=previous_reserved_user,
                     product=self,
                     is_reserved=True # Only delete the specific reserved instance
                 ).delete()
                 
                 if deleted_count > 0:
-                    print(f"Removed {deleted_count} cart item(s) for product {self.name} from {previous_reserved_user.username}'s cart after reservation expiry.")
+                    logger.info(f"Removed {deleted_count} cart item(s) for product {self.name} from {previous_reserved_user.username}'s cart after reservation expiry.")
                 else:
-                    print(f"No reserved cart item found for product {self.name} in {previous_reserved_user.username}'s cart after reservation expiry.")
+                    logger.warning(f"No reserved cart item found for product {self.name} in {previous_reserved_user.username}'s cart after reservation expiry.")
 
-
-            # 3. Send email to the user whose reservation expired
-            if previous_reserved_user_email:
-                # Pass user ID and product ID to Celery task
-                send_reservation_expired_email.delay(previous_reserved_user.id, self.id)
-                print(f"Queued reservation expired email for {previous_reserved_user_email}.")
+                # 3. Send email to the user whose reservation expired
+                if previous_reserved_user.email: # Ensure user has an email
+                    send_reservation_expired_email.delay(
+                        previous_reserved_user.email, # Pass recipient_email (string)
+                        self.name,                    # Pass product_name (string)
+                        self.id                       # Pass product_id (int)
+                    )
+                    logger.info(f"Queued reservation expired email for {previous_reserved_user.email}.")
             
             # 4. Notify subscribers for 'available' event
-            # Only notify if the product is now truly available (not sold and no other active reservations)
-            # The `is_currently_reserved` property will now be False after clearing fields and saving.
             if self.is_available_for_purchase: # This property should now be True
                 subscribers = NotificationSubscription.objects.filter(
                     product=self,
                     event_type='available',
-                    notified=False # Only notify those who haven't been notified yet
+                    notified_at__isnull=True # Only notify those who haven't been notified yet
                 )
                 if subscribers.exists():
-                    print(f"Found {subscribers.count()} pending subscribers for product {self.name}.")
+                    logger.info(f"Found {subscribers.count()} pending subscribers for product {self.name}.")
                     for sub in subscribers:
-                        if sub.user and sub.user.email:
-                            # Pass user ID and product ID to Celery task
-                            send_product_available_email.delay(sub.user.id, self.id)
-                            sub.notified = True # Mark as notified
-                            sub.save(update_fields=['notified']) # Save only the 'notified' field
-                            print(f"Queued product available email for subscriber {sub.user.email}.")
+                        if sub.user and sub.user.email and sub.user != previous_reserved_user: # Avoid notifying the user whose reservation just expired again for availability
+                            send_product_available_email.delay(
+                                sub.user.email, # Pass recipient_email
+                                self.name,      # Pass product_name
+                                self.id         # Pass product_id
+                            )
+                            sub.notified_at = timezone.now() # Mark as notified
+                            sub.save(update_fields=['notified_at']) # Save only the 'notified_at' field
+                            logger.info(f"Queued product available email for subscriber {sub.user.email}.")
+                        elif sub.user == previous_reserved_user:
+                             logger.info(f"Skipping product available email for {sub.user.email} as their reservation just expired.")
                 else:
-                    print(f"No pending subscribers for product {self.name} or already notified.")
+                    logger.info(f"No pending subscribers for product {self.name} or already notified.")
             else:
-                print(f"Product {self.name} is not fully available for purchase yet after reservation expiry (e.g., stock=0).")
+                logger.info(f"Product {self.name} is not fully available for purchase yet after reservation expiry (e.g., stock=0 or another reservation placed).")
         else:
-            print(f"Product {self.name} was not actively reserved by a user or was already sold. No reservation to release.")
+            logger.info(f"Product {self.name} was not actively reserved by a user or was already sold. No reservation to release.")
+        
+        logger.info(f"Finished attempting to release reservation for product: {self.name} (ID: {self.id}).")
+        return True
 
 
 class NotificationSubscription(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='product_notifications')
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='subscribers')
-    # Use a specific event type if you plan to notify for different things (e.g., 'available', 'sold')
-    event_type = models.CharField(max_length=50, default='available') # e.g., 'available', 'sold'
-    notified_at = models.DateTimeField(null=True, blank=True) # To track when notification was sent
+    event_type = models.CharField(max_length=50, default='available')
+    notified_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        # A user can subscribe for multiple event types for a product
-        # Ensure 'available' is the primary event type for your current need
         unique_together = ('user', 'product', 'event_type')
 
     def __str__(self):
@@ -288,16 +277,12 @@ class Order(models.Model):
     def save(self, *args, **kwargs):
         if self.pk:
             old_order = Order.objects.get(pk=self.pk)
-            # When an order changes to 'Delivered'
             if old_order.status != 'Delivered' and self.status == 'Delivered':
                 for item in self.items.all():
                     if item.product:
                         item.product.is_sold = True
-                        # Crucially, if sold, it should also clear any reservation if it somehow exists
-                        # (though ideally, it wouldn't be reserved if being purchased)
-                        item.product.is_reserved = False
-                        item.product.reserved_by_user = None
-                        item.product.reservation_expires_at = None
+                        item.product.reserved_by_user = None # Clear reservation on sale
+                        item.product.reservation_expires_at = None # Clear reservation on sale
                         item.product.save()
 
                         # Also, remove from any carts if it's sold
@@ -340,13 +325,9 @@ class Cart(models.Model):
     def __str__(self):
         return f"Cart of {self.user.username}"
 
-    # Updated get_total_price to be reservation-aware
     def get_total_price(self):
         total = Decimal('0.00')
-        # Using select_related for performance
         for item in self.items.select_related('product').all():
-            # Only include items that are valid (not sold, and either available or reserved by THIS cart's user)
-            # Make sure product exists and product.is_available_for_purchase or product.is_currently_reserved are correct properties
             if item.product and (item.product.is_available_for_purchase or \
                (item.product.reserved_by_user == self.user and item.product.is_currently_reserved)):
                 total += item.product.price * item.quantity
@@ -354,20 +335,15 @@ class Cart(models.Model):
 
 class CartItem(models.Model):
     cart = models.ForeignKey(Cart, on_delete=models.CASCADE, related_name='items')
-    # NEW/IMPORTANT: Add a direct user link for simpler filtering in reservation logic
-    user = models.ForeignKey(User, on_delete=models.CASCADE) 
-    product = models.ForeignKey('Product', on_delete=models.CASCADE) # Ensure 'Product' is imported or use string
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    product = models.ForeignKey('Product', on_delete=models.CASCADE)
     quantity = models.PositiveIntegerField(default=1)
 
-    # NEW/IMPORTANT: Fields to track reservation status for this specific cart item
     is_reserved = models.BooleanField(default=False)
     reserved_until = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         unique_together = ('cart', 'product')
-        # You might also consider a unique_together on ('user', 'product') if you don't use 'cart' directly,
-        # but with a OneToOneField for Cart, ('cart', 'product') is sufficient for uniqueness per user.
-
 
     def __str__(self):
         return f"{self.product.name} (x{self.quantity}) in {self.cart.user.username}'s cart"
@@ -406,7 +382,7 @@ class Wallet(models.Model):
         WalletTransaction.objects.create(wallet=self, transaction_type='credit', amount=amount, reason="Wallet credited")
 
     def debit(self, amount):
-        amount = Decimal(amount) # Ensure amount is Decimal
+        amount = Decimal(amount)
         if self.balance >= amount:
             self.balance -= amount
             self.save()
