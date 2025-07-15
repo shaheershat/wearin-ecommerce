@@ -89,9 +89,6 @@ DATABASES = {
 SESSION_COOKIE_AGE = 86400 # 24 hours
 SESSION_EXPIRE_AT_BROWSER_CLOSE = False
 SESSION_COOKIE_SAMESITE = 'Lax'
-# Removed redundant/conflicting session cookie names, Django defaults are usually fine.
-# ADMIN_SESSION_COOKIE_NAME will default to Django's standard for admin pages.
-
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -142,15 +139,10 @@ LOGIN_URL = '/login/' # Your login URL name is 'login' which maps to /login/
 LOGIN_REDIRECT_URL = '/my-home/' # Redirect after successful login
 LOGOUT_REDIRECT_URL = 'home' # Redirect after successful logout (should be a URL name or path)
 
-# Django-allauth Updated Settings (addressed warnings)
+# Django-allauth Updated Settings
 ACCOUNT_LOGOUT_ON_GET = True # Consider changing to False for production for CSRF protection
 ACCOUNT_LOGIN_METHODS = ['email'] # Replaces ACCOUNT_AUTHENTICATION_METHOD
 ACCOUNT_SIGNUP_FIELDS = ['email'] # Consistent signup fields
-
-# Removed deprecated settings:
-# ACCOUNT_AUTHENTICATION_METHOD = 'email'
-# ACCOUNT_USERNAME_REQUIRED = False
-# ACCOUNT_EMAIL_REQUIRED = True
 
 SOCIALACCOUNT_AUTO_SIGNUP = True
 SOCIALACCOUNT_EMAIL_REQUIRED = True
@@ -181,17 +173,22 @@ LOGGING = {
     },
     'handlers': {
         'console': {
-            'level': 'DEBUG',
+            'level': 'DEBUG', # Set to DEBUG to see all log levels in console
             'class': 'logging.StreamHandler',
-            'formatter': 'simple',
+            'formatter': 'verbose', # Changed to verbose to see module and process info
         },
     },
     'root': {
         'handlers': ['console'],
-        'level': 'INFO',
+        'level': 'DEBUG', # Set root logger to DEBUG to catch everything by default
     },
     'loggers': {
-        'core.middlewares': {
+        'core': { # Target your 'core' app's logs
+            'handlers': ['console'],
+            'level': 'DEBUG', # Set to DEBUG for detailed logs from your app
+            'propagate': False,
+        },
+        'core.middlewares': { # If you have a specific middleware logger
             'handlers': ['console'],
             'level': 'DEBUG',
             'propagate': False,
@@ -203,13 +200,12 @@ LOGGING = {
         },
         'django': {
             'handlers': ['console'],
-            'level': 'INFO',
+            'level': 'INFO', # Keep Django's own logs at INFO or higher if too verbose
             'propagate': False,
         },
-        # Add logger for your Celery tasks and management commands
         'django.db.backends': { # Good for seeing database queries in DEBUG
             'handlers': ['console'],
-            'level': 'INFO',
+            'level': 'INFO', # Keep at INFO unless you need to debug SQL queries
             'propagate': False,
         },
     },
@@ -261,5 +257,6 @@ CELERY_BEAT_SCHEDULE = {
     # Add other periodic tasks here if you have them
 }
 
+SESSION_SAVE_EVERY_REQUEST = True
 # For email absolute URLs (necessary for emails sent by Celery tasks or when generating links)
 SITE_URL = 'http://127.0.0.1:8000' # SECURITY WARNING: Change to your actual domain in production!

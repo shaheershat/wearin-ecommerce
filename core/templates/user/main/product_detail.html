@@ -51,6 +51,9 @@
             <p class="text-sm mb-1"><strong>Size:</strong> {{ product.size }}</p>
             <p class="text-sm mb-6"><strong>Description:</strong> {{ product.description }}</p>
 
+            {# Add a container for AJAX messages - IMPORTANT #}
+            <div id="product-page-message-container" class="hidden mt-4 p-3 rounded text-center"></div>
+
             {# --- Reservation Status Display --- #}
             {% if product.is_sold %}
                 <div class="sold-info">
@@ -144,7 +147,7 @@
 </section>
 
 {# REMOVE THE OLD CART DRAWER HTML FROM HERE. IT'S NOW IN BASE.HTML #}
-{#
+{# This entire div should be removed if it's already in base.html as per previous instructions #}
 <div id="cart-drawer" class="fixed top-0 right-0 w-80 max-w-full h-full bg-white shadow-lg z-50 transform translate-x-full drawer">
     <div class="flex flex-col h-full">
         <div class="flex justify-between items-center p-4 border-b">
@@ -159,29 +162,17 @@
     </div>
 </div>
 <div id="drawer-overlay" class="fixed inset-0 bg-black bg-opacity-30 z-40 hidden" onclick="toggleDrawer(false)"></div>
-#}
 
 <script>
     const mainImage = document.getElementById('mainImage');
     const thumbs = document.querySelectorAll('.thumb');
+    // Get the message container for AJAX responses
+    const productPageMessageContainer = document.getElementById('product-page-message-container');
 
     function changePreview(clickedThumb) {
         mainImage.src = clickedThumb.src;
         thumbs.forEach(img => img.classList.remove('active-thumb'));
         clickedThumb.classList.add('active-thumb');
-    }
-
-    // --- Initial setup for thumbnails and reservation timer ---
-    window.onload = () => {
-        if (thumbs.length > 0) thumbs[0].classList.add('active-thumb');
-
-        // Check if reservation timer should start
-        // Ensure reservation_expires_in_seconds is correctly passed from the view
-        const reservationExpiresInSeconds = parseInt("{{ reservation_expires_in_seconds|default:0 }}");
-        const isReservedByCurrentUser = "{{ is_reserved_by_current_user }}" === "True";
-        if (isReservedByCurrentUser && reservationExpiresInSeconds > 0) {
-            startReservationTimer(reservationExpiresInSeconds);
-        }
     }
 
     function zoomImage(e) {
@@ -251,82 +242,41 @@
         });
     }
 
-    // --- IMPORTANT: These functions should be in base.html if the mini-cart modal is there. ---
-    // If you keep them here, ensure they are compatible with the base.html mini-cart.
-    // I recommend moving them to the <script> block in base.html.
-    /*
-    function toggleDrawer(show = true) {
-        const drawer = document.getElementById("cart-drawer"); // This ID refers to the old drawer
-        const overlay = document.getElementById("drawer-overlay"); // This ID refers to the old overlay
-        if (show) {
-            drawer.classList.remove("translate-x-full");
-            overlay.classList.remove("hidden");
-            // loadMiniCartItems(); // 🛒 This is the correct call to refresh mini-cart
-        } else {
-            drawer.classList.add("translate-x-full");
-            overlay.classList.add("hidden");
-        }
-    }
+    // --- JavaScript for Product Page Reservation Timer ---
+    let productPageCountdownInterval; // Global variable to store interval ID for this page
 
-    function loadMiniCartItems() {
-        fetch("{% url 'mini_cart_data' %}")
-            .then(response => response.json())
-            .then(data => {
-                const container = document.getElementById('mini-cart-items'); // This ID refers to the old container
-                container.innerHTML = '';
-
-                if (data.items.length === 0) { // Should be data.cart_items_data
-                    container.innerHTML = '<p class="text-center text-gray-500 py-6">Your cart is empty.</p>';
-                    return;
-                }
-
-                data.items.forEach(item => { // Should be data.cart_items_data
-                    const div = document.createElement('div');
-                    div.className = 'flex items-center gap-4 border-b pb-3';
-                    div.innerHTML = `
-                        <img src="${item.image_url}" class="w-16 h-20 object-cover rounded">
-                        <div class="flex-grow">
-                            <p class="font-semibold">${item.name}</p>
-                            <p class="text-xs text-gray-600">₹${item.price} × ${item.quantity}</p>
-                        </div>
-                        <p class="font-semibold text-sm">₹${item.total}</p> // 'total' might not be directly available, calculate
-                    `;
-                    container.appendChild(div);
-                });
-            }).catch(err => {
-                console.error("Failed to load mini cart:", err);
-            });
-    }
-    */
-    // --- END: Functions to be moved to base.html ---
-
-
-    // This script block should primarily contain page-specific JS
-    // The AJAX form submission for add-to-cart needs to be in base.html or a globally loaded JS file
-    // since the mini-cart logic is now global.
-
-    // If you prefer to keep the add-to-cart form handler here,
-    // make sure the elements it interacts with (`cartCountSpan`, `miniCartModal`, etc.)
-    // are accessible (e.g., defined in global scope or passed to functions).
-
-    // --- JavaScript for Reservation Timer ---
     function startReservationTimer(duration) {
         const timerDisplay = document.getElementById('reservation-timer');
-        let timer = duration;
-        
-        const countdown = setInterval(() => {
+        if (!timerDisplay) {
+            console.warn("Reservation timer display element not found.");
+            return;
+        }
+
+        // Clear any existing timer to prevent multiple timers running
+        if (productPageCountdownInterval) {
+            clearInterval(productPageCountdownInterval);
+        }
+
+        let timer = duration; // Use the passed duration
+
+        // Immediately update once to show initial time without 1-sec delay
+        const updateTimerDisplay = () => {
             const minutes = Math.floor(timer / 60);
             const seconds = timer % 60;
 
             timerDisplay.textContent = `Time left: ${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 
             if (--timer < 0) {
-                clearInterval(countdown);
+                clearInterval(productPageCountdownInterval);
                 timerDisplay.textContent = "Reservation expired!";
-                // Reload the page after a short delay to reflect expired status
+                console.log("Product page reservation expired, reloading...");
+                // Reload the page to reflect expired status (buttons, etc.)
                 setTimeout(() => window.location.reload(), 1000); 
             }
-        }, 1000);
+        };
+
+        updateTimerDisplay(); // Call immediately
+        productPageCountdownInterval = setInterval(updateTimerDisplay, 1000);
     }
 
     // --- JavaScript for Notify Me button ---
@@ -362,13 +312,94 @@
         });
     });
 
-    // IMPORTANT: The main AJAX form handler for "Add to Cart" should now be placed
-    // within the <script> block in your base.html file, as it interacts with the
-    // global mini-cart elements.
-    // The `document.querySelectorAll('.add-to-cart-form').forEach(...)` code
-    // I provided previously should be in base.html.
-    // This template only needs to ensure its forms have the correct class: `add-to-cart-form`
-    // and `data-product-id`.
+    // --- DOMContentLoaded for main page initialization and AJAX form handling ---
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initial setup for thumbnails
+        if (thumbs.length > 0) thumbs[0].classList.add('active-thumb');
 
+        // Check if reservation timer should start on initial page load
+        // This is crucial for the product page timer.
+        const initialReservationExpiresInSeconds = parseInt("{{ reservation_expires_in_seconds|default:0 }}");
+        const initialIsReservedByCurrentUser = "{{ is_reserved_by_current_user }}" === "True";
+        
+        if (initialIsReservedByCurrentUser && initialReservationExpiresInSeconds > 0) {
+            startReservationTimer(initialReservationExpiresInSeconds);
+        }
+
+        // --- AJAX Handler for Add to Cart Forms ---
+        const addToCartForms = document.querySelectorAll('.add-to-cart-form');
+
+        addToCartForms.forEach(form => {
+            form.addEventListener('submit', function(event) {
+                event.preventDefault(); // <--- THIS IS THE KEY TO PREVENT RAW JSON DISPLAY
+
+                const url = this.action; // e.g., /add-to-cart/94/
+
+                // Show loading indicator if desired
+                // this.querySelector('button[type="submit"]').textContent = 'Adding...'; 
+                // this.querySelector('button[type="submit"]').disabled = true;
+
+                fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': getCookie('csrftoken'),
+                        'X-Requested-With': 'XMLHttpRequest', // Identifies as AJAX request to Django
+                    },
+                    body: new FormData(this) // Sends form data, including CSRF token
+                })
+                .then(response => {
+                    // Check for network errors or non-JSON responses
+                    if (!response.ok) {
+                        // Attempt to parse JSON error message, fallback to generic
+                        return response.json().then(errorData => {
+                            throw new Error(errorData.message || `HTTP error! Status: ${response.status}`);
+                        }).catch(() => {
+                            throw new Error(`HTTP error! Status: ${response.status} - ${response.statusText}`);
+                        });
+                    }
+                    return response.json(); // Parse JSON for 2xx responses
+                })
+                .then(data => {
+                    if (data.success) {
+                        console.log('Add to cart successful:', data.message);
+                        
+                        // Display success message
+                        productPageMessageContainer.textContent = data.message;
+                        productPageMessageContainer.className = 'mt-4 p-3 bg-green-100 text-green-700 rounded text-center';
+                        productPageMessageContainer.style.display = 'block';
+                        setTimeout(() => productPageMessageContainer.style.display = 'none', 3000); // Hide after 3 seconds
+
+                        // Update mini-cart UI if the function exists (e.g., in base.html)
+                        if (typeof updateMiniCartUI === 'function') {
+                            updateMiniCartUI(data.cart_count, data.cart_items_data, data.cart_total_price);
+                        } else {
+                            console.warn("updateMiniCartUI function not found. Mini-cart may not be updated.");
+                        }
+
+                        // Critically, reload the page to update the product status,
+                        // buttons (e.g., from Add to Cart to Update/Checkout), and start/update the timer.
+                        console.log("Add/Update Cart successful, reloading product detail page to reflect changes...");
+                        setTimeout(() => window.location.reload(), 500); // Small delay for message to be seen
+
+                    } else {
+                        console.error('Add to cart failed:', data.message);
+                        // Display error message
+                        productPageMessageContainer.textContent = data.message;
+                        productPageMessageContainer.className = 'mt-4 p-3 bg-red-100 text-red-700 rounded text-center';
+                        productPageMessageContainer.style.display = 'block';
+                        setTimeout(() => productPageMessageContainer.style.display = 'none', 5000);
+                    }
+                })
+                .catch(error => {
+                    console.error('Network or server error during add to cart:', error);
+                    // Display generic error message
+                    productPageMessageContainer.textContent = `Error: ${error.message || 'An unexpected error occurred.'}`;
+                    productPageMessageContainer.className = 'mt-4 p-3 bg-red-100 text-red-700 rounded text-center';
+                    productPageMessageContainer.style.display = 'block';
+                    setTimeout(() => productPageMessageContainer.style.display = 'none', 5000);
+                });
+            });
+        });
+    });
 </script>
 {% endblock %}

@@ -63,9 +63,11 @@
 <script>
     // JavaScript for reservation timers
     document.addEventListener('DOMContentLoaded', function() {
-        const cartItemsData = JSON.parse('{{ cart_items|safe }}'); // Parse the JSON string
+        // THIS IS THE CRITICAL CHANGE: Use cart_items_json
+        const cartItemsData = JSON.parse('{{ cart_items_json|safe }}'); 
 
         cartItemsData.forEach(item => {
+            // Check for reservation_time_left_seconds
             if (item.is_reserved_by_current_user && item.reservation_time_left_seconds > 0) {
                 startCartItemTimer(item.product_id, item.reservation_time_left_seconds);
             }
@@ -91,6 +93,7 @@
                 }
                 // When a reservation expires in the cart, it's best to reload the page
                 // so the backend can re-evaluate and clean up the cart item.
+                console.log(`Reservation for product ${productId} expired. Reloading page.`); // Add console log
                 setTimeout(() => window.location.reload(), 1000);
             }
         }, 1000);

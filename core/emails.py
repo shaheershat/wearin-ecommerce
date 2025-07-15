@@ -46,9 +46,9 @@ def send_product_available_email(recipient_email, product_name, product_id):
     """
     logger.info(f"Attempting to send product available email to {recipient_email} for product {product_name} (ID: {product_id}).")
     
-    product_url = f"{getattr(settings, 'SITE_URL', 'http://127.0.0.1:8000')}/shop/{product_id}/" # Adjust URL as per your actual URL patterns
+    product_url = f"{getattr(settings, 'SITE_URL', 'http://127.0.0.1:8000')}/product-detail/{product_id}/" # Adjust URL as per your actual URL patterns
     
-    subject = f"Good News! '{product_name}' is Now Available on Wearin'"
+    subject = f"Good News! '{product_name}' is Now Available on Wearin"
     context = {
         'product_name': product_name, 
         'product_url': product_url
@@ -69,7 +69,7 @@ def send_reservation_expired_email(recipient_email, product_name, product_id):
     
     product_url = f"{getattr(settings, 'SITE_URL', 'http://127.0.0.1:8000')}/product-detail/{product_id}/" # Adjust URL
     
-    subject = f"Your Reservation for '{product_name}' on Wearin' Has Expired"
+    subject = f"Your Reservation for '{product_name}' on Wearin Has Expired"
     context = {
         'product_name': product_name, 
         'product_url': product_url
@@ -111,7 +111,7 @@ def send_product_sold_email(product_name, product_id, purchaser_email=None):
             logger.info(f"No subscribers to notify for product '{product_name}' being sold.")
             return
 
-        subject = f"Update: '{product_name}' Has Been Sold on Wearin'"
+        subject = f"Update: '{product_name}' Has Been Sold on Wearin"
         product_url = f"{getattr(settings, 'SITE_URL', 'http://127.0.0.1:8000')}/product-detail/{product_id}/"
         context = {
             'product_name': product_name,
