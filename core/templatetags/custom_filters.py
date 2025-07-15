@@ -71,3 +71,10 @@ def get_category_name(categories, id):
         return next(c.name for c in categories if str(c.id) == str(id))
     except StopIteration:
         return ""
+
+@register.filter
+def multiply(value, arg):
+    try:
+        return float(value) * float(arg)
+    except (ValueError, TypeError):
+        return '' # Or raise an error, or return 0, depending on desired behavior for non-numeric input

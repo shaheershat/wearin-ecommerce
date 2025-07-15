@@ -51,7 +51,7 @@
     <div class="header">
         <img src="{{ logo_url }}" class="logo " alt="Brand Logo">
         <h2>Invoice</h2>
-        <p><strong>Order ID:</strong> {{ order.id }}</p>
+        <p><strong>Order ID:</strong> {{ order.custom_order_id }}</p>
         <p><strong>Date:</strong> {{ order.created_at|date:"M d, Y" }}</p>
     </div>
 

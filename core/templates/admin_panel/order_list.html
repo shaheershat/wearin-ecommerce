@@ -33,7 +33,7 @@
     <tbody>
       {% for order in orders %}
       <tr class="border-t hover:bg-gray-50 transition">
-        <td class="px-4 py-2 font-medium">{{ order.id }}</td>
+        <td class="px-4 py-2 font-medium">{{ order.custom_order_id }}</td>
         <td class="px-4 py-2">{{ order.user.username }}</td>
         <td class="px-4 py-2">
           <form method="POST" action="{% url 'admin_update_order_status' order.id %}" class="inline">

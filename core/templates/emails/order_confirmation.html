@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Order Confirmation - {{ site_name }}</title>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 20px auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px; background-color: #f9f9f9; }
+        .header { background-color: #4CAF50; color: white; padding: 10px 20px; text-align: center; border-radius: 8px 8px 0 0; }
+        .content { padding: 20px; }
+        .order-details, .item-details { margin-bottom: 20px; border-top: 1px solid #eee; padding-top: 15px; }
+        .order-details p, .item-details p { margin: 5px 0; }
+        .item-details table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        .item-details th, .item-details td { border: 1px solid #eee; padding: 8px; text-align: left; }
+        .total { text-align: right; font-weight: bold; margin-top: 20px; }
+        .button-container { text-align: center; margin-top: 30px; }
+        .button { display: inline-block; padding: 10px 20px; background-color: #007bff; color: white !important; text-decoration: none; border-radius: 5px; }
+        .footer { text-align: center; margin-top: 30px; font-size: 0.8em; color: #777; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>Order Confirmed!</h2>
+        </div>
+        <div class="content">
+            <p>Dear {{ user.username }},</p>
+            <p>Thank you for your order from {{ site_name }}! Your order <strong>#{{ order.custom_order_id }}</strong> has been successfully placed.</p>
+
+            <div class="order-details">
+                <h3>Order Summary</h3>
+                <p><strong>Order ID:</strong> {{ order.custom_order_id }}</p>
+                <p><strong>Order Date:</strong> {{ order.order_date|date:"F j, Y, P" }}</p>
+                <p><strong>Payment Method:</strong> {{ order.get_payment_method_display }}</p>
+                <p><strong>Payment Status:</strong> {{ order.get_payment_status_display }}</p>
+                <p><strong>Order Status:</strong> {{ order.get_status_display }}</p>
+            </div>
+
+            <div class="item-details">
+                <h3>Items in Your Order:</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Product</th>
+                            <th>Quantity</th>
+                            <th>Price</th>
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in order_items %}
+                            <tr>
+                                <td>{{ item.product.name }}</td>
+                                <td>{{ item.quantity }}</td>
+                                <td>₹{{ item.price_at_purchase|floatformat:2 }}</td>
+                                <td>₹{{ item.item_total|floatformat:2 }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="total">
+                <p><strong>Total Amount:</strong> ₹{{ order.total_price|floatformat:2 }}</p>
+            </div>
+
+            <div class="shipping-address">
+                <h3>Shipping Address:</h3>
+                <p>{{ shipping_address.full_name }}</p>
+                <p>{{ shipping_address.street_address }}</p>
+                <p>{{ shipping_address.city }}, {{ shipping_address.state }} - {{ shipping_address.pincode }}</p>
+                <p>Phone: {{ shipping_address.phone_number }}</p>
+            </div>
+
+            <div class="button-container">
+                <p>You can view your order details anytime by visiting your <a href="{{ site_url }}/profile/?tab=orders" style="color: #007bff;">order history</a>.</p>
+                    {% if invoice_download_url %}
+                        <table border="0" cellspacing="0" cellpadding="0" align="center" style="margin-top: 20px;">
+                            <tr>
+                                <td align="center" bgcolor="#007bff" style="border-radius: 5px;">
+                                    <a href="{{ invoice_download_url }}" target="_blank"
+                                    style="font-size: 16px; font-family: Helvetica, Arial, sans-serif; color: #ffffff; text-decoration: none; border-radius: 5px; padding: 12px 24px; border: 1px solid #007bff; display: inline-block; font-weight: bold;">
+                                    Download Invoice
+                                    </a>
+                                </td>
+                            </tr>
+                        </table>
+                    {% endif %}
+            </div>
+            
+            <p>If you have any questions, feel free to contact us.</p>
+            <p>Thanks,<br>The {{ site_name }} Team</p>
+        </div>
+        <div class="footer">
+            <p>&copy; {{ "now"|date:"Y" }} {{ site_name }}. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>

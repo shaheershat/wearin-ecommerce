@@ -33,7 +33,7 @@ import razorpay
 from django.views.decorators.csrf import csrf_exempt
 from core.forms import UserLoginForm, UserRegistrationForm, ProfileForm, AddressForm, NewsletterForm
 from core.models import Product, Category, Wishlist, Order, UserProfile, EmailOTP, Address, NewsletterSubscriber, NotificationSubscription
-from core.emails import send_product_available_email, send_product_sold_email, send_product_removed_from_cart_email 
+from core.emails import send_product_available_email, send_product_sold_email, send_product_removed_from_cart_email, send_order_confirmation_email
 from core.tasks import release_expired_reservations_task
 from core.utils import send_otp_email
 from django.contrib.auth.hashers import make_password
@@ -349,9 +349,6 @@ def payment_success_view(request):
                         product.release_reservation() # Release the expired reservation
                         logger.warning(f"[{user.username}] Buy-now product {product.id} reservation expired.")
                         return redirect('product_detail', id=product.id)
-                # No 'else' here, because if it's not reserved, we need to try and reserve it below if it's part of order
-                # The reservation logic in buy_now_checkout_view should ideally ensure it's reserved before payment.
-                # This block mainly acts as a final validation.
                 
                 price_at_purchase = product.price # Capture current price
                 item_total = price_at_purchase * quantity
@@ -449,7 +446,7 @@ def payment_success_view(request):
             return redirect('shop') # Changed redirect to 'shop' as the order cannot proceed.
 
         # --- Payment Verification / Debit ---
-        final_payment_status = 'Pending' # Default payment status
+        final_payment_status = 'Pending' # Default payment status for transaction
         initial_order_status = 'Pending' # Default order status
 
         if payment_method == 'razorpay':
@@ -466,7 +463,7 @@ def payment_success_view(request):
                 # Verify the payment signature with Razorpay client
                 razorpay_client.utility.verify_payment_signature(params_dict)
                 final_payment_status = 'Success'
-                initial_order_status = 'Processing' # For successful online payments, move to 'Processing' or 'Placed'
+                initial_order_status = 'Processing' # For successful online payments, move to 'Processing'
                 logger.info(f"[{user.username}] Razorpay payment {razorpay_payment_id} verified successfully.")
             except Exception as e:
                 messages.error(request, "Razorpay payment verification failed. Please try again or contact support.")
@@ -492,7 +489,7 @@ def payment_success_view(request):
 
         elif payment_method == 'cod':
             # Add a check for COD max limit if necessary (already there)
-            if total_order_price > 1000: # Example limit
+            if total_order_price > 1000: # Example limit for COD
                  messages.error(request, "Cash on Delivery (COD) not available for orders above ₹1000.")
                  logger.warning(f"[{user.username}] COD rejected for order total {total_order_price}.")
                  return redirect('checkout')
@@ -506,6 +503,7 @@ def payment_success_view(request):
             return redirect('checkout')
 
         # --- Create the Order and OrderItems ---
+        order = None # Initialize order to None
         try:
             order = Order.objects.create(
                 user=user,
@@ -544,7 +542,7 @@ def payment_success_view(request):
                 
             # Clear items from cart/session ONLY after successful order and order items creation
             if not buy_now_item_session_data: # If it was a regular cart purchase
-                if user_cart: # Ensure cart object exists
+                if 'user_cart' in locals() and user_cart: # Check if user_cart was successfully fetched
                     CartItem.objects.filter(cart=user_cart).delete() # Delete all items from this cart
                     logger.debug(f"[{user.username}] All items cleared from user's cart.")
             else: # If it was a 'buy now' item
@@ -565,10 +563,19 @@ def payment_success_view(request):
 
         messages.success(request, f"Order #{order.id} placed successfully!")
         
+        # --- NEW: Send order confirmation email (only if order object was successfully created) ---
+        if order:
+            try:
+                send_order_confirmation_email.delay(order.id)
+                logger.info(f"[{user.username}] Queued order confirmation email for order {order.id}.")
+            except Exception as e:
+                logger.error(f"[{user.username}] Failed to queue order confirmation email for order {order.id}: {e}", exc_info=True)
+        # --- END NEW ---
+
         # Store the order ID in the session for the subsequent GET request
-        request.session['last_processed_order_id'] = order.id
+        request.session['last_processed_order_id'] = order.id if order else None # Store ID only if order was created
         request.session.modified = True
-        logger.debug(f"[{user.username}] Stored order ID {order.id} in session for redirect.")
+        logger.debug(f"[{user.username}] Stored order ID {order.id if order else 'None'} in session for redirect.")
 
         # Redirect to the SAME URL for the GET request
         return redirect('payment_success') # <--- Redirects to the same URL, which will then be a GET request
@@ -579,10 +586,12 @@ def payment_success_view(request):
         order = None
         # Retrieve messages that were set during the POST request
         success_message = None
-        for message in messages.get_messages(request):
+        # Use list(messages.get_messages(request)) to consume messages once
+        current_messages = list(messages.get_messages(request))
+        for message in current_messages:
             if message.level == messages.SUCCESS:
                 success_message = str(message)
-                break # Get the first success message
+                break 
 
         last_processed_order_id = request.session.get('last_processed_order_id')
         logger.debug(f"[{user.username}] Retrieved last_processed_order_id from session: {last_processed_order_id}")
@@ -593,9 +602,10 @@ def payment_success_view(request):
                 order = Order.objects.get(id=last_processed_order_id, user=request.user)
                 logger.info(f"[{user.username}] Successfully fetched order {order.id} for display.")
                 # Clear the session data after it's used
-                del request.session['last_processed_order_id']
-                request.session.modified = True
-                logger.debug(f"[{user.username}] last_processed_order_id cleared from session.")
+                if 'last_processed_order_id' in request.session:
+                    del request.session['last_processed_order_id']
+                    request.session.modified = True
+                    logger.debug(f"[{user.username}] last_processed_order_id cleared from session.")
             except Order.DoesNotExist:
                 messages.warning(request, "Could not retrieve specific order details, but payment was processed.")
                 logger.warning(f"[{user.username}] Order {last_processed_order_id} not found for display.")
@@ -610,6 +620,7 @@ def payment_success_view(request):
         context = {
             'order': order,
             'message': success_message if success_message else "Your payment was successful!",
+            'show_invoice_button': True if order else False, # Only show if an order object is available
         }
         # Ensure your template path is correct
         return render(request, 'user/main/payment_success.html', context)

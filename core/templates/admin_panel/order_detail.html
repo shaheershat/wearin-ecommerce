@@ -1,7 +1,7 @@
 {% extends 'admin_panel/dashboard.html' %}
 
 {% block content %}
-<h1 class="text-2xl font-bold mb-6">Order Details: #{{ order.id }}</h1>
+<h1 class="text-2xl font-bold mb-6">Order Details: #{{ order.custom_order_id }}</h1>
 
 <a href="{% url 'admin_order_list' %}" class="text-blue-600 hover:underline mb-4 inline-block">&larr; Back to Order List</a>
 
@@ -9,7 +9,7 @@
   <!-- Order Summary -->
   <div class="bg-white p-6 rounded-xl shadow">
     <h3 class="text-xl font-semibold mb-4">Order Summary</h3>
-    <p class="mb-2"><strong class="text-gray-700">Order ID:</strong> {{ order.id }}</p>
+    <p class="mb-2"><strong class="text-gray-700">Order ID:</strong> {{ order.custom_order_id }}</p>
     <p class="mb-2"><strong class="text-gray-700">Status:</strong> 
       <span class="px-2 py-1 rounded-full text-xs font-semibold
         {% if order.status == 'Pending' %}bg-yellow-100 text-yellow-800

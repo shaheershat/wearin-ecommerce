@@ -1,5 +1,4 @@
-# core/emails.py
-
+from core.models import Product, Cart, CartItem, Order, OrderItem, Address, Wallet # Make sure Order is here
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
 from django.conf import settings
@@ -7,8 +6,11 @@ from django.utils.html import strip_tags
 from celery import shared_task
 from django.utils import timezone
 import logging
-from core.models import Product # Import Product for specific tasks
 from django.contrib.auth import get_user_model
+from django.core.mail import EmailMultiAlternatives
+from django.urls import reverse
+import logging
+from django.conf import settings
 
 # Initialize logger at the top
 logger = logging.getLogger(__name__)
@@ -160,3 +162,75 @@ def send_product_removed_from_cart_email(user_id, product_id):
         logger.error(f"Failed to send product removed from cart email. User ID {user_id} or Product ID {product_id} not found: {e}", exc_info=True)
     except Exception as e:
         logger.error(f"Unexpected error sending product removed from cart email for user {user_id}, product {product_id}: {e}", exc_info=True)
+
+def _send_email(subject, template_name, context, recipient_list):
+    """Helper function to send HTML emails with enhanced logging."""
+    if not recipient_list:
+        logger.info(f"No recipients specified for email '{subject}'. Skipping.")
+        return False
+
+    html_message = render_to_string(template_name, context)
+    plain_message = strip_tags(html_message)
+
+    try:
+        # Using EmailMultiAlternatives is generally better than send_mail directly for HTML
+        msg = EmailMultiAlternatives(subject, plain_message, settings.DEFAULT_FROM_EMAIL, recipient_list)
+        msg.attach_alternative(html_message, "text/html") # Attach HTML version
+        msg.send()
+        logger.info(f"Email '{subject}' sent successfully to {', '.join(recipient_list)}")
+        return True
+    except Exception as e:
+        logger.error(f"Error sending email '{subject}' to {', '.join(recipient_list)}: {e}", exc_info=True)
+        return False
+
+# ... (all your other @shared_task functions: send_product_available_email,
+# send_reservation_expired_email, send_product_sold_email,
+# send_product_removed_from_cart_email) ...
+
+# Now, your send_order_confirmation_email should be next,
+# and there should NOT be another _send_email definition here.
+
+@shared_task
+def send_order_confirmation_email(order_id):
+    """
+    Sends an order confirmation email to the user.
+    """
+    logger.info(f"Attempting to send order confirmation email for Order ID: {order_id}.")
+
+    try:
+        order = Order.objects.get(id=order_id)
+        user = order.user
+
+        if not user.email:
+            logger.warning(f"User {user.username} (ID: {user.id}) has no email. Skipping order confirmation email for order {order_id}.")
+            return
+
+        print(f"--- DEBUG: Order object attributes (dir): {dir(order)} ---")
+        print(f"--- DEBUG: Type of order object: {type(order)} ---")
+
+        invoice_absolute_url = settings.SITE_URL + reverse('download_invoice', args=[order.id])
+
+        print(f"--- DEBUG: send_order_confirmation_email - Generated URL: {invoice_absolute_url} ---")
+
+        context = {
+            'order': order,
+            'user': user,
+            'order_items': order.items.all(),
+            'shipping_address': order.address,
+            'site_name': settings.SITE_NAME,
+            'site_url': getattr(settings, 'SITE_URL', 'http://127.0.0.1:8000'),
+            'invoice_download_url': invoice_absolute_url,
+        }
+
+        subject = f"Your Order #{order.id} Confirmation from {settings.SITE_NAME}"
+        template_name = 'emails/order_confirmation.html'
+
+        if _send_email(subject, template_name, context, [user.email]):
+            logger.info(f"Successfully queued order confirmation email for order {order.id} to {user.email}.")
+        else:
+            logger.error(f"Failed to queue order confirmation email for order {order.id} to {user.email}.")
+
+    except Order.DoesNotExist:
+        logger.error(f"Order with ID {order_id} not found for sending confirmation email. Skipping.")
+    except Exception as e:
+        logger.error(f"Unexpected error in send_order_confirmation_email for order {order_id}: {e}", exc_info=True)

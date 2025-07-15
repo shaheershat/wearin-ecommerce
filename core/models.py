@@ -87,7 +87,7 @@ class Product(models.Model):
     is_sold = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     stock_quantity = models.PositiveIntegerField(default=1)
-    
+
     reserved_by_user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='reserved_products')
     reservation_expires_at = models.DateTimeField(null=True, blank=True)
 
@@ -95,13 +95,13 @@ class Product(models.Model):
         return self.name
 
     def get_absolute_url(self):
-        return reverse('product_detail', args=[self.id]) # Make sure 'product_detail' exists in your urls.py
+        return reverse('product_detail', args=[self.id])
 
     @property
     def is_currently_reserved(self):
         if self.is_sold:
             return False
-        
+
         return self.reserved_by_user is not None and \
                self.reservation_expires_at is not None and \
                self.reservation_expires_at > timezone.now()
@@ -119,60 +119,54 @@ class Product(models.Model):
     def release_reservation(self):
         logger.info(f"Attempting to release reservation for product: {self.name} (ID: {self.id})")
 
-        # Only proceed if it was actually reserved by a user and not already sold
         if self.reserved_by_user and not self.is_sold:
-            # Import tasks/emails locally to avoid circular import issues
             from core.emails import send_reservation_expired_email, send_product_available_email
-            from core.models import NotificationSubscription, CartItem # Make sure CartItem is imported
+            from core.models import NotificationSubscription, CartItem
 
             previous_reserved_user = self.reserved_by_user
-            
-            # 1. Clear reservation fields on the Product
+
             self.reserved_by_user = None
             self.reservation_expires_at = None
-            self.save(update_fields=['reserved_by_user', 'reservation_expires_at']) # Save specific fields
+            self.save(update_fields=['reserved_by_user', 'reservation_expires_at'])
             logger.info(f"Reservation fields cleared for product {self.name}.")
 
-            # 2. Remove the product from the expired user's cart
             if previous_reserved_user:
                 deleted_count, _ = CartItem.objects.filter(
                     user=previous_reserved_user,
                     product=self,
-                    is_reserved=True # Only delete the specific reserved instance
+                    is_reserved=True
                 ).delete()
-                
+
                 if deleted_count > 0:
                     logger.info(f"Removed {deleted_count} cart item(s) for product {self.name} from {previous_reserved_user.username}'s cart after reservation expiry.")
                 else:
                     logger.warning(f"No reserved cart item found for product {self.name} in {previous_reserved_user.username}'s cart after reservation expiry.")
 
-                # 3. Send email to the user whose reservation expired
-                if previous_reserved_user.email: # Ensure user has an email
+                if previous_reserved_user.email:
                     send_reservation_expired_email.delay(
-                        previous_reserved_user.email, # Pass recipient_email (string)
-                        self.name,                    # Pass product_name (string)
-                        self.id                       # Pass product_id (int)
+                        previous_reserved_user.email,
+                        self.name,
+                        self.id
                     )
                     logger.info(f"Queued reservation expired email for {previous_reserved_user.email}.")
-            
-            # 4. Notify subscribers for 'available' event
-            if self.is_available_for_purchase: # This property should now be True
+
+            if self.is_available_for_purchase:
                 subscribers = NotificationSubscription.objects.filter(
                     product=self,
                     event_type='available',
-                    notified_at__isnull=True # Only notify those who haven't been notified yet
+                    notified_at__isnull=True
                 )
                 if subscribers.exists():
                     logger.info(f"Found {subscribers.count()} pending subscribers for product {self.name}.")
                     for sub in subscribers:
-                        if sub.user and sub.user.email and sub.user != previous_reserved_user: # Avoid notifying the user whose reservation just expired again for availability
+                        if sub.user and sub.user.email and sub.user != previous_reserved_user:
                             send_product_available_email.delay(
-                                sub.user.email, # Pass recipient_email
-                                self.name,      # Pass product_name
-                                self.id         # Pass product_id
+                                sub.user.email,
+                                self.name,
+                                self.id
                             )
-                            sub.notified_at = timezone.now() # Mark as notified
-                            sub.save(update_fields=['notified_at']) # Save only the 'notified_at' field
+                            sub.notified_at = timezone.now()
+                            sub.save(update_fields=['notified_at'])
                             logger.info(f"Queued product available email for subscriber {sub.user.email}.")
                         elif sub.user == previous_reserved_user:
                              logger.info(f"Skipping product available email for {sub.user.email} as their reservation just expired.")
@@ -182,9 +176,8 @@ class Product(models.Model):
                 logger.info(f"Product {self.name} is not fully available for purchase yet after reservation expiry (e.g., stock=0 or another reservation placed).")
         else:
             logger.info(f"Product {self.name} was not actively reserved by a user or was already sold. No reservation to release.")
-        
+
         logger.info(f"Finished attempting to release reservation for product: {self.name} (ID: {self.id}).")
-        return True
 
 
 class NotificationSubscription(models.Model):
@@ -254,44 +247,90 @@ class Order(models.Model):
     ('Approved', 'Approved'),
     ('Rejected', 'Rejected'),
     ]
-    return_status = models.CharField(
-    max_length=10,
-    choices=RETURN_STATUS_CHOICES,
-    default='None'
-    )
-
-    payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES, default='COD')
-    return_status = models.CharField(max_length=10, choices=RETURN_STATUS_CHOICES, default='None')
 
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     address = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, blank=True)
     total_price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Pending')
     payment_status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default='Pending')
+    payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES, default='COD')
+    return_status = models.CharField(max_length=10, choices=RETURN_STATUS_CHOICES, default='None') # This was duplicated, but now correct
     razorpay_order_id = models.CharField(max_length=100, blank=True, null=True)
     razorpay_payment_id = models.CharField(max_length=100, blank=True, null=True)
     razorpay_signature = models.CharField(max_length=255, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # --- ADD THIS NEW FIELD ---
+    custom_order_id = models.CharField(max_length=20, unique=True, blank=True, null=True)
+    # --------------------------
+
+    class Meta:
+        ordering = ['-created_at'] # Good practice to order by creation date
+
+    # --- ADD OR REPLACE THE save METHOD WITH THIS ---
     def save(self, *args, **kwargs):
-        if self.pk:
-            old_order = Order.objects.get(pk=self.pk)
-            if old_order.status != 'Delivered' and self.status == 'Delivered':
-                for item in self.items.all():
-                    if item.product:
-                        item.product.is_sold = True
-                        item.product.reserved_by_user = None # Clear reservation on sale
-                        item.product.reservation_expires_at = None # Clear reservation on sale
-                        item.product.save()
+        # Handle product sold status update logic first (existing logic)
+        is_new = not self.pk # Check if this is a new object being saved for the first time
+        old_order_status = None
+        if not is_new:
+            try:
+                old_order = Order.objects.get(pk=self.pk)
+                old_order_status = old_order.status
+            except Order.DoesNotExist:
+                pass # Should not happen, but good to handle
 
-                        # Also, remove from any carts if it's sold
-                        CartItem.objects.filter(product=item.product).delete()
+        # Generate custom_order_id ONLY if it's a new order and the field is empty
+        if is_new and not self.custom_order_id:
+            prefix = "WN"
+            # Get the highest existing numeric part of custom_order_id,
+            # or use the database PK if no custom IDs exist yet.
+            # This is more robust than just `last_order_pk` as it accounts for existing custom IDs.
+            last_custom_id_num = 0
+            latest_order_with_custom_id = Order.objects.filter(custom_order_id__startswith=prefix).order_by('-pk').first()
+            if latest_order_with_custom_id and latest_order_with_custom_id.custom_order_id:
+                try:
+                    last_custom_id_num = int(latest_order_with_custom_id.custom_order_id[len(prefix):])
+                except ValueError:
+                    # Fallback if an old custom_order_id isn't purely numeric after prefix
+                    last_custom_id_num = Order.objects.all().order_by('-pk').values_list('pk', flat=True).first() or 0
 
+            next_num = last_custom_id_num + 1
+
+            # Loop to ensure uniqueness, especially in case of race conditions
+            for _ in range(10): # Try up to 10 times to find a unique ID
+                formatted_num = f"{next_num:04d}" # Pads with leading zeros
+                new_custom_id = f"{prefix}{formatted_num}"
+
+                if not Order.objects.filter(custom_order_id=new_custom_id).exists():
+                    self.custom_order_id = new_custom_id
+                    break
+                next_num += 1 # Increment and try again
+
+            if not self.custom_order_id: # If after 10 tries, no unique ID was found (highly unlikely)
+                logger.error("Failed to generate a unique custom_order_id after multiple attempts.")
+                # You might want to raise an exception or fallback to pk based ID here
+
+        # Call the original save method before checking status changes
         super().save(*args, **kwargs)
 
+        # Move your `is_sold` update logic AFTER super().save()
+        # This ensures `self.pk` and other fields are correctly set for the newly created object.
+        if not is_new and old_order_status != 'Delivered' and self.status == 'Delivered':
+            for item in self.items.all():
+                if item.product:
+                    item.product.is_sold = True
+                    item.product.reserved_by_user = None # Clear reservation on sale
+                    item.product.reservation_expires_at = None # Clear reservation on sale
+                    item.product.save()
+
+                    # Also, remove from any carts if it's sold
+                    from core.models import CartItem # Local import to avoid circular dependency
+                    CartItem.objects.filter(product=item.product).delete()
+
+    # --- UPDATE YOUR __str__ METHOD TO USE custom_order_id ---
     def __str__(self):
-        return f"Order #{self.id} by {self.user.username}"
+        return f"Order #{self.custom_order_id or self.id} by {self.user.username}"
 
 class OrderItem(models.Model):
     RETURN_STATUS_CHOICES = [
@@ -309,12 +348,15 @@ class OrderItem(models.Model):
 
     def __str__(self):
         product_name = self.product.name if self.product else "N/A"
-        return f"{product_name} (x{self.quantity}) in Order #{self.order.id}"
+        # --- UPDATED LINE HERE ---
+        # Use order.custom_order_id for display, falling back to order.id if custom_order_id is not set
+        return f"{product_name} (x{self.quantity}) in Order #{self.order.custom_order_id or self.order.id}"
 
     def save(self, *args, **kwargs):
         if not self.pk and self.product:
             self.price_at_purchase = self.product.price
         super().save(*args, **kwargs)
+
 
 
 class Cart(models.Model):

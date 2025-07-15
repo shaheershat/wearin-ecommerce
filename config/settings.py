@@ -1,5 +1,5 @@
 # settings.py
-
+print("Loading settings.py...") 
 from pathlib import Path
 import os
 import cloudinary
@@ -210,6 +210,10 @@ LOGGING = {
         },
     },
 }
+CELERY_IMPORTS = (
+    'core.tasks',   # Assuming you have a core/tasks.py for other tasks
+    'core.emails',  # <--- ADDED THIS LINE to tell Celery about tasks in core/emails.py
+)
 
 # Email Settings
 # For development, print emails to console. For production, use SMTP.
@@ -260,3 +264,7 @@ CELERY_BEAT_SCHEDULE = {
 SESSION_SAVE_EVERY_REQUEST = True
 # For email absolute URLs (necessary for emails sent by Celery tasks or when generating links)
 SITE_URL = 'http://127.0.0.1:8000' # SECURITY WARNING: Change to your actual domain in production!
+
+# --- ADDED THIS SECTION ---
+SITE_NAME = "WEARIN" # Define your site name here
+# --- END ADDED SECTION ---
