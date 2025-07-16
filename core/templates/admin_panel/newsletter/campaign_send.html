@@ -1,0 +1,86 @@
+{% extends 'admin_panel/dashboard.html' %}
+
+{% block content %}
+<div class="p-6 bg-white rounded-lg shadow-md">
+    <h2 class="text-2xl font-bold text-gray-800 mb-6">Send Newsletter Campaign: "{{ campaign.title }}"</h2>
+
+    
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- Campaign Details -->
+        <div class="bg-gray-50 p-4 rounded-lg border border-gray-200">
+            <h3 class="text-xl font-semibold text-gray-700 mb-4">Campaign Information</h3>
+            <p class="mb-2"><strong>Title:</strong> {{ campaign.title }}</p>
+            <p class="mb-2"><strong>Template:</strong> 
+                {% if campaign.email_template %}
+                    {{ campaign.email_template.name }} 
+                    (<a href="{% url 'admin_email_template_preview' campaign.email_template.pk %}" target="_blank" class="text-purple-600 hover:underline">Preview Template</a>)
+                {% else %}
+                    <span class="text-red-500">No Template Selected</span>
+                {% endif %}
+            </p>
+            <p class="mb-2"><strong>Recipients Type:</strong> {{ campaign.get_recipients_type_display }}</p>
+            {% if campaign.recipients_type == 'custom_list' and campaign.custom_recipient_emails %}
+                <p class="mb-2"><strong>Custom Emails:</strong> <span class="text-sm text-gray-600 break-all">{{ campaign.custom_recipient_emails }}</span></p>
+            {% endif %}
+            <p class="mb-2"><strong>Status:</strong> 
+                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full
+                    {% if campaign.status == 'sent' %}bg-green-100 text-green-800
+                    {% elif campaign.status == 'sending' %}bg-yellow-100 text-yellow-800
+                    {% elif campaign.status == 'pending' %}bg-blue-100 text-blue-800
+                    {% elif campaign.status == 'failed' %}bg-red-100 text-red-800
+                    {% else %}bg-gray-100 text-gray-800{% endif %}">
+                    {{ campaign.get_status_display }}
+                </span>
+            </p>
+            <p class="mb-2"><strong>Scheduled At:</strong> {% if campaign.scheduled_at %}{{ campaign.scheduled_at|date:"M d, Y H:i" }}{% else %}Send Immediately{% endif %}</p>
+            <p class="mb-2"><strong>Sent At:</strong> {% if campaign.sent_at %}{{ campaign.sent_at|date:"M d, Y H:i" }}{% else %}N/A{% endif %}</p>
+            <p class="mb-2"><strong>Sent By:</strong> {% if campaign.sent_by %}{{ campaign.sent_by.username }}{% else %}N/A{% endif %}</p>
+            <p class="mb-2"><strong>Total Recipients (Estimated):</strong> {{ campaign.total_recipients }}</p>
+
+            <div class="mt-6 flex gap-4">
+                <a href="{% url 'admin_newsletter_campaign_edit' campaign.pk %}" class="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 transition duration-200">Edit Campaign</a>
+                {% if campaign.status == 'draft' or campaign.status == 'failed' %}
+                    <form method="post" action="{% url 'admin_newsletter_campaign_send' campaign.pk %}" class="inline-block">
+                        {% csrf_token %}
+                        <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition duration-200">
+                            Send Newsletter Now
+                        </button>
+                    </form>
+                {% else %}
+                    <button disabled class="bg-gray-300 text-gray-600 px-4 py-2 rounded-lg cursor-not-allowed">
+                        Already {{ campaign.get_status_display }}
+                    </button>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Email Preview -->
+        <div class="bg-white p-4 rounded-lg border border-gray-200">
+            <h3 class="text-xl font-semibold text-gray-700 mb-4">Email Preview</h3>
+            {% if preview_error %}
+                <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4" role="alert">
+                    <p class="font-bold">Preview Error:</p>
+                    <p>{{ preview_error }}</p>
+                </div>
+            {% elif preview_html %}
+                <div class="border border-gray-300 rounded-lg overflow-hidden" style="height: 400px; width: 100%;">
+                    <iframe srcdoc="{{ preview_html|escape }}" class="w-full h-full border-0"></iframe>
+                </div>
+                <p class="text-sm text-gray-500 mt-2">Note: This is a simplified preview. Actual rendering may vary across email clients.</p>
+            {% else %}
+                <div class="bg-yellow-50 border-l-4 border-yellow-400 text-yellow-800 p-4 rounded" role="alert">
+                    <p class="font-bold">No Preview Available</p>
+                    <p>Select an email template for this campaign to see a preview.</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="mt-8 text-center">
+        <a href="{% url 'admin_newsletter_campaign_list' %}" class="bg-gray-600 text-white px-6 py-3 rounded-lg hover:bg-gray-700 transition duration-200 ease-in-out shadow-md">
+            ← Back to Campaigns
+        </a>
+    </div>
+</div>
+{% endblock %}

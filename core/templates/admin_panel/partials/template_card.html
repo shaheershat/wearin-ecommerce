@@ -1,0 +1,7 @@
+<div class="template-card border p-4 rounded shadow hover:border-blue-500 cursor-pointer"
+     data-id="{{ template.id }}">
+    <h3 class="font-semibold text-lg">{{ template.name }}</h3>
+    <div class="mt-2 text-sm text-gray-600 line-clamp-2">
+        {{ template.html_content|truncatewords:20 }}
+    </div>
+</div>

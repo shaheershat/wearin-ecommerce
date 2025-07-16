@@ -121,7 +121,7 @@ class Product(models.Model):
 
         if self.reserved_by_user and not self.is_sold:
             from core.emails import send_reservation_expired_email, send_product_available_email
-            from core.models import NotificationSubscription, CartItem
+            
 
             previous_reserved_user = self.reserved_by_user
 
@@ -434,3 +434,62 @@ class Wallet(models.Model):
 
     def __str__(self):
         return f"{self.user.username}'s Wallet"
+
+class EmailTemplate(models.Model):
+    name = models.CharField(max_length=100, unique=True, help_text="A unique name for this template (e.g., 'Promotional Offer', 'Welcome Newsletter')")
+    subject = models.CharField(max_length=255, help_text="Email subject line. Can include {{ subject_var }} for dynamic content.")
+    html_content = models.TextField(help_text="The HTML content of the email. Use Django template syntax for dynamic data. E.g., {{ user.username }}, {{ campaign.title }}.")
+    plain_content = models.TextField(blank=True, null=True, help_text="Optional: Plain text version of the email for older clients or accessibility. Will be generated automatically if left blank.")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.plain_content and self.html_content:
+            from django.utils.html import strip_tags
+            self.plain_content = strip_tags(self.html_content)
+        super().save(*args, **kwargs)
+
+
+class NewsletterCampaign(models.Model):
+    CAMPAIGN_TYPE_CHOICES = [
+        ('all_users', 'All Registered Users'),
+        ('newsletter_subscribers', 'Newsletter Subscribers Only'),
+        ('custom_list', 'Custom Email List'),
+    ]
+
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('pending', 'Pending (Scheduled)'),
+        ('sending', 'Sending'),
+        ('sent', 'Sent'),
+        ('failed', 'Failed'),
+    ]
+
+    title = models.CharField(max_length=255, help_text="Internal title for this newsletter campaign")
+    email_template = models.ForeignKey(EmailTemplate, on_delete=models.SET_NULL, null=True, blank=True, related_name='campaigns')
+    recipients_type = models.CharField(max_length=50, choices=CAMPAIGN_TYPE_CHOICES)
+    custom_recipient_emails = models.TextField(blank=True, null=True, help_text="Comma-separated list of emails if 'Custom Email List' is selected.")
+    scheduled_at = models.DateTimeField(blank=True, null=True)
+    sent_at = models.DateTimeField(blank=True, null=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    sent_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='sent_newsletters')
+    total_recipients = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)  # ✅ Required for admin
+
+    def __str__(self):
+        return self.title
+
+    class Meta:
+        ordering = ['-created_at']
+
+
+class NewsletterSubscription(models.Model):
+    email = models.EmailField(unique=True)
+    is_active = models.BooleanField(default=True)  # ✅ Required for admin
+    created_at = models.DateTimeField(auto_now_add=True)  # ✅ Required for admin
+
+    def __str__(self):
+        return self.email

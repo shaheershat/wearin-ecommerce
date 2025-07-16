@@ -118,7 +118,22 @@ urlpatterns = [
 
     # --- Social Login ---
     path('accounts/', include('allauth.urls')),
+
+    path('newsletter/', admin_views.NewsletterCampaignListView.as_view(), name='admin_newsletter_campaign_list'),
+    path('newsletter/create/', admin_views.NewsletterCampaignCreateView.as_view(), name='admin_newsletter_campaign_create'),
+    path('newsletter/<int:pk>/edit/', admin_views.NewsletterCampaignUpdateView.as_view(), name='admin_newsletter_campaign_edit'),
+    path('newsletter/<int:pk>/delete/', admin_views.NewsletterCampaignDeleteView.as_view(), name='admin_newsletter_campaign_delete'),
+    path('newsletter/<int:pk>/send/', admin_views.send_newsletter_campaign_view, name='admin_newsletter_campaign_send'),
+
+
+    # Email Template management
+    path('newsletter/templates/', admin_views.EmailTemplateListView.as_view(), name='admin_email_template_list'),
+    path('newsletter/templates/create/', admin_views.EmailTemplateCreateView.as_view(), name='admin_email_template_create'),
+    path('newsletter/templates/<int:pk>/edit/', admin_views.EmailTemplateUpdateView.as_view(), name='admin_email_template_edit'),
+    path('newsletter/templates/<int:pk>/delete/', admin_views.EmailTemplateDeleteView.as_view(), name='admin_email_template_delete'),
+    path('newsletter/templates/<int:pk>/preview/', admin_views.email_template_preview, name='admin_email_template_preview'),
 ]
+
 
 # Media files for development
 if settings.DEBUG:

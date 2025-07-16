@@ -7,6 +7,7 @@ from django.contrib.auth.models import User
 from django.contrib.auth import get_user_model
 from core.models import Product, Coupon
 import uuid
+from .models import EmailTemplate, NewsletterCampaign
 # Import the actual Address model and UserProfile
 from core.models import UserProfile, Address, NewsletterSubscriber # Import NewsletterSubscriber
 
@@ -160,3 +161,44 @@ class BatchUploadForm(forms.Form):
         required=False,
         label="Product Images (Multiple)"
     )
+
+class EmailTemplateForm(forms.ModelForm):
+    class Meta:
+        model = EmailTemplate
+        fields = ['name', 'subject', 'html_content', 'plain_content']
+        widgets = {
+            'html_content': forms.Textarea(attrs={'rows': 20}), # Make textarea larger
+            'plain_content': forms.Textarea(attrs={'rows': 10}),
+        }
+
+class NewsletterCampaignForm(forms.ModelForm):
+    class Meta:
+        model = NewsletterCampaign
+        fields = [
+            'title',
+            'email_template',
+            'recipients_type',
+            'custom_recipient_emails',
+            'scheduled_at',
+            'status',
+        ]
+        widgets = {
+            'custom_recipient_emails': forms.Textarea(attrs={
+                'rows': 5,
+                'placeholder': 'Comma-separated emails, e.g., email1@example.com, email2@example.com'
+            }),
+            'scheduled_at': forms.DateTimeInput(attrs={'type': 'datetime-local'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['email_template'].empty_label = "-- Select Template --"
+
+    def clean(self):
+        cleaned_data = super().clean()
+        recipients_type = cleaned_data.get('recipients_type')
+        custom_recipient_emails = cleaned_data.get('custom_recipient_emails')
+
+        if recipients_type == 'custom_list' and not custom_recipient_emails:
+            self.add_error('custom_recipient_emails', "Custom recipient emails are required if 'Custom Email List' is selected.")
+        return cleaned_data

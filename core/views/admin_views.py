@@ -9,6 +9,7 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.contrib.auth.models import User
 from datetime import timedelta
+from django.views.decorators.clickjacking import xframe_options_exempt
 from django.contrib import messages
 from django.contrib.auth import authenticate
 from django.contrib.auth import get_user_model
@@ -26,6 +27,15 @@ from django.http import HttpResponse
 from django.db.models.functions import TruncDay, TruncMonth
 from reportlab.pdfgen import canvas
 from core.models import Order, WalletTransaction, Wallet
+from django.urls import reverse_lazy
+from django.views.generic import ListView, CreateView, UpdateView, DeleteView
+from django.template import Template, Context 
+from django.db.models import Q 
+from core.models import EmailTemplate, NewsletterCampaign, NewsletterSubscriber 
+from core.forms import EmailTemplateForm, NewsletterCampaignForm 
+from core.tasks import send_newsletter_task 
+from django.utils.decorators import method_decorator 
+import logging
 
 
 @admin_login_required
@@ -642,3 +652,120 @@ def export_sales_pdf(request):
     response = HttpResponse(buffer, content_type='application/pdf')
     response['Content-Disposition'] = 'attachment; filename="sales_report.pdf"'
     return response
+
+@method_decorator(admin_login_required, name='dispatch')
+class EmailTemplateListView(ListView):
+    model = EmailTemplate
+    template_name = 'admin_panel/newsletter/template_list.html'
+    context_object_name = 'templates'
+
+@method_decorator(xframe_options_exempt, name='dispatch')
+class EmailTemplateCreateView(CreateView):
+    model = EmailTemplate
+    form_class = EmailTemplateForm
+    template_name = 'admin_panel/newsletter/template_form.html'
+    success_url = reverse_lazy('admin_email_template_list')
+
+    def form_valid(self, form):
+        form.instance.created_by = self.request.user
+        response = super().form_valid(form)
+
+        # Detect if this is an iframe/modal submission
+        if self.request.headers.get('x-requested-with') == 'XMLHttpRequest':
+            return JsonResponse({'success': True})
+
+        return response
+
+@method_decorator(admin_login_required, name='dispatch')
+class EmailTemplateUpdateView(UpdateView):
+    model = EmailTemplate
+    form_class = EmailTemplateForm
+    template_name = 'admin_panel/newsletter/template_form.html'
+    success_url = reverse_lazy('admin_email_template_list')
+
+@method_decorator(admin_login_required, name='dispatch')
+class EmailTemplateDeleteView(DeleteView):
+    model = EmailTemplate
+    template_name = 'admin_panel/newsletter/template_confirm_delete.html'
+    success_url = reverse_lazy('admin_email_template_list')
+
+@admin_login_required
+def email_template_preview(request, pk):
+    template_obj = get_object_or_404(EmailTemplate, pk=pk)
+    context = {
+        'user': request.user,
+        'site_name': 'Wearin',
+        'site_url': 'http://127.0.0.1:8000',
+        'subject_var': template_obj.subject,
+    }
+    try:
+        rendered_html = Template(template_obj.html_content).render(Context(context))
+    except Exception as e:
+        rendered_html = f"<p style='color:red;'>Error rendering template: {e}</p>"
+    return render(request, 'admin_panel/newsletter/template_preview.html', {'rendered_html': rendered_html})
+
+class NewsletterCampaignCreateView(CreateView):
+    model = NewsletterCampaign
+    form_class = NewsletterCampaignForm
+    template_name = 'admin_panel/newsletter/campaign_form.html'
+    success_url = reverse_lazy('admin_newsletter_campaign_list')
+
+    def form_valid(self, form):
+        if not form.instance.sent_by:
+            form.instance.sent_by = self.request.user
+        return super().form_valid(form)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        from core.models import EmailTemplate  # or wherever your model is
+        context['templates'] = EmailTemplate.objects.all()
+        return context
+    
+@method_decorator(admin_login_required, name='dispatch')
+class NewsletterCampaignListView(ListView):
+    model = NewsletterCampaign
+    template_name = 'admin_panel/newsletter/campaign_list.html'
+    context_object_name = 'campaigns'
+
+@method_decorator(admin_login_required, name='dispatch')
+class NewsletterCampaignUpdateView(UpdateView):
+    model = NewsletterCampaign
+    fields = ['subject', 'content', 'scheduled_at']
+    template_name = 'admin_panel/newsletter/campaign_edit.html'
+    success_url = reverse_lazy('admin_newsletter_campaign_list')
+
+
+@method_decorator(admin_login_required, name='dispatch')
+class NewsletterCampaignDeleteView(DeleteView):
+    model = NewsletterCampaign
+    template_name = 'admin_panel/newsletter/campaign_confirm_delete.html'
+    success_url = reverse_lazy('admin_newsletter_campaign_list')
+
+
+@admin_login_required
+def send_newsletter_campaign_view(request, pk):
+    campaign = get_object_or_404(NewsletterCampaign, pk=pk)
+
+    try:
+        send_newsletter_to_subscribers(campaign)  # you need this logic in core/utils.py
+        campaign.is_sent = True
+        campaign.save()
+        messages.success(request, "Newsletter sent successfully.")
+    except Exception as e:
+        messages.error(request, f"Error sending newsletter: {str(e)}")
+
+    return redirect('admin_newsletter_campaign_list')
+
+@admin_login_required
+def ajax_create_email_template(request):
+    if request.method == "POST":
+        form = EmailTemplateForm(request.POST)
+        if form.is_valid():
+            template = form.save()
+            return JsonResponse({
+                'success': True,
+                'id': template.id,
+                'name': template.name,
+                'html': render_to_string('admin_panel/newsletter/partials/template_card.html', {'template': template})
+            })
+        return JsonResponse({'success': False, 'errors': form.errors})

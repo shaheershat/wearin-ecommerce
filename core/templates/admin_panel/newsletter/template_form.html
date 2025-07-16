@@ -1,0 +1,23 @@
+<form method="post" class="space-y-4 p-4">
+    {% csrf_token %}
+    {% for field in form %}
+        <div>
+            <label class="block text-sm font-medium text-gray-700">{{ field.label }}</label>
+            {{ field }}
+            {{ field.errors }}
+            {% if field.help_text %}
+                <p class="text-sm text-gray-500">{{ field.help_text }}</p>
+            {% endif %}
+        </div>
+    {% endfor %}
+    <div class="text-right">
+        <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Save Template</button>
+    </div>
+</form>
+
+<script>
+    // Send message to parent when template is saved
+    {% if form.instance.pk %}
+        window.parent.postMessage("template_created", "*");
+    {% endif %}
+</script>

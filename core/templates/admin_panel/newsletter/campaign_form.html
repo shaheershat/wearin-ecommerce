@@ -1,0 +1,140 @@
+{% extends 'admin_panel/dashboard.html' %}
+{% load static %}
+
+{% block content %}
+<div class="p-6 bg-white rounded-lg shadow-md max-w-4xl mx-auto">
+    <h2 class="text-2xl font-bold text-gray-800 mb-6">
+        {% if form.instance.pk %}Edit{% else %}Create{% endif %} Newsletter Campaign
+    </h2>
+
+    <form method="post" class="space-y-6" id="campaign-form">
+        {% csrf_token %}
+
+        <!-- Title -->
+        <div class="mb-4">
+            {{ form.title.label_tag }}
+            {{ form.title }}
+            {{ form.title.errors }}
+        </div>
+
+        <!-- Recipient Type -->
+        <div class="mb-4">
+            {{ form.recipients_type.label_tag }}
+            {{ form.recipients_type }}
+            {{ form.recipients_type.errors }}
+        </div>
+
+        <!-- Show only if 'custom_list' -->
+        <div class="mb-4" id="custom-email-field" style="display: none;">
+            {{ form.custom_recipient_emails.label_tag }}
+            {{ form.custom_recipient_emails }}
+            {{ form.custom_recipient_emails.errors }}
+            <p class="text-sm text-gray-500">Comma-separated emails.</p>
+        </div>
+
+        <!-- Template Cards -->
+        <label class="block mb-2 font-medium text-gray-700">Select Email Template:</label>
+        <div class="grid grid-cols-2 gap-4" id="template-list">
+            {% for template in templates %}
+            <div data-id="{{ template.id }}"
+                 class="template-card border p-4 rounded cursor-pointer hover:border-blue-500 relative {% if form.email_template.value == template.id|stringformat:'s' %}selected{% endif %}">
+                <strong>{{ template.name }}</strong>
+                <p class="text-sm text-gray-600">{{ template.subject|truncatechars:50 }}</p>
+                <a href="{% url 'admin_email_template_preview' template.id %}" target="_blank"
+                   class="absolute top-2 right-2 text-xs text-blue-600 hover:underline">Preview</a>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Hidden input to store selected template -->
+        <input type="hidden" name="email_template" id="selected_template_id" value="{{ form.email_template.value|default_if_none:'' }}">
+
+        <!-- Create New Template Button -->
+        <div class="mt-4">
+            <button type="button" onclick="openTemplateModal()"
+                    class="text-sm text-blue-600 hover:underline">+ Create New Template</button>
+        </div>
+
+        <!-- Scheduled At -->
+        <div class="mb-4">
+            {{ form.scheduled_at.label_tag }}
+            {{ form.scheduled_at }}
+            {{ form.scheduled_at.errors }}
+        </div>
+
+        <!-- Status -->
+        <div class="mb-4">
+            {{ form.status.label_tag }}
+            {{ form.status }}
+            {{ form.status.errors }}
+        </div>
+
+        <!-- Submit -->
+        <div class="flex gap-4 mt-6">
+            <button type="submit"
+                    class="bg-green-600 text-white px-5 py-2 rounded-lg hover:bg-green-700">
+                {% if form.instance.pk %}Update Campaign{% else %}Create Campaign{% endif %}
+            </button>
+            <a href="{% url 'admin_newsletter_campaign_list' %}"
+               class="bg-gray-500 text-white px-5 py-2 rounded-lg hover:bg-gray-600">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<!-- Modal for Creating Template -->
+<div id="templateModal" class="fixed z-50 inset-0 bg-black bg-opacity-50 hidden">
+    <div class="bg-white w-full max-w-2xl mx-auto mt-20 p-6 rounded shadow-lg relative">
+        <button onclick="closeTemplateModal()" class="absolute top-2 right-4 text-xl text-gray-500">&times;</button>
+        <iframe id="templateModalIframe" src="{% url 'admin_email_template_create' %}" class="w-full h-[500px] border-none"></iframe>
+    </div>
+</div>
+
+<style>
+    .template-card.selected {
+        border: 2px solid #2563eb;
+        background-color: #f0f9ff;
+    }
+</style>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const typeSelect = document.getElementById('id_recipients_type');
+        const customField = document.getElementById('custom-email-field');
+
+        function toggleCustomField() {
+            customField.style.display = typeSelect.value === 'custom_list' ? 'block' : 'none';
+        }
+
+        typeSelect.addEventListener('change', toggleCustomField);
+        toggleCustomField(); // on load
+
+        // Template selection
+        const templateCards = document.querySelectorAll('.template-card');
+        const selectedInput = document.getElementById('selected_template_id');
+
+        templateCards.forEach(card => {
+            card.addEventListener('click', () => {
+                templateCards.forEach(c => c.classList.remove('selected'));
+                card.classList.add('selected');
+                selectedInput.value = card.dataset.id;
+            });
+        });
+
+        // Listen for postMessage from iframe
+        window.addEventListener("message", function(event) {
+            if (event.data === "template_created") {
+                closeTemplateModal();
+                location.reload();
+            }
+        });
+    });
+
+    function openTemplateModal() {
+        document.getElementById('templateModal').classList.remove('hidden');
+    }
+
+    function closeTemplateModal() {
+        document.getElementById('templateModal').classList.add('hidden');
+    }
+</script>
+{% endblock %}

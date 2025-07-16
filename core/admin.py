@@ -9,7 +9,7 @@ from .models import Order, WalletTransaction, Wallet
 from .models import (
     Product, Order, OrderItem, Address, Category, ProductImage,
     NewsletterSubscriber, EmailOTP, OTP, UserProfile, Coupon,
-    Cart, CartItem, Wishlist # Added missing models
+    Cart, CartItem, Wishlist, EmailTemplate, NewsletterCampaign, NewsletterSubscription
 )
 
 class OrderItemInline(admin.TabularInline):
@@ -37,11 +37,13 @@ class CategoryAdmin(admin.ModelAdmin):
     list_display = ['name', 'slug']
     prepopulated_fields = {'slug': ('name',)}
 
-@admin.register(NewsletterSubscriber)
-class NewsletterSubscriberAdmin(admin.ModelAdmin):
-    list_display = ('email', 'subscribed_at')
-    search_fields = ('email',)
-    list_filter = ('subscribed_at',)
+# Removed the first NewsletterSubscriberAdmin class (the one with 'subscribed_at')
+# @admin.register(NewsletterSubscriber)
+# class NewsletterSubscriberAdmin(admin.ModelAdmin):
+#     list_display = ('email', 'subscribed_at')
+#     search_fields = ('email',)
+#     list_filter = ('subscribed_at',)
+
 
 # --- NEW REGISTRATIONS FOR UNREGISTERED MODELS ---
 
@@ -144,3 +146,40 @@ class OrderAdmin(admin.ModelAdmin):
 # Models that don't need custom Admin classes (default display is fine)
 admin.site.register(Address)
 admin.site.register(ProductImage)
+
+@admin.register(EmailTemplate)
+class EmailTemplateAdmin(admin.ModelAdmin):
+    list_display = ('name', 'subject', 'created_at')
+    search_fields = ('name', 'subject')
+    list_filter = ('created_at',)
+
+
+@admin.register(NewsletterCampaign)
+class NewsletterCampaignAdmin(admin.ModelAdmin):
+    list_display = ('title', 'email_template', 'status', 'scheduled_at', 'sent_at', 'sent_by', 'sent_count')
+    list_filter = ('status', 'scheduled_at', 'recipients_type')
+    search_fields = ('title', 'email_template__name')
+    date_hierarchy = 'created_at'
+    raw_id_fields = ('email_template', 'sent_by')
+
+    fieldsets = (
+        (None, {
+            'fields': ('title', 'email_template', 'recipients_type', 'custom_recipient_emails'),
+        }),
+        ('Scheduling & Status', {
+            'fields': ('scheduled_at', 'status', 'sent_by', 'sent_at', 'total_recipients'),
+            'classes': ('collapse',),
+        }),
+    )
+
+    @admin.display(description='Sent Count')
+    def sent_count(self, obj):
+        return obj.total_recipients
+
+
+@admin.register(NewsletterSubscription)
+class NewsletterSubscriberAdmin(admin.ModelAdmin):
+    list_display = ('email', 'is_active', 'created_at')
+    list_filter = ('is_active',)
+    search_fields = ('email',)
+    ordering = ('-created_at',)
