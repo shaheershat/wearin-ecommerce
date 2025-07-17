@@ -1,0 +1,13 @@
+<p>Hi {{ user.first_name }},</p>
+<p>Your return request for <strong>Order #{{ order.id }}</strong> has been processed.</p>
+
+<p>Returned Items:</p>
+<ul>
+    {% for item in returned_items %}
+        <li>{{ item.product.name }} × {{ item.return_quantity }}</li>
+    {% endfor %}
+</ul>
+
+<p>The refund amount has been credited to your wallet (or payment method).</p>
+
+<p>Thanks,<br>The {{ settings.SITE_NAME }} Team</p>

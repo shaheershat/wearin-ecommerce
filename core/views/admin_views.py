@@ -11,6 +11,7 @@ from django.contrib.auth.models import User
 from datetime import timedelta
 from django.views.decorators.clickjacking import xframe_options_exempt
 from django.contrib import messages
+from core.tasks import send_return_processed_email
 from django.contrib.auth import authenticate
 from django.contrib.auth import get_user_model
 from django.conf import settings
@@ -41,12 +42,14 @@ import logging
 @admin_login_required
 def approve_return_view(request, order_id):
     order = get_object_or_404(Order, id=order_id)
+
     if order.return_status != 'Requested':
         messages.error(request, 'Invalid return state.')
         return redirect('admin_order_list')
 
     order.return_status = 'Approved'
     order.status = 'Returned'
+    order.save()
 
     # Refund to wallet
     wallet, _ = Wallet.objects.get_or_create(user=order.user)
@@ -57,7 +60,10 @@ def approve_return_view(request, order_id):
         amount=order.total_price,
         reason=f"Refund for returned Order #{order.id}"
     )
-    order.save()
+
+    # ✅ Trigger return processed email
+    returned_item_ids = [item.id for item in order.items.filter(return_status='Approved')]
+    send_return_processed_email.delay(order.id, returned_item_ids)
 
     messages.success(request, 'Return approved and wallet refunded.')
     return redirect('admin_order_list')

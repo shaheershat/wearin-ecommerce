@@ -12,6 +12,7 @@ from django.contrib.auth.backends import ModelBackend
 from django.db import models
 from django.core.mail import send_mail
 from datetime import timedelta
+from core.tasks import send_order_cancelled_email 
 from django.contrib.auth import login
 from django.contrib.auth import get_user_model
 from django.contrib.sessions.backends.db import SessionStore
@@ -113,6 +114,9 @@ def cancel_order_view(request, order_id):
         amount=order.total_price,
         reason=f"Refund for cancelled order #{order.id}"
     )
+
+    # ✅ Send cancellation email
+    send_order_cancelled_email.delay(order.id)
 
     messages.success(request, f"Order has been cancelled and ₹{order.total_price} has been refunded to your wallet.")
     return redirect('my_profile')
@@ -1227,7 +1231,7 @@ def product_detail_view(request, id=None):
 
     reservation_expires_in_seconds = 0
     is_reserved_by_current_user = False
-    has_subscribed_for_notification = False # New variable to control 'Notify Me' button
+    has_subscribed_for_notification = False
 
     # Check if the product has an active reservation by *anyone*
     if product.is_currently_reserved:
@@ -1252,13 +1256,26 @@ def product_detail_view(request, id=None):
             # e.g., notified_at__isnull=True if you track notification delivery
         ).exists()
 
+    # --- NEW: Fetch Similar Products ---
+    similar_products = Product.objects.filter(
+        category=product.category # Same category
+    ).exclude(
+        id=product.id             # Exclude the current product
+    ).order_by('?')               # Optional: order randomly
+    
+    # Limit the number of similar products to display (e.g., 6)
+    similar_products = similar_products[:6]
+    # --- END NEW ---
+
     context = {
         'product': product,
         'reservation_expires_in_seconds': reservation_expires_in_seconds,
         'is_reserved_by_current_user': is_reserved_by_current_user,
-        'has_subscribed_for_notification': has_subscribed_for_notification, # Pass this to template
+        'has_subscribed_for_notification': has_subscribed_for_notification,
+        'similar_products': similar_products, # Add similar products to context
     }
     return render(request, 'user/main/product_detail.html', context)
+
 
 def policy_view(request):
     return render(request, 'user/main/static_pages/policy.html',{

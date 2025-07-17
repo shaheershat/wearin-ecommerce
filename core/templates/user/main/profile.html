@@ -2,9 +2,23 @@
 {% load custom_filters %}
 {% load widget_tweaks %}
 {% block content %}
-<div class="flex bg-gray-100 flex-grow h-full min-h-0">
 
-  <div class="w-64 bg-white p-6 shadow border-r h-full flex flex-col">
+{# Main container for the whole profile page. Add 'relative' for absolute positioning of toggle button #}
+{# REMOVED min-h-screen from here, it will be applied to a parent of the footer instead #}
+<div class="relative flex flex-col md:flex-row bg-gray-100 flex-grow h-full"> 
+  
+  {# Mobile Toggle Button - Visible only on small screens. Now it will switch icons. #}
+  <button id="sidebarToggle" class="fixed z-50 top-1/2 -translate-y-1/2 left-0 ml-2 p-2 bg-black text-white rounded-r-lg shadow-lg md:hidden focus:outline-none">
+    {# Initial icon (hamburger) #}
+    <svg id="sidebarIcon" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+    </svg>
+  </button>
+
+  {# Sidebar - Responsive positioning #}
+  <div id="sidebar" class="fixed inset-y-0 left-0 w-64 bg-white p-6 shadow-xl border-r h-full flex flex-col z-40
+              transform -translate-x-full transition-transform ease-in-out duration-300 md:relative md:translate-x-0 md:shadow-md">
+    
     <h2 class="text-xl font-bold mb-6">My Account</h2>
     <ul class="space-y-4 flex-grow">
       <li><button id="tabButtonProfile" onclick="showTab('profile')" class="tab-btn w-full text-left text-gray-700 hover:text-black font-medium flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-gray-100">👤 My Profile</button></li>
@@ -14,7 +28,11 @@
     </ul>
   </div>
 
-  <div class="flex-1 p-8 overflow-y-auto">
+  {# Main Content Area - This is where the primary changes will happen #}
+  {# REMOVED overflow-y-auto from here. We want the page to scroll, not just this div. #}
+  <div class="flex-1 p-8 flex flex-col min-h-[calc(100vh-footer-height)]"> 
+    {# The min-h-[calc(100vh-footer-height)] is a placeholder. You'll need to know your footer's actual height. #}
+    {# Alternatively, if base.html sets min-h-screen on body/html, this might not be needed. #}
 
     {# Keep this Django messages block for initial page loads #}
     {% if messages %}
@@ -27,7 +45,7 @@
     </div>
     {% endif %}
 
-    <div id="profile" class="tab-content">
+    <div id="profile" class="tab-content flex-grow"> {# Add flex-grow here #}
       <div class="bg-white p-6 rounded shadow">
         <h3 class="text-lg font-semibold mb-4">Edit Profile</h3>
         <form method="POST" action="{% url 'update_profile' %}">
@@ -49,7 +67,7 @@
       </div>
     </div>
 
-    <div id="address" class="tab-content hidden">
+    <div id="address" class="tab-content hidden flex-grow"> {# Add flex-grow here #}
       <div class="bg-white p-6 rounded shadow">
         <h3 class="text-lg font-semibold mb-4">My Addresses</h3>
 
@@ -95,107 +113,109 @@
       </div>
     </div>
 
-<div id="orders" class="tab-content hidden">
-  <div class="bg-white p-6 rounded shadow">
-    <h3 class="text-lg font-semibold mb-4">Order History</h3>
-    {% for order in orders %}
-      <div class="border p-4 mb-6 rounded bg-gray-50">
-        <p><strong>Order ID:</strong> {{ order.custom_order_id }}</p>
-        <p><strong>Status:</strong> {{ order.status }}</p>
-        <p><strong>Date:</strong> {{ order.created_at|date:"M d, Y" }}</p>
-        <p><strong>Total:</strong> ₹{{ order.total_price }}</p>
+    <div id="orders" class="tab-content hidden flex-grow"> {# Add flex-grow here #}
+      <div class="bg-white p-6 rounded shadow">
+        <h3 class="text-lg font-semibold mb-4">Order History</h3>
+        {# The overflow-y-auto max-h-[60vh] on this div is good for long lists of orders #}
+        <div class="overflow-y-auto max-h-[60vh] pr-2">
+        {% for order in orders %}
+          <div class="border p-4 mb-6 rounded bg-gray-50">
+            <p><strong>Order ID:</strong> {{ order.custom_order_id }}</p>
+            <p><strong>Status:</strong> {{ order.status }}</p>
+            <p><strong>Date:</strong> {{ order.created_at|date:"M d, Y" }}</p>
+            <p><strong>Total:</strong> ₹{{ order.total_price }}</p>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
-          {% for item in order.items.all %}
-            {% if item.product %}
-              <div class="border rounded-lg p-3 bg-white flex items-center gap-4">
-                {% if item.product.images.first %}
-                  <img src="{{ item.product.images.first.image.url }}" alt="{{ item.product.name }}" class="w-20 h-20 object-cover rounded">
-                {% else %}
-                  <div class="w-20 h-20 bg-gray-200 rounded flex items-center justify-center text-sm text-gray-500">No Image</div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
+              {% for item in order.items.all %}
+                {% if item.product %}
+                  <div class="border rounded-lg p-3 bg-white flex items-center gap-4">
+                    {% if item.product.images.first %}
+                      <img src="{{ item.product.images.first.image.url }}" alt="{{ item.product.name }}" class="w-20 h-20 object-cover rounded">
+                    {% else %}
+                      <div class="w-20 h-20 bg-gray-200 rounded flex items-center justify-center text-sm text-gray-500">No Image</div>
+                    {% endif %}
+                    <div>
+                      <p class="font-semibold">{{ item.product.name }}</p>
+                      <p class="text-sm text-gray-600">₹{{ item.price_at_purchase }}</p>
+                    </div>
+                  </div>
                 {% endif %}
-                <div>
-                  <p class="font-semibold">{{ item.product.name }}</p>
-                  <p class="text-sm text-gray-600">₹{{ item.price_at_purchase }}</p>
-                </div>
-              </div>
-            {% endif %}
-          {% endfor %}
-        </div>
+              {% endfor %}
+            </div>
 
-        <!--  ACTION BUTTONS -->
-        <div class="flex justify-end gap-4 mt-4">
-          <a href="{% url 'view_order' order.id %}" class="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition">
-              View Order
-          </a>
+            <div class="flex justify-end gap-4 mt-4">
+              <a href="{% url 'view_order' order.id %}" class="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition">
+                  View Order
+              </a>
 
-          {% if order.status == 'Delivered' %}
-          <form method="post" action="{% url 'return_order' order.id %}" onsubmit="return confirm('Are you sure you want to return this order?');">
-              {% csrf_token %}
-              <button type="submit" class="px-4 py-2 text-sm bg-yellow-600 text-white rounded hover:bg-yellow-700 transition">
-                  Return
-              </button>
-          </form>
-          {% elif order.status == 'Pending' or order.status == 'Shipped' %}
-          <form method="post" action="{% url 'cancel_order' order.id %}" onsubmit="return confirm('Are you sure you want to cancel this order?');">
-              {% csrf_token %}
-              <button type="submit" class="px-4 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition">
-                  Cancel
-              </button>
-          </form>
-          {% endif %}
+              {% if order.status == 'Delivered' %}
+              <form method="post" action="{% url 'return_order' order.id %}" onsubmit="return confirm('Are you sure you want to return this order?');">
+                  {% csrf_token %}
+                  <button type="submit" class="px-4 py-2 text-sm bg-yellow-600 text-white rounded hover:bg-yellow-700 transition">
+                      Return
+                  </button>
+              </form>
+              {% elif order.status == 'Pending' or order.status == 'Shipped' %}
+              <form method="post" action="{% url 'cancel_order' order.id %}" onsubmit="return confirm('Are you sure you want to cancel this order?');">
+                  {% csrf_token %}
+                  <button type="submit" class="px-4 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition">
+                      Cancel
+                  </button>
+              </form>
+              {% endif %}
+            </div>
+
+          </div>
+        {% empty %}
+          <p>No orders yet.</p>
+        {% endfor %}
         </div>
+      </div>
+    </div>
+
+    <div id="wallet" class="tab-content hidden flex-grow"> {# Add flex-grow here #}
+      <div class="bg-white p-6 rounded shadow">
+        <h3 class="text-lg font-semibold mb-4">My Wallet</h3>
+
+        <p class="text-gray-700 mb-4">
+          Wallet Balance: <strong>₹{{ wallet_balance }}</strong>
+        </p>
+
+        {% if wallet_transactions %}
+          <h4 class="text-md font-semibold mb-2">Recent Transactions</h4>
+          {# The overflow-y-auto max-h-[40vh] on this div is good for long lists of transactions #}
+          <div class="overflow-y-auto max-h-[40vh] pr-2">
+            <ul class="divide-y divide-gray-200">
+              {% for tx in wallet_transactions %}
+                <li class="py-3 flex justify-between items-start sm:items-center flex-col sm:flex-row">
+                  <div>
+                    <span>{{ tx.reason }}</span>
+                    <span class="text-xs text-gray-500 block">{{ tx.created_at|date:"M d, Y h:i A" }}</span>
+                    <span class="block text-sm mt-1">
+                      {% if tx.amount > 0 %}
+                        <span class="text-green-600 font-medium">Credited</span>
+                      {% else %}
+                        <span class="text-red-600 font-medium">Debited</span>
+                      {% endif %}
+                    </span>
+                  </div>
+                  <span class="mt-2 sm:mt-0 sm:text-right {% if tx.amount > 0 %}text-green-600{% else %}text-red-600{% endif %} font-semibold">
+                    ₹{{ tx.amount }}
+                  </span>
+                </li>
+              {% endfor %}
+            </ul>
+          </div>
+        {% else %}
+          <p class="text-gray-500">No wallet transactions yet.</p>
+        {% endif %}
 
       </div>
-    {% empty %}
-      <p>No orders yet.</p>
-    {% endfor %}
-  </div>
+    </div>
+  </div> {# Closes flex-1 p-8 flex flex-col #}
+</div> {# Closes main flex container #}
 
-  
-</div>
-<div id="wallet" class="tab-content hidden">
-  <p>Balance: ₹{{ wallet_balance }}</p>
-  <p>Transactions: {{ wallet_transactions|length }}</p>
-
-  <div class="bg-white p-6 rounded shadow">
-    <h3 class="text-lg font-semibold mb-4">My Wallet</h3>
-
-    <p class="text-gray-700 mb-4">
-      Wallet Balance: <strong>₹{{ wallet_balance }}</strong>
-    </p>
-
-    {% if wallet_transactions %}
-  <h4 class="text-md font-semibold mb-2">Recent Transactions</h4>
-  <ul class="divide-y divide-gray-200">
-    {% for tx in wallet_transactions %}
-      <li class="py-3 flex justify-between items-start sm:items-center flex-col sm:flex-row">
-        <div>
-          <span>{{ tx.reason }}</span>
-          <span class="text-xs text-gray-500 block">{{ tx.created_at|date:"M d, Y h:i A" }}</span>
-          <span class="block text-sm mt-1">
-            {% if tx.amount > 0 %}
-              <span class="text-green-600 font-medium">Credited</span>
-            {% else %}
-              <span class="text-red-600 font-medium">Debited</span>
-            {% endif %}
-          </span>
-        </div>
-        <span class="mt-2 sm:mt-0 sm:text-right {% if tx.amount > 0 %}text-green-600{% else %}text-red-600{% endif %} font-semibold">
-          ₹{{ tx.amount }}
-        </span>
-      </li>
-    {% endfor %}
-  </ul>
-{% else %}
-  <p class="text-gray-500">No wallet transactions yet.</p>
-{% endif %}
-
-  </div>
-</div>
-</div>
-
-{# MODAL for EDIT ADDRESS (existing) #}
+{# MODALS (no changes needed here for layout, as they are fixed position) #}
 <div id="editAddressModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50 hidden">
   <div class="bg-white p-8 rounded-lg shadow-xl w-11/12 max-w-lg relative">
     <button onclick="closeEditAddressModal()" class="absolute top-4 right-4 text-gray-500 hover:text-red-800 text-xl font-bold">&times;</button>
@@ -216,16 +236,13 @@
   </div>
 </div>
 
-{# NEW MODAL for ADD NEW ADDRESS #}
 <div id="addAddressModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50 hidden">
   <div class="bg-white p-8 rounded-lg shadow-xl w-11/12 max-w-lg relative">
     <button onclick="closeAddAddressModal()" class="absolute top-4 right-4 text-gray-500 hover:text-red-800 text-xl font-bold">&times;</button>
     <h3 class="text-xl font-semibold mb-6">Add New Address</h3>
     <form id="addAddressForm" method="POST" action="{% url 'add_address_api' %}" class="grid grid-cols-1 md:grid-cols-2 gap-4">
       {% csrf_token %}
-      {# Dynamically render the form fields using the Django form object #}
       {% for field in add_address_form %}
-        {# Skip rendering the 'is_default' field here, as we have a custom one below #}
         {% if field.name != 'is_default' %}
           <div class="flex flex-col">
             <label for="{{ field.id_for_label }}" class="mb-1 text-sm font-medium text-gray-700">{{ field.label }}</label>
@@ -252,18 +269,58 @@
 
 
 <script>
+  // Function to show/hide tabs (existing)
   function showTab(tabId) {
     document.querySelectorAll('.tab-content').forEach(div => div.classList.add('hidden'));
-    document.getElementById(tabId).classList.remove('hidden');2
+    document.getElementById(tabId).classList.remove('hidden');
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('bg-gray-100', 'text-black'));
     document.querySelector(`button[onclick="showTab('${tabId}')"]`).classList.add('bg-gray-100', 'text-black');
     
+    // Close sidebar on tab change for mobile
+    if (window.innerWidth < 768) { // md: breakpoint is 768px in Tailwind by default
+        toggleSidebar(false); // Force hide sidebar
+    }
 
     const newUrl = new URL(window.location.href);
     newUrl.searchParams.set('tab', tabId);
     window.history.pushState({ path: newUrl.href }, '', newUrl.href);
   }
 
+  // Sidebar toggle functions
+  const sidebar = document.getElementById('sidebar');
+  const sidebarToggleBtn = document.getElementById('sidebarToggle');
+  const sidebarIcon = document.getElementById('sidebarIcon'); // Get the SVG element
+
+  // SVG path data for icons
+  const hamburgerIconPath = "M4 6h16M4 12h16M4 18h16";
+  const closeIconPath = "M6 18L18 6M6 6l12 12"; // Path for an 'X' icon
+
+  let isSidebarOpen = false; // Keep track of sidebar state
+
+  function toggleSidebar(forceOpen = null) {
+      if (forceOpen === true) {
+          isSidebarOpen = true;
+      } else if (forceOpen === false) {
+          isSidebarOpen = false;
+      } else {
+          isSidebarOpen = !isSidebarOpen; // Toggle state if not forced
+      }
+
+      if (isSidebarOpen) {
+          sidebar.classList.remove('-translate-x-full');
+          sidebar.classList.add('translate-x-0');
+          sidebarIcon.querySelector('path').setAttribute('d', closeIconPath); // Change to 'X' icon
+      } else {
+          sidebar.classList.remove('translate-x-0');
+          sidebar.classList.add('-translate-x-full');
+          sidebarIcon.querySelector('path').setAttribute('d', hamburgerIconPath); // Change to hamburger icon
+      }
+  }
+
+  // Event listener for the single toggle button
+  sidebarToggleBtn.addEventListener('click', () => toggleSidebar());
+
+  // Initial tab and sidebar state on load
   document.addEventListener('DOMContentLoaded', () => {
     const urlParams = new URLSearchParams(window.location.search);
     const initialTab = urlParams.get('tab');
@@ -273,7 +330,24 @@
     } else {
         showTab('profile');
     }
+
+    // Hide sidebar by default on small screens initially
+    if (window.innerWidth < 768) {
+        toggleSidebar(false); // Force hide sidebar on load for small screens
+    } else {
+        toggleSidebar(true); // Force show sidebar on load for large screens
+    }
   });
+
+  // Optional: Adjust sidebar state if window is resized past breakpoint
+  window.addEventListener('resize', () => {
+      if (window.innerWidth >= 768) {
+          toggleSidebar(true); // Show sidebar on large screens
+      } else {
+          toggleSidebar(false); // Hide sidebar on small screens
+      }
+  });
+
 
   // Function to display messages (re-added as you don't want SweetAlert)
   function displayMessage(type, message) {

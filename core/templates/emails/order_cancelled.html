@@ -1,0 +1,10 @@
+<p>Hi {{ user.first_name }},</p>
+<p>Your order <strong>#{{ order.id }}</strong> has been cancelled successfully.</p>
+<p>You will be refunded shortly. Check your wallet or payment method.</p>
+<p>Cancelled Products:</p>
+<ul>
+    {% for item in order.items.all %}
+        <li>{{ item.product.name }} × {{ item.quantity }}</li>
+    {% endfor %}
+</ul>
+<p>Thanks,<br>The {{ settings.SITE_NAME }} Team</p>

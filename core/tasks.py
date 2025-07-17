@@ -1,5 +1,4 @@
-# core/tasks.py
-
+from django.template.loader import render_to_string
 from celery import shared_task
 from django.utils import timezone
 from django.core.mail import send_mail, EmailMultiAlternatives
@@ -208,6 +207,30 @@ def _run_scheduled_campaigns():
 
 
 
-# @shared_task
-# def send_scheduled_campaigns():
-#     _run_scheduled_campaigns()
+@shared_task
+def send_return_processed_email(order_id, returned_item_ids):
+    from core.models import Order, OrderItem  # Lazy import to avoid circular import
+
+    order = Order.objects.get(id=order_id)
+    returned_items = OrderItem.objects.filter(id__in=returned_item_ids)
+
+    subject = f"Return Processed for Order #{order.id}"
+    message = render_to_string("emails/return_processed.html", {
+        "order": order,
+        "user": order.user,
+        "returned_items": returned_items,
+    })
+    send_mail(subject, "", settings.DEFAULT_FROM_EMAIL, [order.user.email], html_message=message)
+
+@shared_task
+def send_order_cancelled_email(order_id):
+    from core.models import Order
+
+    order = Order.objects.get(id=order_id)
+    subject = f"Order Cancelled - #{order.id}"
+    message = render_to_string("emails/order_cancelled.html", {
+        "order": order,
+        "user": order.user,
+    })
+    send_mail(subject, "", settings.DEFAULT_FROM_EMAIL, [order.user.email], html_message=message)
+

@@ -27,6 +27,14 @@
         margin-bottom: 1.5rem;
         font-weight: bold;
     }
+    /* Custom scrollbar for similar products */
+    .hide-scrollbar::-webkit-scrollbar {
+        display: none;
+    }
+    .hide-scrollbar {
+        -ms-overflow-style: none;  /* IE and Edge */
+        scrollbar-width: none;  /* Firefox */
+    }
 </style>
 
 <div class="container mx-auto py-10 px-4">
@@ -128,6 +136,34 @@
         </div>
     </div>
 </div>
+
+{# --- NEW: Similar Products Section --- #}
+{% if similar_products %}
+<section class="container mx-auto py-10 px-4">
+    <h2 class="text-2xl font-bold mb-6 text-center md:text-left">Similar Products</h2>
+    <div class="flex overflow-x-scroll gap-6 pb-4 hide-scrollbar">
+        {% for similar_product in similar_products %}
+        <div class="flex-none w-64 bg-white rounded-lg shadow-md overflow-hidden hover:shadow-xl transition-shadow duration-300">
+            <a href="{% url 'product_detail' similar_product.id %}">
+                {% if similar_product.images.first %}
+                <img src="{{ similar_product.images.first.image.url }}" alt="{{ similar_product.name }}"
+                    class="w-full h-64 object-cover">
+                {% else %}
+                <div class="w-full h-64 bg-gray-200 flex items-center justify-center text-gray-500">No Image</div>
+                {% endif %}
+                <div class="p-4">
+                    <h3 class="font-semibold text-lg truncate">{{ similar_product.name }}</h3>
+                    <p class="text-gray-500 text-sm">{{ similar_product.category }}</p>
+                    <p class="text-xl font-bold text-green-600 mt-2">₹{{ similar_product.price }}</p>
+                </div>
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+{# --- END NEW: Similar Products Section --- #}
+
 
 <section class="relative h-[747px] md:h-[900px] bg-cover bg-center bg-no-repeat" style="background-image: url('{% static 'images/nsnew.png' %}');">
     <div class="absolute inset-0"></div>
