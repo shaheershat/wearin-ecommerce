@@ -252,6 +252,12 @@ CELERY_TASK_ALWAYS_EAGER = False
 
 # Celery Beat Schedule - For periodic tasks like expiring reservations
 CELERY_BEAT_SCHEDULE = {
+    'run-expire-reservations': {
+        'task': 'django.core.management.call_command',
+        'args': ['expire_reservations'],
+        'schedule': timedelta(minutes=1),
+        'options': {'queue': 'default'},
+    },
     'send-scheduled-newsletters': {
         'task': 'core.tasks.send_scheduled_campaigns',
         'schedule': timedelta(minutes=1),
