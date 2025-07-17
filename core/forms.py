@@ -183,15 +183,32 @@ class NewsletterCampaignForm(forms.ModelForm):
             'status',
         ]
         widgets = {
+            'title': forms.TextInput(attrs={
+                'class': 'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500',
+                'placeholder': 'Enter campaign title'
+            }),
+            'email_template': forms.HiddenInput(), # This should remain hidden as it's selected via JS/cards
+            'recipients_type': forms.Select(attrs={
+                'class': 'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500',
+            }),
             'custom_recipient_emails': forms.Textarea(attrs={
+                'class': 'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500',
                 'rows': 5,
                 'placeholder': 'Comma-separated emails, e.g., email1@example.com, email2@example.com'
             }),
-            'scheduled_at': forms.DateTimeInput(attrs={'type': 'datetime-local'}),
+            'scheduled_at': forms.DateTimeInput(attrs={
+                'type': 'datetime-local', # Ensure the HTML input type is datetime-local for native picker
+                'class': 'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500',
+            }),
+            'status': forms.Select(attrs={
+                'class': 'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500',
+            }),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # Apply Tailwind classes to the label for consistency, if needed
+        # self.fields['title'].label_attrs = {'class': 'block text-sm font-medium text-gray-700'} # Example
         self.fields['email_template'].empty_label = "-- Select Template --"
 
     def clean(self):
@@ -202,3 +219,24 @@ class NewsletterCampaignForm(forms.ModelForm):
         if recipients_type == 'custom_list' and not custom_recipient_emails:
             self.add_error('custom_recipient_emails', "Custom recipient emails are required if 'Custom Email List' is selected.")
         return cleaned_data
+
+
+class EmailTemplateForm(forms.ModelForm):
+    class Meta:
+        model = EmailTemplate
+        fields = ['name', 'subject', 'html_content']
+        widgets = {
+            'name': forms.TextInput(attrs={
+                'class': 'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500',
+                'placeholder': 'Enter template name'
+            }),
+            'subject': forms.TextInput(attrs={
+                'class': 'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500',
+                'placeholder': 'Enter email subject'
+            }),
+            'html_content': forms.Textarea(attrs={
+                'class': 'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500',
+                'rows': 15, # Increased rows for better HTML content editing
+                'placeholder': 'Enter HTML content for the email'
+            }),
+        }

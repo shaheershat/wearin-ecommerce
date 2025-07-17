@@ -248,17 +248,15 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'Asia/Kolkata'  # Match your Django TIME_ZONE
 CELERY_ENABLE_UTC = False  # Set to False if using local time zone
+CELERY_TASK_ALWAYS_EAGER = False
 
 # Celery Beat Schedule - For periodic tasks like expiring reservations
 CELERY_BEAT_SCHEDULE = {
-    'run-expire-reservations': { # This is the unique name/key for the task entry
-        'task': 'django.core.management.call_command', # Task to run a Django management command
-        'args': ['expire_reservations'], # Name of your management command
-        'schedule': timedelta(minutes=1), # Schedule to run every 1 minute
-        'options': {'queue': 'default'}, # Optional: specify a queue
-        # REMOVE THIS LINE: 'name': 'Expire Product Reservations', # This is redundant and causes the error
+    'send-scheduled-newsletters': {
+        'task': 'core.tasks.send_scheduled_campaigns',
+        'schedule': timedelta(minutes=1),
+        'options': {'queue': 'default'},
     },
-    # Add other periodic tasks here if you have them
 }
 
 SESSION_SAVE_EVERY_REQUEST = True

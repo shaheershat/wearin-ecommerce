@@ -10,29 +10,43 @@
     <form method="post" class="space-y-6" id="campaign-form">
         {% csrf_token %}
 
-        <!-- Title -->
         <div class="mb-4">
             {{ form.title.label_tag }}
             {{ form.title }}
-            {{ form.title.errors }}
+            {% if form.title.errors %}
+                <div class="text-red-600 text-sm mt-1">
+                    {% for error in form.title.errors %}
+                        {{ error }}
+                    {% endfor %}
+                </div>
+            {% endif %}
         </div>
 
-        <!-- Recipient Type -->
         <div class="mb-4">
             {{ form.recipients_type.label_tag }}
             {{ form.recipients_type }}
-            {{ form.recipients_type.errors }}
+            {% if form.recipients_type.errors %}
+                <div class="text-red-600 text-sm mt-1">
+                    {% for error in form.recipients_type.errors %}
+                        {{ error }}
+                    {% endfor %}
+                </div>
+            {% endif %}
         </div>
 
-        <!-- Show only if 'custom_list' -->
         <div class="mb-4" id="custom-email-field" style="display: none;">
             {{ form.custom_recipient_emails.label_tag }}
             {{ form.custom_recipient_emails }}
-            {{ form.custom_recipient_emails.errors }}
+            {% if form.custom_recipient_emails.errors %}
+                <div class="text-red-600 text-sm mt-1">
+                    {% for error in form.custom_recipient_emails.errors %}
+                        {{ error }}
+                    {% endfor %}
+                </div>
+            {% endif %}
             <p class="text-sm text-gray-500">Comma-separated emails.</p>
         </div>
 
-        <!-- Template Cards -->
         <label class="block mb-2 font-medium text-gray-700">Select Email Template:</label>
         <div class="grid grid-cols-2 gap-4" id="template-list">
             {% for template in templates %}
@@ -46,30 +60,46 @@
             {% endfor %}
         </div>
 
-        <!-- Hidden input to store selected template -->
         <input type="hidden" name="email_template" id="selected_template_id" value="{{ form.email_template.value|default_if_none:'' }}">
 
-        <!-- Create New Template Button -->
+        {% if form.email_template.errors %}
+            <div class="text-red-600 text-sm mt-1">
+                {% for error in form.email_template.errors %}
+                    {{ error }}
+                {% endfor %}
+            </div>
+        {% endif %}
+
+
         <div class="mt-4">
             <button type="button" onclick="openTemplateModal()"
                     class="text-sm text-blue-600 hover:underline">+ Create New Template</button>
         </div>
 
-        <!-- Scheduled At -->
         <div class="mb-4">
             {{ form.scheduled_at.label_tag }}
             {{ form.scheduled_at }}
-            {{ form.scheduled_at.errors }}
+            {% if form.scheduled_at.errors %}
+                <div class="text-red-600 text-sm mt-1">
+                    {% for error in form.scheduled_at.errors %}
+                        {{ error }}
+                    {% endfor %}
+                </div>
+            {% endif %}
         </div>
 
-        <!-- Status -->
         <div class="mb-4">
             {{ form.status.label_tag }}
             {{ form.status }}
-            {{ form.status.errors }}
+            {% if form.status.errors %}
+                <div class="text-red-600 text-sm mt-1">
+                    {% for error in form.status.errors %}
+                        {{ error }}
+                    {% endfor %}
+                </div>
+            {% endif %}
         </div>
 
-        <!-- Submit -->
         <div class="flex gap-4 mt-6">
             <button type="submit"
                     class="bg-green-600 text-white px-5 py-2 rounded-lg hover:bg-green-700">
@@ -81,7 +111,6 @@
     </form>
 </div>
 
-<!-- Modal for Creating Template -->
 <div id="templateModal" class="fixed z-50 inset-0 bg-black bg-opacity-50 hidden">
     <div class="bg-white w-full max-w-2xl mx-auto mt-20 p-6 rounded shadow-lg relative">
         <button onclick="closeTemplateModal()" class="absolute top-2 right-4 text-xl text-gray-500">&times;</button>
@@ -94,6 +123,7 @@
         border: 2px solid #2563eb;
         background-color: #f0f9ff;
     }
+    /* Removed the previous CSS for input visibility as it's now handled by forms.py */
 </style>
 
 <script>
@@ -124,17 +154,20 @@
         window.addEventListener("message", function(event) {
             if (event.data === "template_created") {
                 closeTemplateModal();
-                location.reload();
+                location.reload(); // Reload to show the new template in the list
             }
         });
     });
 
     function openTemplateModal() {
+        // Append modal=true to the URL to tell the view it's being accessed via modal
+        document.getElementById('templateModalIframe').src = "{% url 'admin_email_template_create' %}?modal=true";
         document.getElementById('templateModal').classList.remove('hidden');
     }
 
     function closeTemplateModal() {
         document.getElementById('templateModal').classList.add('hidden');
+        document.getElementById('templateModalIframe').src = ""; // Clear iframe src to stop any media/scripts
     }
 </script>
 {% endblock %}

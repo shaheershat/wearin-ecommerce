@@ -1,0 +1,93 @@
+{% extends 'admin_panel/dashboard.html' %}
+{% load static widget_tweaks %} {# Load widget_tweaks here #}
+
+{% block content %}
+  <div class="container mx-auto mt-4 p-4 bg-white shadow-md rounded-lg"> {# Added Tailwind classes for container #}
+    <h2 class="text-2xl font-bold text-gray-800 mb-6">Edit Newsletter Campaign</h2> {# Added Tailwind classes for heading #}
+    <form method="post" class="space-y-4"> {# Added Tailwind class for spacing between fields #}
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+          <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+              {% for error in form.non_field_errors %}
+                  <p>{{ error }}</p>
+              {% endfor %}
+          </div>
+      {% endif %}
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4"> {# Example: using grid for two columns #}
+          <div class="form-group">
+            <label for="{{ form.title.id_for_label }}" class="block text-sm font-medium text-gray-700">{{ form.title.label }}</label>
+            {{ form.title|add_class:"block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" }}
+            {% if form.title.help_text %}
+              <p class="mt-1 text-sm text-gray-500">{{ form.title.help_text }}</p>
+            {% endif %}
+            {% for error in form.title.errors %}
+              <p class="text-red-500 text-xs italic">{{ error }}</p>
+            {% endfor %}
+          </div>
+
+          <div class="form-group">
+            <label for="{{ form.subject.id_for_label }}" class="block text-sm font-medium text-gray-700">{{ form.subject.label }}</label>
+            {{ form.subject|add_class:"block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" }}
+            {% if form.subject.help_text %}
+              <p class="mt-1 text-sm text-gray-500">{{ form.subject.help_text }}</p>
+            {% endif %}
+            {% for error in form.subject.errors %}
+              <p class="text-red-500 text-xs italic">{{ error }}</p>
+            {% endfor %}
+          </div>
+      </div>
+
+      {# Other fields can be styled similarly #}
+      <div class="form-group">
+        <label for="{{ form.email_template.id_for_label }}" class="block text-sm font-medium text-gray-700">{{ form.email_template.label }}</label>
+        {{ form.email_template|add_class:"block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" }}
+        {% if form.email_template.help_text %}
+          <p class="mt-1 text-sm text-gray-500">{{ form.email_template.help_text }}</p>
+        {% endif %}
+        {% for error in form.email_template.errors %}
+          <p class="text-red-500 text-xs italic">{{ error }}</p>
+        {% endfor %}
+      </div>
+
+      <div class="form-group">
+        <label for="{{ form.custom_recipients.id_for_label }}" class="block text-sm font-medium text-gray-700">{{ form.custom_recipients.label }}</label>
+        {{ form.custom_recipients|add_class:"block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" }}
+        {% if form.custom_recipients.help_text %}
+          <p class="mt-1 text-sm text-gray-500">{{ form.custom_recipients.help_text }}</p>
+        {% endif %}
+        {% for error in form.custom_recipients.errors %}
+          <p class="text-red-500 text-xs italic">{{ error }}</p>
+        {% endfor %}
+      </div>
+
+      <div class="form-group">
+        <label for="{{ form.scheduled_at.id_for_label }}" class="block text-sm font-medium text-gray-700">{{ form.scheduled_at.label }}</label>
+        {# For date/time pickers, you might need specific JS/CSS, but for a standard input: #}
+        {{ form.scheduled_at|add_class:"block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" }}
+        {% if form.scheduled_at.help_text %}
+          <p class="mt-1 text-sm text-gray-500">{{ form.scheduled_at.help_text }}</p>
+        {% endif %}
+        {% for error in form.scheduled_at.errors %}
+          <p class="text-red-500 text-xs italic">{{ error }}</p>
+        {% endfor %}
+      </div>
+
+      <div class="form-group">
+        <label for="{{ form.status.id_for_label }}" class="block text-sm font-medium text-gray-700">{{ form.status.label }}</label>
+        {{ form.status|add_class:"block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" }}
+        {% if form.status.help_text %}
+          <p class="mt-1 text-sm text-gray-500">{{ form.status.help_text }}</p>
+        {% endif %}
+        {% for error in form.status.errors %}
+          <p class="text-red-500 text-xs italic">{{ error }}</p>
+        {% endfor %}
+      </div>
+
+      <div class="mt-6">
+        <button type="submit" class="px-4 py-2 bg-indigo-600 text-white font-medium rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">Update Campaign</button>
+      </div>
+    </form>
+  </div>
+{% endblock %}

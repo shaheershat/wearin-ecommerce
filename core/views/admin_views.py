@@ -664,17 +664,66 @@ class EmailTemplateCreateView(CreateView):
     model = EmailTemplate
     form_class = EmailTemplateForm
     template_name = 'admin_panel/newsletter/template_form.html'
-    success_url = reverse_lazy('admin_email_template_list')
+    success_url = reverse_lazy('admin_email_template_list') # This will now only be used for non-modal submits
 
     def form_valid(self, form):
         form.instance.created_by = self.request.user
-        response = super().form_valid(form)
+        email_template = form.save() # Save the form and get the instance
 
-        # Detect if this is an iframe/modal submission
-        if self.request.headers.get('x-requested-with') == 'XMLHttpRequest':
-            return JsonResponse({'success': True})
+        # Check if this request came from the modal context.
+        # We can detect this by checking if 'modal=true' is in the GET parameters
+        # of the request that initially loaded this form, and assume the POST
+        # submission follows the same context.
+        # Alternatively, you could pass a hidden input field 'is_modal_submit' in the form.
+        is_modal_request = 'modal' in self.request.GET
 
-        return response
+        if is_modal_request:
+            # If it's a modal submission, we do NOT want to redirect the iframe.
+            # Instead, send a signal back to the parent.
+            # Your template already has: window.parent.postMessage("template_created", "*");
+            # We just need to make sure the view finishes successfully without redirecting
+            # the iframe to an invalid URL.
+            
+            # Option 1: Return a simple HttpResponse (preferred for iframes)
+            # This HTML will be rendered inside the iframe, but it's very minimal.
+            # The JS will execute and send the message, and then this small page just sits there.
+            # It's crucial for the JS to run AFTER the form is valid.
+            return HttpResponse(
+                "<script>window.parent.postMessage('template_created', '*'); window.location.href = '';</script>",
+                status=200 # Indicate success
+            )
+            
+            # Option 2: Redirect to the *edit* view of the newly created template within the modal
+            # This keeps the modal open but shows the saved template ready for further edits.
+            # Ensure your JS for postMessage also handles this redirect for closing if needed.
+            # return redirect(reverse('newsletter:create_email_template') + f'?modal=true&pk={email_template.pk}')
+
+
+        # If it's not a modal (e.g., direct access to this form view),
+        # then proceed with the default CreateView behavior (redirect to success_url).
+        return super().form_valid(form) # This will trigger the redirect to success_url
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        # Pass a 'modal' flag to the template if it's detected in the GET parameters
+        if 'modal' in self.request.GET:
+            context['modal'] = True
+            # If editing existing template within modal (optional, but good practice)
+            pk = self.request.GET.get('pk')
+            if pk:
+                try:
+                    email_template = self.model.objects.get(pk=pk)
+                    context['form'] = self.form_class(instance=email_template)
+                except self.model.DoesNotExist:
+                    pass # Handle error or just show empty form
+        return context
+
+    # If you also want to handle editing existing templates with this same view in the modal:
+    # def get_object(self, queryset=None):
+    #     pk = self.request.GET.get('pk')
+    #     if pk:
+    #         return self.model.objects.get(pk=pk)
+    #     return super().get_object(queryset)
 
 @method_decorator(admin_login_required, name='dispatch')
 class EmailTemplateUpdateView(UpdateView):
@@ -730,10 +779,9 @@ class NewsletterCampaignListView(ListView):
 @method_decorator(admin_login_required, name='dispatch')
 class NewsletterCampaignUpdateView(UpdateView):
     model = NewsletterCampaign
-    fields = ['subject', 'content', 'scheduled_at']
+    fields = ['title', 'email_template', 'scheduled_at', 'status']
     template_name = 'admin_panel/newsletter/campaign_edit.html'
     success_url = reverse_lazy('admin_newsletter_campaign_list')
-
 
 @method_decorator(admin_login_required, name='dispatch')
 class NewsletterCampaignDeleteView(DeleteView):

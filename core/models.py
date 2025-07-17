@@ -405,6 +405,11 @@ class Wishlist(models.Model):
 class NewsletterSubscriber(models.Model):
     email = models.EmailField(unique=True)
     subscribed_at = models.DateTimeField(auto_now_add=True)
+    is_active = models.BooleanField(default=True)  # ✅ Add this line
+
+    def __str__(self):
+        return self.email
+
 
     def __str__(self):
         return self.email
@@ -469,21 +474,30 @@ class NewsletterCampaign(models.Model):
     ]
 
     title = models.CharField(max_length=255, help_text="Internal title for this newsletter campaign")
-    email_template = models.ForeignKey(EmailTemplate, on_delete=models.SET_NULL, null=True, blank=True, related_name='campaigns')
+    email_template = models.ForeignKey(
+        EmailTemplate, on_delete=models.SET_NULL, null=True, blank=True, related_name='campaigns'
+    )
     recipients_type = models.CharField(max_length=50, choices=CAMPAIGN_TYPE_CHOICES)
-    custom_recipient_emails = models.TextField(blank=True, null=True, help_text="Comma-separated list of emails if 'Custom Email List' is selected.")
+    custom_recipient_emails = models.TextField(
+        blank=True, null=True,
+        help_text="Comma-separated list of emails if 'Custom Email List' is selected."
+    )
     scheduled_at = models.DateTimeField(blank=True, null=True)
     sent_at = models.DateTimeField(blank=True, null=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
-    sent_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='sent_newsletters')
+    sent_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='sent_newsletters'
+    )
     total_recipients = models.PositiveIntegerField(default=0)
-    created_at = models.DateTimeField(auto_now_add=True)  # ✅ Required for admin
+    sent_count = models.PositiveIntegerField(default=0, help_text="Number of emails actually sent")
+    created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return self.title
 
     class Meta:
         ordering = ['-created_at']
+
 
 
 class NewsletterSubscription(models.Model):
