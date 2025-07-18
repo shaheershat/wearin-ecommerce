@@ -134,8 +134,9 @@ def cancel_order_view(request, order_id):
                     logger.warning(f"Product for OrderItem {item.id} in Order {order.id} not found during cancellation stock update.")
             # --- END NEW/UPDATED LOGIC ---
 
-            # ✅ Send cancellation email (ensure send_order_cancelled_email is a Celery task)
-            # send_order_cancelled_email.delay(order.id) # Uncomment if you have this Celery task
+            logger.info(f"User cancelled order {order.id}. Scheduling cancellation email.")
+            # FIX: Call with .delay() and pass order.id
+            send_order_cancelled_email.delay(order.id) 
 
             messages.success(request, f"Order has been cancelled and ₹{order.total_price} has been refunded to your wallet.")
             return redirect('my_profile')
@@ -144,6 +145,9 @@ def cancel_order_view(request, order_id):
         logger.error(f"Error cancelling order {order_id}: {e}", exc_info=True)
         messages.error(request, 'An unexpected error occurred while cancelling the order.')
         return redirect('my_profile')
+
+# In core/views/admin_views.py (or wherever process_admin_return_request is)
+# Ensure this import is correct and points to your tasks file (e.g., core.emails or core.tasks)
 
 @user_login_required
 @require_GET

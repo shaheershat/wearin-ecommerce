@@ -85,8 +85,6 @@ def get_return_request_for_admin_modal(request, request_id):
 def process_admin_return_request(request, request_id):
     """
     AJAX endpoint for admin to approve or reject a return request.
-    UPDATED: Now updates the main Order status based on return request outcome,
-             and sets product is_sold to False on approval, and corrects variable name.
     """
     try:
         data = json.loads(request.body)
@@ -113,13 +111,10 @@ def process_admin_return_request(request, request_id):
                     order_item = ri.order_item
                     if order_item and order_item.product:
                         # Increment product stock
-                        # CORRECTED: Using 'order_item.product' instead of 'item.product'
                         order_item.product.stock_quantity += ri.quantity
                         # Un-tick 'is_sold' checkbox
-                        # CORRECTED: Using 'order_item.product' instead of 'item.product'
                         order_item.product.is_sold = False
                         # Save the product changes
-                        # CORRECTED: Using 'order_item.product' instead of 'item.product'
                         order_item.product.save()
                         logger.info(f"Product '{order_item.product.name}' (ID: {order_item.product.id}) stock updated to {order_item.product.stock_quantity}, is_sold set to False due to return approval.")
                         total_refund_amount += ri.quantity * order_item.price_at_purchase
@@ -146,20 +141,30 @@ def process_admin_return_request(request, request_id):
                 order.save()
 
                 messages.success(request, f'Return Request #{return_request.id} approved and wallet refunded. Order status set to Returned.')
+                logger.info(f"Admin approved return request {return_request.id}. Scheduling return processed email.")
+                # FIX: Call with .delay() and pass return_request.id and status
+                send_return_processed_email.delay(return_request.id, action) # 'action' will be 'approve' or 'reject'
 
             elif action == 'reject':
                 return_request.status = 'Rejected'
                 
                 # Set the main Order status back to 'Delivered' if it was 'Returned' or 'Pending' return
-                order.status = 'Delivered'
-                order.save()
+                # This logic might need refinement based on your exact desired flow for rejected returns.
+                # For now, assuming it goes back to 'Delivered' if it was marked returned for processing.
+                if order.status == 'Returned': # Only revert if it was marked returned for processing
+                    order.status = 'Delivered'
+                    order.save()
+                elif order.status == 'Pending': # If it was pending, it should remain delivered
+                    order.status = 'Delivered' # Or whatever default state is after processing
+                    order.save()
+
 
                 messages.warning(request, f'Return Request #{return_request.id} rejected. Order status set to Delivered.')
+                logger.info(f"Admin rejected return request {return_request.id}. Scheduling return processed email.")
+                # FIX: Call with .delay() and pass return_request.id and status
+                send_return_processed_email.delay(return_request.id, action) # 'action' will be 'approve' or 'reject'
 
             return_request.save()
-
-            # Optional: Send email confirmation to user
-            # send_return_processed_email.delay(return_request.id, return_request.status)
 
         return JsonResponse({'status': 'success', 'message': f'Return request {action}ed successfully.'})
 
