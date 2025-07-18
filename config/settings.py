@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     'allauth.socialaccount.providers.google',
     'core.apps.CoreConfig', # Your core app
     'crispy_forms',
+    'crispy_tailwind',
     'crispy_bootstrap5',
     'django_celery_beat', # Celery Beat for periodic tasks
 ]
@@ -67,6 +68,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'core.context_processors.cart_context',
+                'core.context_processors.offer_context',
             ],
         },
     },

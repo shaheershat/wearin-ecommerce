@@ -1,0 +1,430 @@
+{% extends 'admin_panel/dashboard.html' %}
+{% load crispy_forms_tags %}
+
+{% block title %}Offer Management{% endblock %}
+
+{% block content %}
+<div class="container mx-auto p-4">
+    <h1 class="text-3xl font-bold mb-6 text-gray-800">Offer Management</h1>
+
+    {# Flash messages container - will be used by JS for success/error messages #}
+    <div id="messagesContainer" class="mb-4">
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert {% if message.tags %}alert-{{ message.tags }}{% endif %} p-3 rounded-md mb-2
+                    {% if message.tags == 'success' %}bg-green-100 text-green-800 border border-green-400{% endif %}
+                    {% if message.tags == 'error' %}bg-red-100 text-red-800 border border-red-400{% endif %}
+                    {% if message.tags == 'warning' %}bg-yellow-100 text-yellow-800 border border-yellow-400{% endif %}
+                    {% if message.tags == 'info' %}bg-blue-100 text-blue-800 border border-blue-400{% endif %}">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        {% endif %}
+    </div>
+
+    <!-- Offer Banner Section -->
+    <div class="bg-white shadow-md rounded-lg p-6 mb-8">
+        <h2 class="text-2xl font-semibold mb-4 text-gray-700">Flash Message Banner</h2>
+        {# Re-added red debugging border #}
+        <form method="post" action="{% url 'admin_offer_management' %}" class="border-2 border-red-500 p-2 mb-4">
+            {% csrf_token %}
+            <input type="hidden" name="banner_submit" value="true">
+            {{ banner_form|crispy:'tailwind' }}
+            <button type="submit" class="mt-4 px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                Update Banner
+            </button>
+        </form>
+        <div class="mt-6 p-4 border rounded-md">
+            <p class="font-bold mb-2">Live Preview (Currently Active Banner):</p>
+            {% if active_live_banner and active_live_banner.is_active %}
+                <div class="offer-banner-container-admin" style="background-color: {{ active_live_banner.bg_color }}; color: {{ active_live_banner.text_color }};">
+                    <span class="animate-marquee-admin">{{ active_live_banner.text_content }}</span>
+                </div>
+            {% else %}
+                <p class="text-gray-500">No active banner currently displayed on the user-facing site.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Product Offer Management Section -->
+    <div class="bg-white shadow-md rounded-lg p-6 mb-8">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-2xl font-semibold text-gray-700">Product Offers</h2>
+            {# Button to open the modal for creating a new offer #}
+            <button id="openCreateOfferModalBtn" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2">
+                Create New Offer
+            </button>
+        </div>
+
+        <form method="get" class="mb-6">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                <div>
+                    {{ product_filter_form.query.label_tag }}
+                    {{ product_filter_form.query }}
+                </div>
+                <div>
+                    {{ product_filter_form.category.label_tag }}
+                    {{ product_filter_form.category }}
+                </div>
+                <div>
+                    {{ product_filter_form.sort_by.label_tag }}
+                    {{ product_filter_form.sort_by }}
+                </div>
+                <div>
+                    {{ product_filter_form.in_offer.label_tag }}
+                    {{ product_filter_form.in_offer }}
+                </div>
+                <div class="md:col-span-4 flex justify-end">
+                    <button type="submit" class="px-6 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
+                        Apply Filters
+                    </button>
+                    <a href="{% url 'admin_offer_management' %}" class="ml-2 px-6 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
+                        Clear Filters
+                    </a>
+                </div>
+            </div>
+        </form>
+
+        {# The main form for applying/removing existing offers and selecting products #}
+        {# Re-added blue debugging border #}
+        <form method="post" action="{% url 'admin_offer_management' %}" class="border-2 border-blue-500 p-2 mb-4">
+            {% csrf_token %}
+            {# The "Apply New Offer to Selected Products" section is now moved to the modal #}
+
+            <div class="mb-6">
+                <h3 class="text-xl font-medium mb-3 text-gray-700">Apply Existing Offer to Selected Products</h3>
+                <div class="flex items-center space-x-4">
+                    <select id="existingOfferSelect" name="existing_offer_id" class="form-select flex-grow">
+                        <option value="">--- Select an Existing Offer ---</option>
+                        {% for offer in all_offers %}
+                            {# Changed offer.name and offer.tag_text to offer.code #}
+                            <option value="{{ offer.id }}">{{ offer.code }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="submit" name="apply_existing_offer" class="px-6 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2">
+                        Apply Selected Offer
+                    </button>
+                </div>
+            </div>
+
+            <div class="mb-6">
+                <h3 class="text-xl font-medium mb-3 text-gray-700">Remove Offer from Selected Products</h3>
+                <div class="flex items-center space-x-4">
+                    <select name="offer_to_remove_id" class="form-select flex-grow">
+                        <option value="all">--- Remove All Offers ---</option>
+                        {% for offer in all_offers %}
+                            {# Changed offer.name to offer.code #}
+                            <option value="{{ offer.id }}">{{ offer.code }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="submit" name="remove_offer" class="px-6 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
+                        Remove Selected Offer(s)
+                    </button>
+                </div>
+            </div>
+
+            <h3 class="text-xl font-medium mb-3 text-gray-700">Select Products:</h3>
+            <div class="overflow-x-auto bg-gray-50 rounded-lg shadow-inner p-4" style="max-height: 500px;">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-100">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                <input type="checkbox" id="select_all_products" class="form-check-input">
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Offers</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for product in products %}
+                        <tr>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <input type="checkbox" name="selected_products" value="{{ product.id }}" class="product-checkbox form-check-input">
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ product.name }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">₹{{ product.price }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ product.stock_quantity }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                {% for offer in product.offers.all %}
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 mr-1 mb-1">
+                                        {# Changed offer.name and offer.tag_text to offer.code #}
+                                        {{ offer.code }}
+                                    </span>
+                                {% empty %}
+                                    <span class="text-gray-400">No offers</span>
+                                {% endfor %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="5" class="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">No products found matching your criteria.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </form>
+    </div>
+
+    <!-- Active Offers List Section -->
+    <div class="bg-white shadow-md rounded-lg p-6">
+        <h2 class="text-2xl font-semibold mb-4 text-gray-700">Active Offers</h2>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-100">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Offer Code</th> {# Changed "Offer Name" to "Offer Code" #}
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Discount</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duration</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Products Count</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    {% for offer in active_offers %}
+                    <tr>
+                        {# Changed offer.name and offer.tag_text to offer.code #}
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ offer.code }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            ₹{{ offer.discount|floatformat:"2" }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ offer.valid_from|date:"M d, H:i" }} - {{ offer.valid_to|date:"M d, H:i" }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ offer.products.count }}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {% if offer.is_active %} {# Use is_active directly from Coupon model #}
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Active</span>
+                            {% else %}
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Inactive</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">No active offers found.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Create Offer Modal -->
+<div id="createOfferModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-[1000] hidden">
+    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg mx-auto relative overflow-y-auto max-h-[90vh]"> {# Added overflow-y-auto and max-h-[90vh] #}
+        <button id="closeCreateOfferModalBtn" class="absolute top-3 right-3 text-gray-500 hover:text-gray-800 text-2xl font-bold focus:outline-none">&times;</button>
+        <h2 class="text-2xl font-semibold mb-4 text-gray-700">Create New Offer</h2>
+        {# Form for creating a new offer, now inside the modal #}
+        <form id="createOfferForm" method="post" action="{% url 'admin_offer_management' %}">
+            {% csrf_token %}
+            <input type="hidden" name="create_new_offer_modal" value="true"> {# Hidden input to identify this form submission #}
+            {{ offer_form|crispy:'tailwind' }}
+            <div id="modalFormErrors" class="text-red-600 text-sm mt-2"></div> {# Container for AJAX errors #}
+            <button type="submit" class="mt-4 px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2">
+                Create Offer
+            </button>
+        </form>
+    </div>
+</div>
+
+<style>
+    /* Basic CSS for the marquee effect */
+    @keyframes marquee-admin {
+        0% { transform: translateX(100%); }
+        100% { transform: translateX(-100%); }
+    }
+
+    .animate-marquee-admin {
+        white-space: nowrap;
+        overflow: hidden;
+        display: inline-block;
+        animation: marquee-admin 15s linear infinite;
+    }
+    .offer-banner-container-admin {
+        width: 100%;
+        padding: 8px 0;
+        text-align: center;
+        font-weight: bold;
+        overflow: hidden;
+        border-radius: 0.375rem;
+    }
+
+    /* Aggressive CSS to ensure crispy form fields are visible */
+    /* Target common crispy-forms structure elements */
+    .form-group, .form-field, .control-group {
+        display: block !important;
+        margin-bottom: 1rem !important; /* Add some spacing */
+    }
+
+    /* Target labels */
+    label {
+        display: block !important;
+        font-weight: bold !important;
+        margin-bottom: 0.5rem !important;
+        color: #374151 !important; /* gray-700 */
+    }
+
+    /* Target input fields, textareas, and selects */
+    input[type="text"],
+    input[type="email"],
+    input[type="number"],
+    input[type="url"],
+    input[type="password"],
+    input[type="datetime-local"], /* For datetime inputs */
+    textarea,
+    select {
+        display: block !important;
+        width: 100% !important;
+        padding: 0.5rem 0.75rem !important;
+        border: 1px solid #D1D5DB !important; /* gray-300 */
+        border-radius: 0.375rem !important; /* rounded-md */
+        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important; /* shadow-sm */
+        color: #1F2937 !important; /* gray-900 */
+        background-color: #FFFFFF !important; /* white */
+        -webkit-appearance: none !important; /* Remove default browser styling */
+        -moz-appearance: none !important;
+        appearance: none !important;
+    }
+
+    /* Specific styling for checkboxes */
+    input[type="checkbox"] {
+        display: inline-block !important;
+        width: auto !important;
+        margin-right: 0.5rem !important;
+        vertical-align: middle !important;
+    }
+
+    /* Help text and errors */
+    .helptext, .errorlist {
+        font-size: 0.875rem !important; /* text-sm */
+        color: #6B7280 !important; /* gray-500 */
+        margin-top: 0.25rem !important;
+    }
+    .errorlist {
+        color: #EF4444 !important; /* red-500 */
+    }
+</style>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const selectAllCheckbox = document.getElementById('select_all_products');
+        const productCheckboxes = document.querySelectorAll('.product-checkbox');
+
+        if (selectAllCheckbox) {
+            selectAllCheckbox.addEventListener('change', function() {
+                productCheckboxes.forEach(checkbox => {
+                    checkbox.checked = selectAllCheckbox.checked;
+                });
+            });
+        }
+
+        // Modal JavaScript
+        const createOfferModal = document.getElementById('createOfferModal');
+        const openCreateOfferModalBtn = document.getElementById('openCreateOfferModalBtn');
+        const closeCreateOfferModalBtn = document.getElementById('closeCreateOfferModalBtn');
+        const createOfferForm = document.getElementById('createOfferForm'); // Get the form by its new ID
+        const existingOfferSelect = document.getElementById('existingOfferSelect'); // Get the select dropdown
+        const modalFormErrors = document.getElementById('modalFormErrors'); // Error container
+
+        openCreateOfferModalBtn.addEventListener('click', () => {
+            createOfferModal.classList.remove('hidden');
+            document.body.style.overflow = 'hidden'; // Prevent scrolling
+            modalFormErrors.innerHTML = ''; // Clear previous errors
+        });
+
+        const closeModal = () => {
+            createOfferModal.classList.add('hidden');
+            document.body.style.overflow = ''; // Restore scrolling
+            createOfferForm.reset(); // Reset the form fields
+            modalFormErrors.innerHTML = ''; // Clear errors on close
+        };
+
+        closeCreateOfferModalBtn.addEventListener('click', closeModal);
+
+        // Close modal if clicked outside
+        createOfferModal.addEventListener('click', (e) => {
+            if (e.target === createOfferModal) {
+                closeModal();
+            }
+        });
+
+        // Close modal with Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !createOfferModal.classList.contains('hidden')) {
+                closeModal();
+            }
+        });
+
+        // Handle AJAX form submission for Create Offer Modal
+        createOfferForm.addEventListener('submit', async (e) => {
+            e.preventDefault(); // Prevent default form submission
+
+            const formData = new FormData(createOfferForm);
+            const csrfToken = formData.get('csrfmiddlewaretoken'); // Get CSRF token from form data
+
+            try {
+                const response = await fetch(createOfferForm.action, {
+                    method: 'POST',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest', // Identify as AJAX request
+                        'X-CSRFToken': csrfToken, // Send CSRF token in header
+                    },
+                    body: formData,
+                });
+
+                const data = await response.json();
+
+                if (response.ok) { // Check if response status is 2xx (success)
+                    // Add new offer to the dropdown
+                    const newOption = document.createElement('option');
+                    newOption.value = data.offer.id;
+                    {# Changed data.offer.name and data.offer.tag_text to data.offer.code #}
+                    newOption.textContent = `${data.offer.code}`;
+                    existingOfferSelect.appendChild(newOption);
+
+                    // Display success message
+                    const messagesContainer = document.getElementById('messagesContainer');
+                    messagesContainer.innerHTML = `
+                        <div class="alert bg-green-100 text-green-800 border border-green-400 p-3 rounded-md mb-2">
+                            ${data.message || 'Offer created successfully!'}
+                        </div>
+                    `;
+
+                    closeModal(); // Close the modal on success
+                } else { // Handle errors (e.g., validation errors)
+                    let errorHtml = '';
+                    if (data.errors) {
+                        const errors = JSON.parse(data.errors); // Parse the JSON string of errors
+                        for (const field in errors) {
+                            if (errors.hasOwnProperty(field)) {
+                                errors[field].forEach(error => {
+                                    errorHtml += `<p>${field}: ${error.message}</p>`;
+                                });
+                            }
+                        }
+                    } else {
+                        errorHtml = `<p>${data.message || 'An unexpected error occurred.'}</p>`;
+                    }
+                    modalFormErrors.innerHTML = errorHtml;
+                }
+            } catch (error) {
+                console.error('Error submitting form:', error);
+                modalFormErrors.innerHTML = '<p>Network error or server unreachable. Please try again.</p>';
+            }
+        });
+
+        // If the form submission results in errors (from a non-AJAX submission, e.g., on page load), keep the modal open
+        {% if offer_form.errors and request.POST.create_new_offer_modal %}
+            createOfferModal.classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+            // Display errors that came from the server-side render
+            const serverErrors = createOfferForm.querySelector('.errorlist');
+            if (serverErrors) {
+                modalFormErrors.appendChild(serverErrors.cloneNode(true));
+            }
+        {% endif %}
+    });
+</script>
+{% endblock %}

@@ -107,13 +107,13 @@ class Coupon(models.Model):
             if self.applies_to_new_users_only:
                 # Assuming 'Order' model tracks user orders and 'Delivered' means successful
                 # Import Order locally to avoid circular dependency if Order imports Coupon
-                from .order import Order # Assuming Order is defined later in this file or in a separate file
+                from core.models import Order  # Import Order from the current models module
                 if Order.objects.filter(user=user, status__in=['Delivered', 'Returned', 'Shipped', 'Processing', 'Pending']).exists():
                     return False, "This coupon is for new users only."
 
             # Check for 'minimum orders' condition
             if self.min_orders_for_user > 0:
-                from .order import Order # Local import
+                from core.models import Order  # Absolute import to avoid import error
                 user_successful_orders_count = Order.objects.filter(user=user, status__in=['Delivered', 'Returned']).count()
                 if user_successful_orders_count < self.min_orders_for_user:
                     return False, f"You must have at least {self.min_orders_for_user} previous successful orders to use this coupon."
@@ -617,3 +617,131 @@ class ReturnItem(models.Model):
 # The M2M field should be defined directly in the ReturnRequest class.
 # Assuming you want to keep the M2M field to OrderItem as 'items',
 # I'll update the ReturnRequest model directly.
+
+class OfferBanner(models.Model):
+    """
+    Model to store settings for a scrolling flash message banner.
+    Designed to be a singleton (only one active instance at a time).
+    """
+    text_content = models.CharField(
+        max_length=255,
+        help_text="The text that will scroll on the banner."
+    )
+    text_color = models.CharField(
+        max_length=7,
+        default="#FFFFFF",
+        help_text="Hex color code for the text (e.g., #FFFFFF)."
+    )
+    bg_color = models.CharField(
+        max_length=7,
+        default="#FF0000",
+        help_text="Hex color code for the background (e.g., #FF0000)."
+    )
+    is_active = models.BooleanField(
+        default=False,
+        help_text="Enable or disable this banner. Only one banner can be active at a time."
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Offer Banner"
+        verbose_name_plural = "Offer Banners"
+        ordering = ['-updated_at']  # Optional: show recent ones first in admin
+
+    def save(self, *args, **kwargs):
+        # Enforce singleton active banner
+        if self.is_active:
+            OfferBanner.objects.exclude(pk=self.pk).update(is_active=False)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"Banner: '{self.text_content[:30]}...' (Active: {self.is_active})"
+
+class Offer(models.Model):
+    """
+    Model to define a specific offer that can be applied to multiple products.
+    """
+    name = models.CharField(
+        max_length=100,
+        unique=True,
+        help_text="Name of the offer (e.g., 'Summer Sale', 'Flash Deal')."
+    )
+    tag_text = models.CharField(
+        max_length=20,
+        default="SALE",
+        help_text="Text to display as a tag on product cards (e.g., 'SALE', '20% OFF')."
+    )
+    discount_percentage = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=True, blank=True,
+        help_text="Discount percentage (e.g., 10.00 for 10%)."
+    )
+    discount_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True, blank=True,
+        help_text="Fixed discount amount (e.g., 50.00 for $50 off)."
+    )
+    start_date = models.DateTimeField(
+        default=timezone.now,
+        help_text="Date and time when the offer becomes active."
+    )
+    end_date = models.DateTimeField(
+        help_text="Date and time when the offer expires."
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Overall status of the offer. Set to False to disable."
+    )
+    products = models.ManyToManyField(
+        'Product',
+        related_name='offers',
+        blank=True,
+        help_text="Select products to apply this offer to."
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Product Offer"
+        verbose_name_plural = "Product Offers"
+        ordering = ['-start_date']
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def is_currently_active(self):
+        """Checks if the offer is active based on dates and is_active flag."""
+        now = timezone.now()
+        return self.is_active and self.start_date <= now and self.end_date >= now
+
+    def get_discounted_price(self, original_price):
+        """Calculates the discounted price for a given original price."""
+        original_price = Decimal(original_price)
+        if self.discount_percentage:
+            discount_value = original_price * (self.discount_percentage / Decimal(100))
+            return max(Decimal('0.00'), original_price - discount_value)
+        elif self.discount_amount:
+            return max(Decimal('0.00'), original_price - self.discount_amount)
+        return original_price # No discount applied
+
+    def clean(self):
+        # Custom validation for discount fields
+        if self.discount_percentage is not None and self.discount_amount is not None:
+            from django.core.exceptions import ValidationError
+            raise ValidationError("An offer cannot have both a percentage and a fixed amount discount. Choose one.")
+        if self.discount_percentage is None and self.discount_amount is None:
+            from django.core.exceptions import ValidationError
+            raise ValidationError("An offer must have either a percentage or a fixed amount discount.")
+        if self.discount_percentage is not None and (self.discount_percentage < 0 or self.discount_percentage > 100):
+            from django.core.exceptions import ValidationError
+            raise ValidationError("Discount percentage must be between 0 and 100.")
+        if self.discount_amount is not None and self.discount_amount < 0:
+            from django.core.exceptions import ValidationError
+            raise ValidationError("Discount amount cannot be negative.")
+        if self.start_date and self.end_date and self.start_date >= self.end_date:
+            from django.core.exceptions import ValidationError
+            raise ValidationError("End date must be after start date.")

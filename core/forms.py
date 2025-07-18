@@ -7,6 +7,7 @@ from core.models import Product, Coupon, EmailTemplate, NewsletterCampaign # Ens
 import uuid
 # Import the actual Address model and UserProfile
 from core.models import UserProfile, Address, NewsletterSubscriber # Import NewsletterSubscriber
+from core.models import OfferBanner, Offer, Product, Category
 
 
 class ProfileForm(forms.ModelForm):
@@ -238,3 +239,118 @@ class NewsletterCampaignForm(forms.ModelForm):
             self.add_error('custom_recipient_emails', "Custom recipient emails are required if 'Custom Email List' is selected.")
         return cleaned_data
 
+
+class OfferBannerForm(forms.ModelForm):
+    """
+    Form for managing the OfferBanner (scrolling flash message).
+    """
+    class Meta:
+        model = OfferBanner
+        fields = ['text_content', 'text_color', 'bg_color', 'is_active']
+        widgets = {
+            # Consider using a color picker widget if you integrate one (e.g., django-colorfield)
+            # For now, simple text input for hex codes
+            'text_color': forms.TextInput(attrs={'type': 'color', 'class': 'form-control'}),
+            'bg_color': forms.TextInput(attrs={'type': 'color', 'class': 'form-control'}),
+            'text_content': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Enter banner text'}),
+            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'})
+        }
+        labels = {
+            'text_content': 'Banner Text',
+            'text_color': 'Text Color',
+            'bg_color': 'Background Color',
+            'is_active': 'Enable Banner'
+        }
+
+class OfferForm(forms.ModelForm):
+    """
+    Form for creating/editing Product Offers.
+    Products selection will be handled separately in the custom view.
+    """
+    class Meta:
+        model = Offer
+        fields = [
+            'name', 'tag_text', 'discount_percentage', 'discount_amount',
+            'start_date', 'end_date', 'is_active'
+        ]
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g., Summer Sale'}),
+            'tag_text': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g., SALE, 20% OFF'}),
+            'discount_percentage': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0', 'max': '100', 'placeholder': 'e.g., 15.00'}),
+            'discount_amount': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0', 'placeholder': 'e.g., 10.00'}),
+            'start_date': forms.DateTimeInput(attrs={'type': 'datetime-local', 'class': 'form-control'}),
+            'end_date': forms.DateTimeInput(attrs={'type': 'datetime-local', 'class': 'form-control'}),
+            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'})
+        }
+        labels = {
+            'name': 'Offer Name',
+            'tag_text': 'Product Tag Text',
+            'discount_percentage': 'Discount Percentage (%)',
+            'discount_amount': 'Discount Amount ($)',
+            'start_date': 'Start Date & Time',
+            'end_date': 'End Date & Time',
+            'is_active': 'Offer Active'
+        }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        discount_percentage = cleaned_data.get('discount_percentage')
+        discount_amount = cleaned_data.get('discount_amount')
+        start_date = cleaned_data.get('start_date')
+        end_date = cleaned_data.get('end_date')
+
+        if discount_percentage is not None and discount_amount is not None:
+            raise forms.ValidationError("An offer cannot have both a percentage and a fixed amount discount. Choose one.")
+        if discount_percentage is None and discount_amount is None:
+            raise forms.ValidationError("An offer must have either a percentage or a fixed amount discount.")
+        
+        if discount_percentage is not None and (discount_percentage < 0 or discount_percentage > 100):
+            raise forms.ValidationError("Discount percentage must be between 0 and 100.")
+        if discount_amount is not None and discount_amount < 0:
+            raise forms.ValidationError("Discount amount cannot be negative.")
+
+        if start_date and end_date and start_date >= end_date:
+            raise forms.ValidationError("End date must be after start date.")
+
+        return cleaned_data
+
+class ProductFilterForm(forms.Form):
+    """
+    Form for filtering and sorting products in the custom admin offer page.
+    """
+    query = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Search products...'}),
+        label='Search'
+    )
+    category = forms.ModelChoiceField(
+        queryset=Category.objects.all(),
+        required=False,
+        empty_label="All Categories",
+        widget=forms.Select(attrs={'class': 'form-select'}),
+        label='Category'
+    )
+    sort_by = forms.ChoiceField(
+        choices=[
+            ('name', 'Name (A-Z)'),
+            ('-name', 'Name (Z-A)'),
+            ('price', 'Price (Low to High)'),
+            ('-price', 'Price (High to Low)'),
+            ('created_at', 'Oldest First'),
+            ('-created_at', 'Newest First'),
+        ],
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-select'}),
+        label='Sort By'
+    )
+    # Add a field to filter by whether product is currently in an offer
+    in_offer = forms.ChoiceField(
+        choices=[
+            ('', 'All Products'),
+            ('yes', 'Products with Offers'),
+            ('no', 'Products without Offers'),
+        ],
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-select'}),
+        label='Offer Status'
+    )

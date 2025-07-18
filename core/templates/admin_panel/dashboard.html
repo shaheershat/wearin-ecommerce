@@ -23,7 +23,7 @@
           <a href="{% url 'admin_coupon_list' %}" class="flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-gray-100 {% if request.resolver_match.url_name == 'admin_coupon_list' %}bg-gray-200 text-black font-semibold{% endif %}">🎁 <span>Coupons</span></a>
           <a href="{% url 'admin_sales' %}" class="flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-gray-100 {% if request.resolver_match.url_name == 'admin_sales' %}bg-gray-200 text-black font-semibold{% endif %}">💰 <span>Sales</span></a>{# Assuming 'admin_sales' as URL name if you add it later #}
           <a href="{% url 'admin_upload_page' %}" class="flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-gray-100 {% if request.resolver_match.url_name == 'admin_upload_page' %}bg-gray-200 text-black font-semibold{% endif %}">📤 <span>PixNPost™</span></a>
-          <a href="#" class="flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-gray-100 {% if request.resolver_match.url_name == 'admin_offers' %}bg-gray-200 text-black font-semibold{% endif %}">⚙️ <span>Offers</span></a>{# Assuming 'admin_offers' as URL name if you add it later #}
+          <a href="{% url 'admin_offer_management' %}" class="flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-gray-100 {% if request.resolver_match.url_name == 'admin_offers' %}bg-gray-200 text-black font-semibold{% endif %}">⚙️ <span>Offers</span></a>{# Assuming 'admin_offers' as URL name if you add it later #}
           <a href="{% url 'admin_newsletter_campaign_list' %}" class="flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-gray-100 {% if 'admin_newsletter' in request.resolver_match.url_name %}bg-gray-200 text-black font-semibold{% endif %}">✉️ <span>Campaigns</span></a>
         </nav>
       </div>
@@ -51,7 +51,7 @@
         <a href="{% url 'admin_coupon_list' %}" class="flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-gray-100 {% if request.resolver_match.url_name == 'admin_coupon_list' %}bg-gray-200 text-black font-semibold{% endif %}">🎁 <span>Coupons</span></a>
         <a href="{% url 'admin_sales' %}" class="flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-gray-100 {% if request.resolver_match.url_name == 'admin_sales' %}bg-gray-200 text-black font-semibold{% endif %}">💰 <span>Sales</span></a>{# Assuming 'admin_sales' as URL name if you add it later #}
         <a href="{% url 'admin_upload_page' %}" class="flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-gray-100 {% if request.resolver_match.url_name == 'admin_upload_page' %}bg-gray-200 text-black font-semibold{% endif %}">📤 <span>PixNPost™</span></a>
-        <a href="#" class="flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-gray-100 {% if request.resolver_match.url_name == 'admin_offers' %}bg-gray-200 text-black font-semibold{% endif %}">⚙️ <span>Offers</span></a>{# Assuming 'admin_offers' as URL name if you add it later #}
+        <a href="{% url 'admin_offer_management' %}" class="flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-gray-100 {% if request.resolver_match.url_name == 'admin_offers' %}bg-gray-200 text-black font-semibold{% endif %}">⚙️ <span>Offers</span></a>{# Assuming 'admin_offers' as URL name if you add it later #}
         <a href="{% url 'admin_newsletter_campaign_list' %}" class="flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-gray-100 {% if 'admin_newsletter' in request.resolver_match.url_name %}bg-gray-200 text-black font-semibold{% endif %}">✉️ <span>Campaigns</span></a>
       </nav>
     </div>
