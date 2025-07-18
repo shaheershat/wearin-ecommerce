@@ -4,7 +4,6 @@
 {% block content %}
 
 {# Main container for the whole profile page. Add 'relative' for absolute positioning of toggle button #}
-{# REMOVED min-h-screen from here, it will be applied to a parent of the footer instead #}
 <div class="relative flex flex-col md:flex-row bg-gray-100 flex-grow h-full"> 
   
   {# Mobile Toggle Button - Visible only on small screens. Now it will switch icons. #}
@@ -28,13 +27,9 @@
     </ul>
   </div>
 
-  {# Main Content Area - This is where the primary changes will happen #}
-  {# REMOVED overflow-y-auto from here. We want the page to scroll, not just this div. #}
+  {# Main Content Area #}
   <div class="flex-1 p-8 flex flex-col min-h-[calc(100vh-footer-height)]"> 
-    {# The min-h-[calc(100vh-footer-height)] is a placeholder. You'll need to know your footer's actual height. #}
-    {# Alternatively, if base.html sets min-h-screen on body/html, this might not be needed. #}
 
-    {# Keep this Django messages block for initial page loads #}
     {% if messages %}
     <div class="mb-4">
         {% for message in messages %}
@@ -45,7 +40,7 @@
     </div>
     {% endif %}
 
-    <div id="profile" class="tab-content flex-grow"> {# Add flex-grow here #}
+    <div id="profile" class="tab-content flex-grow"> 
       <div class="bg-white p-6 rounded shadow">
         <h3 class="text-lg font-semibold mb-4">Edit Profile</h3>
         <form method="POST" action="{% url 'update_profile' %}">
@@ -67,7 +62,7 @@
       </div>
     </div>
 
-    <div id="address" class="tab-content hidden flex-grow"> {# Add flex-grow here #}
+    <div id="address" class="tab-content hidden flex-grow"> 
       <div class="bg-white p-6 rounded shadow">
         <h3 class="text-lg font-semibold mb-4">My Addresses</h3>
 
@@ -113,10 +108,9 @@
       </div>
     </div>
 
-    <div id="orders" class="tab-content hidden flex-grow"> {# Add flex-grow here #}
+    <div id="orders" class="tab-content hidden flex-grow"> 
       <div class="bg-white p-6 rounded shadow">
         <h3 class="text-lg font-semibold mb-4">Order History</h3>
-        {# The overflow-y-auto max-h-[60vh] on this div is good for long lists of orders #}
         <div class="overflow-y-auto max-h-[60vh] pr-2">
         {% for order in orders %}
           <div class="border p-4 mb-6 rounded bg-gray-50">
@@ -148,13 +142,13 @@
                   View Order
               </a>
 
+              {# UPDATED: Changed return button to open modal #}
               {% if order.status == 'Delivered' %}
-              <form method="post" action="{% url 'return_order' order.id %}" onsubmit="return confirm('Are you sure you want to return this order?');">
-                  {% csrf_token %}
-                  <button type="submit" class="px-4 py-2 text-sm bg-yellow-600 text-white rounded hover:bg-yellow-700 transition">
-                      Return
-                  </button>
-              </form>
+              <button type="button" 
+                      onclick="openReturnModal({{ order.id }})" 
+                      class="px-4 py-2 text-sm bg-yellow-600 text-white rounded hover:bg-yellow-700 transition">
+                  Return
+              </button>
               {% elif order.status == 'Pending' or order.status == 'Shipped' %}
               <form method="post" action="{% url 'cancel_order' order.id %}" onsubmit="return confirm('Are you sure you want to cancel this order?');">
                   {% csrf_token %}
@@ -173,7 +167,7 @@
       </div>
     </div>
 
-    <div id="wallet" class="tab-content hidden flex-grow"> {# Add flex-grow here #}
+    <div id="wallet" class="tab-content hidden flex-grow"> 
       <div class="bg-white p-6 rounded shadow">
         <h3 class="text-lg font-semibold mb-4">My Wallet</h3>
 
@@ -183,7 +177,6 @@
 
         {% if wallet_transactions %}
           <h4 class="text-md font-semibold mb-2">Recent Transactions</h4>
-          {# The overflow-y-auto max-h-[40vh] on this div is good for long lists of transactions #}
           <div class="overflow-y-auto max-h-[40vh] pr-2">
             <ul class="divide-y divide-gray-200">
               {% for tx in wallet_transactions %}
@@ -267,6 +260,46 @@
   </div>
 </div>
 
+{# NEW: User Return Request Modal #}
+<div id="returnRequestModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50 hidden">
+    <div class="bg-white p-8 rounded-lg shadow-xl w-11/12 max-w-2xl relative">
+        <button onclick="closeReturnModal()" class="absolute top-4 right-4 text-gray-500 hover:text-red-800 text-xl font-bold">&times;</button>
+        <h3 class="text-xl font-semibold mb-6" id="returnModalTitle">Return Request for Order #</h3>
+        <form id="returnRequestForm">
+            {% csrf_token %}
+            <input type="hidden" id="returnOrderId" name="order_id">
+            
+            <div class="mb-4">
+                <label class="block text-gray-700 text-sm font-bold mb-2">Select Products to Return:</label>
+                <div id="returnItemsContainer" class="max-h-60 overflow-y-auto border rounded p-3 space-y-3">
+                    {# Products will be loaded here by JavaScript #}
+                    <p class="text-gray-500">Loading products...</p>
+                </div>
+                <p id="itemSelectionError" class="text-red-500 text-xs italic mt-2 hidden">Please select at least one product to return.</p>
+            </div>
+
+            <div class="mb-4">
+                <label for="returnReason" class="block text-gray-700 text-sm font-bold mb-2">Reason for Return <span class="text-red-500">*</span></label>
+                <select id="returnReason" name="reason_id" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                    <option value="">Select a reason</option>
+                    {# Reasons will be loaded here by JavaScript #}
+                </select>
+                <p id="reasonError" class="text-red-500 text-xs italic mt-2 hidden">Please select a reason for return.</p>
+            </div>
+
+            <div id="customReasonContainer" class="mb-4 hidden">
+                <label for="customReason" class="block text-gray-700 text-sm font-bold mb-2">Please specify <span class="text-red-500">*</span></label>
+                <textarea id="customReason" name="custom_reason" rows="3" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"></textarea>
+                <p id="customReasonError" class="text-red-500 text-xs italic mt-2 hidden">Please provide a custom reason.</p>
+            </div>
+
+            <div class="flex justify-end gap-2">
+                <button type="button" onclick="closeReturnModal()" class="bg-gray-300 text-gray-800 px-4 py-2 rounded hover:bg-gray-400">Cancel</button>
+                <button type="submit" class="bg-black text-white px-4 py-2 rounded hover:bg-gray-800">Submit Return Request</button>
+            </div>
+        </form>
+    </div>
+</div>
 
 <script>
   // Function to show/hide tabs (existing)
@@ -277,8 +310,8 @@
     document.querySelector(`button[onclick="showTab('${tabId}')"]`).classList.add('bg-gray-100', 'text-black');
     
     // Close sidebar on tab change for mobile
-    if (window.innerWidth < 768) { // md: breakpoint is 768px in Tailwind by default
-        toggleSidebar(false); // Force hide sidebar
+    if (window.innerWidth < 768) { 
+        toggleSidebar(false); 
     }
 
     const newUrl = new URL(window.location.href);
@@ -289,13 +322,12 @@
   // Sidebar toggle functions
   const sidebar = document.getElementById('sidebar');
   const sidebarToggleBtn = document.getElementById('sidebarToggle');
-  const sidebarIcon = document.getElementById('sidebarIcon'); // Get the SVG element
+  const sidebarIcon = document.getElementById('sidebarIcon'); 
 
-  // SVG path data for icons
   const hamburgerIconPath = "M4 6h16M4 12h16M4 18h16";
-  const closeIconPath = "M6 18L18 6M6 6l12 12"; // Path for an 'X' icon
+  const closeIconPath = "M6 18L18 6M6 6l12 12"; 
 
-  let isSidebarOpen = false; // Keep track of sidebar state
+  let isSidebarOpen = false; 
 
   function toggleSidebar(forceOpen = null) {
       if (forceOpen === true) {
@@ -303,24 +335,22 @@
       } else if (forceOpen === false) {
           isSidebarOpen = false;
       } else {
-          isSidebarOpen = !isSidebarOpen; // Toggle state if not forced
+          isSidebarOpen = !isSidebarOpen; 
       }
 
       if (isSidebarOpen) {
           sidebar.classList.remove('-translate-x-full');
           sidebar.classList.add('translate-x-0');
-          sidebarIcon.querySelector('path').setAttribute('d', closeIconPath); // Change to 'X' icon
+          sidebarIcon.querySelector('path').setAttribute('d', closeIconPath); 
       } else {
           sidebar.classList.remove('translate-x-0');
           sidebar.classList.add('-translate-x-full');
-          sidebarIcon.querySelector('path').setAttribute('d', hamburgerIconPath); // Change to hamburger icon
+          sidebarIcon.querySelector('path').setAttribute('d', hamburgerIconPath); 
       }
   }
 
-  // Event listener for the single toggle button
   sidebarToggleBtn.addEventListener('click', () => toggleSidebar());
 
-  // Initial tab and sidebar state on load
   document.addEventListener('DOMContentLoaded', () => {
     const urlParams = new URLSearchParams(window.location.search);
     const initialTab = urlParams.get('tab');
@@ -331,27 +361,24 @@
         showTab('profile');
     }
 
-    // Hide sidebar by default on small screens initially
     if (window.innerWidth < 768) {
-        toggleSidebar(false); // Force hide sidebar on load for small screens
+        toggleSidebar(false); 
     } else {
-        toggleSidebar(true); // Force show sidebar on load for large screens
+        toggleSidebar(true); 
     }
   });
 
-  // Optional: Adjust sidebar state if window is resized past breakpoint
   window.addEventListener('resize', () => {
       if (window.innerWidth >= 768) {
-          toggleSidebar(true); // Show sidebar on large screens
+          toggleSidebar(true); 
       } else {
-          toggleSidebar(false); // Hide sidebar on small screens
+          toggleSidebar(false); 
       }
   });
 
 
-  // Function to display messages (re-added as you don't want SweetAlert)
   function displayMessage(type, message) {
-      const messageContainer = document.querySelector('.flex-1.p-8'); // Target main content area
+      const messageContainer = document.querySelector('.flex-1.p-8'); 
       if (!messageContainer) {
           console.error("Message container not found.");
           return;
@@ -359,22 +386,21 @@
 
       let existingMessageDiv = messageContainer.querySelector('.temp-message-div');
       if (existingMessageDiv) {
-        existingMessageDiv.remove(); // Remove any previous temporary message
+        existingMessageDiv.remove(); 
       }
 
       const messageDiv = document.createElement('div');
-      messageDiv.classList.add('p-3', 'mb-2', 'rounded', 'temp-message-div'); // Add a class to identify temporary messages
+      messageDiv.classList.add('p-3', 'mb-2', 'rounded', 'temp-message-div'); 
       if (type === 'success') {
           messageDiv.classList.add('bg-green-100', 'text-green-700');
       } else if (type === 'error') {
           messageDiv.classList.add('bg-red-100', 'text-red-700');
       } else {
-          messageDiv.classList.add('bg-blue-100', 'text-blue-700'); // info/warning
+          messageDiv.classList.add('bg-blue-100', 'text-blue-700'); 
       }
-      messageDiv.innerHTML = message; // Use innerHTML for messages with <br> tags
-      messageContainer.prepend(messageDiv); // Add to the top of the main content area
+      messageDiv.innerHTML = message; 
+      messageContainer.prepend(messageDiv); 
 
-      // Optional: auto-hide messages after a few seconds
       setTimeout(() => messageDiv.remove(), 5000);
   }
 
@@ -450,8 +476,6 @@
 
     document.getElementById('id_is_default_add').checked = false;
 
-    // This part ensures unique IDs for modal fields if you have other forms on the page
-    // For a single modal, it might be overkill but harmless.
     Array.from(form.elements).forEach(element => {
         if (element.id && element.id.startsWith('id_') && element.id !== 'id_is_default_add') {
             const originalId = element.id;
@@ -477,6 +501,7 @@
   window.addEventListener('click', (event) => {
     const editModal = document.getElementById('editAddressModal');
     const addModal = document.getElementById('addAddressModal');
+    const returnModal = document.getElementById('returnRequestModal'); {# NEW #}
 
     if (event.target == editModal) {
       editModal.classList.add('hidden');
@@ -485,6 +510,9 @@
     if (event.target == addModal) {
       addModal.classList.add('hidden');
       window.location.href = "{% url 'my_profile' %}?tab=address";
+    }
+    if (event.target == returnModal) { {# NEW #}
+        returnModal.classList.add('hidden');
     }
   });
 
@@ -504,13 +532,13 @@
       },
     })
     .then(response => {
-        if (!response.ok) { // Check for HTTP errors (e.g., 400, 500)
+        if (!response.ok) { 
             return response.json().then(err => { throw new Error(err.message || err.error || 'Server responded with an error status.'); });
         }
         return response.json();
     })
     .then(data => {
-      if (data.success) { // This is the check that needs 'success: true' from backend
+      if (data.success) { 
         displayMessage('success', data.message);
         document.getElementById('editAddressModal').classList.add('hidden');
         window.location.href = "{% url 'my_profile' %}?tab=address";
@@ -523,7 +551,7 @@
                 });
             }
         }
-        if (data.message) { // Generic error message from view
+        if (data.message) { 
             errorMessage += (errorMessage ? '<br>' : '') + data.message;
         }
         displayMessage('error', errorMessage || 'An unknown error occurred.');
@@ -551,13 +579,13 @@
       },
     })
     .then(response => {
-        if (!response.ok) { // Check for HTTP errors (e.g., 400, 500)
+        if (!response.ok) { 
             return response.json().then(err => { throw new Error(err.message || err.error || 'Server responded with an error status.'); });
         }
-        return response.json(); // If status is OK (2xx), proceed to parse JSON
+        return response.json(); 
     })
     .then(data => {
-      if (data.success) { // ⭐ THIS IS THE KEY CHECK ⭐
+      if (data.success) { 
         displayMessage('success', data.message);
         document.getElementById('addAddressModal').classList.add('hidden');
         window.location.href = "{% url 'my_profile' %}?tab=address";
@@ -651,6 +679,241 @@
               displayMessage('error', 'An unexpected error occurred. ' + error.message);
           });
       });
+  });
+
+  {# NEW: Return Request Modal JavaScript #}
+  const returnRequestModal = document.getElementById('returnRequestModal');
+  const returnOrderIdInput = document.getElementById('returnOrderId');
+  const returnModalTitle = document.getElementById('returnModalTitle');
+  const returnItemsContainer = document.getElementById('returnItemsContainer');
+  const returnReasonSelect = document.getElementById('returnReason');
+  const customReasonContainer = document.getElementById('customReasonContainer');
+  const customReasonInput = document.getElementById('customReason');
+  const returnRequestForm = document.getElementById('returnRequestForm');
+
+  const itemSelectionError = document.getElementById('itemSelectionError');
+  const reasonError = document.getElementById('reasonError');
+  const customReasonError = document.getElementById('customReasonError');
+
+  function openReturnModal(orderId) {
+      returnOrderIdInput.value = orderId;
+      returnModalTitle.textContent = `Return Request for Order #${orderId}`;
+      returnItemsContainer.innerHTML = '<p class="text-gray-500">Loading products...</p>';
+      returnReasonSelect.innerHTML = '<option value="">Select a reason</option>';
+      customReasonContainer.classList.add('hidden');
+      customReasonInput.value = '';
+      
+      // Reset errors
+      itemSelectionError.classList.add('hidden');
+      reasonError.classList.add('hidden');
+      customReasonError.classList.add('hidden');
+
+      fetch(`/api/orders/${orderId}/return-items/`)
+          .then(response => {
+              if (!response.ok) {
+                  return response.json().then(err => Promise.reject(new Error(err.message || 'Failed to fetch return items.')));
+              }
+              return response.json();
+          })
+          .then(data => {
+              if (data.status === 'success') {
+                  returnModalTitle.textContent = `Return Request for Order #${data.custom_order_id}`;
+                  populateReturnItems(data.items);
+                  populateReturnReasons(data.reasons);
+              } else {
+                  displayMessage('error', data.message || 'Failed to load return items.');
+                  closeReturnModal();
+              }
+          })
+          .catch(error => {
+              console.error('Error fetching return items:', error);
+              displayMessage('error', error.message || 'An unexpected error occurred while loading return data.');
+              closeReturnModal();
+          });
+
+      returnRequestModal.classList.remove('hidden');
+  }
+
+  function closeReturnModal() {
+      returnRequestModal.classList.add('hidden');
+      returnRequestForm.reset(); // Reset the form fields
+      // Optional: reload the orders tab to reflect any changes
+      showTab('orders'); 
+  }
+
+  function populateReturnItems(items) {
+      returnItemsContainer.innerHTML = ''; // Clear loading message
+      if (items.length === 0) {
+          returnItemsContainer.innerHTML = '<p class="text-gray-500">No items eligible for return in this order.</p>';
+          // Disable submit button if no items
+          returnRequestForm.querySelector('button[type="submit"]').disabled = true;
+          return;
+      } else {
+         returnRequestForm.querySelector('button[type="submit"]').disabled = false;
+      }
+
+      items.forEach(item => {
+          const itemDiv = document.createElement('div');
+          itemDiv.classList.add('flex', 'items-start', 'gap-3', 'p-2', 'border', 'rounded', 'bg-white');
+          itemDiv.innerHTML = `
+              <input type="checkbox" id="item-${item.id}" name="selected_items" value="${item.id}" class="mt-1.5 form-checkbox h-4 w-4 text-blue-600 border-gray-300 rounded">
+              ${item.image_url ? `<img src="${item.image_url}" alt="${item.product_name}" class="w-16 h-16 object-cover rounded">` : `<div class="w-16 h-16 bg-gray-200 rounded flex items-center justify-center text-xs text-gray-500">No Image</div>`}
+              <div class="flex-1">
+                  <label for="item-${item.id}" class="block font-semibold cursor-pointer">${item.product_name}</label>
+                  <p class="text-sm text-gray-600">Price: ₹${item.price_at_purchase}</p>
+                  <div class="flex items-center mt-1">
+                      <label for="qty-${item.id}" class="text-sm mr-2">Quantity to return (Max ${item.max_return_quantity}):</label>
+                      <input type="number" id="qty-${item.id}" name="item_qty_${item.id}" value="${item.max_return_quantity === 1 ? 1 : ''}" min="1" max="${item.max_return_quantity}" 
+                             class="w-20 px-2 py-1 border rounded text-sm text-center" 
+                             ${item.max_return_quantity === 1 ? 'readonly' : ''} 
+                             data-item-id="${item.id}"
+                             data-max-qty="${item.max_return_quantity}">
+                  </div>
+              </div>
+          `;
+          returnItemsContainer.appendChild(itemDiv);
+
+          // Auto-select if only one item available and quantity is 1
+          if (items.length === 1 && item.max_return_quantity === 1) {
+              document.getElementById(`item-${item.id}`).checked = true;
+          }
+      });
+  }
+
+  function populateReturnReasons(reasons) {
+      returnReasonSelect.innerHTML = '<option value="">Select a reason</option>'; // Always have default
+      reasons.forEach(reason => {
+          const option = document.createElement('option');
+          option.value = reason.id;
+          option.textContent = reason.reason_text;
+          option.dataset.requiresCustomInput = reason.requires_custom_input;
+          returnReasonSelect.appendChild(option);
+      });
+  }
+
+  returnReasonSelect.addEventListener('change', function() {
+      const selectedOption = this.options[this.selectedIndex];
+      const requiresCustom = selectedOption ? selectedOption.dataset.requiresCustomInput === 'true' : false;
+      
+      if (requiresCustom) {
+          customReasonContainer.classList.remove('hidden');
+      } else {
+          customReasonContainer.classList.add('hidden');
+          customReasonInput.value = ''; // Clear custom reason if not needed
+          customReasonError.classList.add('hidden'); // Hide error if was visible
+      }
+  });
+
+  returnRequestForm.addEventListener('submit', function(event) {
+      event.preventDefault();
+
+      // Reset errors
+      itemSelectionError.classList.add('hidden');
+      reasonError.classList.add('hidden');
+      customReasonError.classList.add('hidden');
+
+      const orderId = returnOrderIdInput.value;
+      const selectedItemsCheckboxes = document.querySelectorAll('#returnItemsContainer input[type="checkbox"]:checked');
+      const reasonId = returnReasonSelect.value;
+      const customReason = customReasonInput.value.trim();
+      const selectedReasonOption = returnReasonSelect.options[returnReasonSelect.selectedIndex];
+      const requiresCustomInput = selectedReasonOption ? selectedReasonOption.dataset.requiresCustomInput === 'true' : false;
+
+      let valid = true;
+      let selectedItems = [];
+
+      if (selectedItemsCheckboxes.length === 0) {
+          itemSelectionError.classList.remove('hidden');
+          valid = false;
+      } else {
+          selectedItemsCheckboxes.forEach(checkbox => {
+              const itemId = checkbox.value;
+              const qtyInput = document.getElementById(`qty-${itemId}`);
+              let qty = parseInt(qtyInput.value);
+              const maxQty = parseInt(qtyInput.dataset.maxQty);
+
+              if (isNaN(qty) || qty <= 0 || qty > maxQty) {
+                  displayMessage('error', `Invalid quantity for item ${itemId}. Must be between 1 and ${maxQty}.`);
+                  valid = false;
+              } else {
+                  selectedItems.push({
+                      item_id: itemId,
+                      quantity: qty
+                  });
+              }
+          });
+      }
+
+      if (!reasonId) {
+          reasonError.classList.remove('hidden');
+          valid = false;
+      }
+
+      if (requiresCustomInput && !customReason) {
+          customReasonError.classList.remove('hidden');
+          valid = false;
+      }
+
+      if (!valid) {
+          return;
+      }
+
+      const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+      fetch('{% url "create_return_request_api" %}', { {# NEW URL #}
+          method: 'POST',
+          headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': csrfToken,
+              'X-Requested-With': 'XMLHttpRequest'
+          },
+          body: JSON.stringify({
+              order_id: orderId,
+              selected_items: selectedItems,
+              reason_id: reasonId,
+              custom_reason: customReason
+          })
+      })
+      .then(response => {
+          if (!response.ok) {
+              return response.json().then(err => Promise.reject(new Error(err.message || err.error || 'Server responded with an error.')));
+          }
+          return response.json();
+      })
+      .then(data => {
+          if (data.status === 'success') {
+              displayMessage('success', data.message);
+              closeReturnModal();
+          } else {
+              displayMessage('error', data.message || 'Failed to submit return request.');
+          }
+      })
+      .catch(error => {
+          console.error('Error submitting return request:', error);
+          displayMessage('error', error.message || 'An unexpected error occurred during submission.');
+      });
+  });
+
+  // Event listener to update quantity inputs when checkboxes are toggled
+  document.addEventListener('change', function(event) {
+    if (event.target.matches('#returnItemsContainer input[type="checkbox"]')) {
+      const checkbox = event.target;
+      const itemId = checkbox.value;
+      const qtyInput = document.getElementById(`qty-${itemId}`);
+      
+      if (qtyInput) {
+        if (checkbox.checked) {
+          // If checked, ensure quantity is at least 1, default to max if not set
+          if (parseInt(qtyInput.value) === 0 || isNaN(parseInt(qtyInput.value))) {
+             qtyInput.value = qtyInput.dataset.maxQty;
+          }
+          qtyInput.readOnly = false; // Allow editing if checked
+        } else {
+          qtyInput.value = 0; // Set quantity to 0 if unchecked
+          qtyInput.readOnly = true; // Make it read-only
+        }
+      }
+    }
   });
 
 </script>

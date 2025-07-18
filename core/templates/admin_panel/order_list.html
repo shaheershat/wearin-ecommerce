@@ -1,41 +1,11 @@
 {% extends 'admin_panel/dashboard.html' %}
-{% load custom_filters %}
 
 {% block content %}
 <h1 class="text-2xl font-bold mb-6">Order List</h1>
 
-<div class="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-4">
-  <form method="get" class="flex flex-wrap items-center gap-2">
-    <input type="text" name="q" placeholder="Search by Order ID or Customer" value="{{ request.GET.q }}" class="border border-gray-300 rounded px-2 py-1 text-sm" />
-
-    <select name="status" class="border border-gray-300 rounded px-2 py-1 text-sm">
-      <option value="">All Status</option>
-      {% for choice, label in order_status_choices %}
-        <option value="{{ choice }}" {% if request.GET.status == choice %}selected{% endif %}>{{ label }}</option>
-      {% endfor %}
-    </select>
-
-    <select name="date" class="border border-gray-300 rounded px-2 py-1 text-sm">
-      <option value="">All Dates</option>
-      <option value="new" {% if request.GET.date == 'new' %}selected{% endif %}>New (last 15 days)</option>
-      <option value="old" {% if request.GET.date == 'old' %}selected{% endif %}>Old</option>
-    </select>
-
-    <button type="submit" class="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600">Apply</button>
-  </form>
+<div class="flex justify-between items-center mb-4">
+  <p class="text-gray-600 text-sm">View and manage all customer orders.</p>
 </div>
-
-{% if request.GET.status or request.GET.date or request.GET.q %}
-<div class="mb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-  <p class="text-sm text-gray-600">
-    Showing:
-    {% if request.GET.q %}Search: "{{ request.GET.q }}" {% endif %}
-    {% if request.GET.status %}Status: {{ current_status_filter|title }}{% endif %}
-    {% if request.GET.date %}, Date: {{ current_date_filter|title }}{% endif %}
-  </p>
-  <a href="{% url 'admin_order_list' %}" class="text-blue-500 text-sm hover:underline">Clear Filters</a>
-</div>
-{% endif %}
 
 {% if messages %}
   <div class="mb-4">
@@ -47,9 +17,9 @@
   </div>
 {% endif %}
 
-<div class="overflow-x-auto bg-white shadow rounded-lg max-h-[calc(100vh-200px)] overflow-y-auto"> {# ADDED max-h AND overflow-y #}
+<div class="overflow-x-auto bg-white shadow rounded-lg">
   <table class="min-w-full text-sm text-gray-800">
-    <thead class="bg-gray-100 text-gray-700 font-semibold sticky top-0 z-10"> {# ADDED sticky, top-0, z-10 #}
+    <thead class="bg-gray-100 text-gray-700 font-semibold">
       <tr>
         <th class="px-4 py-3 text-left">Order ID</th>
         <th class="px-4 py-3 text-left">Customer</th>
@@ -77,28 +47,29 @@
           </form>
         </td>
         <td class="px-4 py-2">
-          {% if order.return_status %}
-            <span class="text-sm font-medium
-              {% if order.return_status == 'Requested' %}text-yellow-600
-              {% elif order.return_status == 'Approved' %}text-green-600
-              {% elif order.return_status == 'Rejected' %}text-red-600
-              {% else %}text-gray-600{% endif %}">
-              {{ order.return_status }}
-            </span>
-
-            {% if order.return_status == 'Requested' %}
-              <form method="POST" action="{% url 'admin_approve_return' order.id %}" class="inline">
-                {% csrf_token %}
-                <button class="ml-2 text-green-600 hover:underline text-sm">Approve</button>
-              </form>
-              <form method="POST" action="{% url 'admin_reject_return' order.id %}" class="inline">
-                {% csrf_token %}
-                <button class="ml-2 text-red-600 hover:underline text-sm">Reject</button>
-              </form>
+            {% if order.returnrequest_set.exists %}
+                {% for return_req in order.returnrequest_set.all %}
+                    <span class="text-sm font-medium 
+                        {% if return_req.status == 'Requested' %}text-yellow-600
+                        {% elif return_req.status == 'Approved' or return_req.status == 'Refunded' %}text-green-600
+                        {% elif return_req.status == 'Rejected' %}text-red-600
+                        {% else %}text-gray-600{% endif %}">
+                        {{ return_req.status }}
+                    </span>
+                    {# NEW: Only show View/Process button if the return_req status is 'Requested' #}
+                    {% if return_req.status == 'Requested' %}
+                        <button type="button" onclick="openAdminReturnModal({{ return_req.id }})" 
+                                class="ml-1 text-blue-600 hover:underline text-xs">View/Process</button>
+                    {% else %}
+                        <span class="ml-1 text-gray-500 text-xs">(Processed)</span>
+                    {% endif %}
+                    <br>
+                {% empty %}
+                    <span class="text-sm text-gray-400 italic">—</span>
+                {% endfor %}
+            {% else %}
+                <span class="text-sm text-gray-400 italic">—</span>
             {% endif %}
-          {% else %}
-            <span class="text-sm text-gray-400 italic">—</span>
-          {% endif %}
         </td>
         <td class="px-4 py-2">₹{{ order.total_price }}</td>
         <td class="px-4 py-2">{{ order.created_at|date:"M d, Y H:i" }}</td>
@@ -115,6 +86,16 @@
   </table>
 </div>
 
+{# NEW: Admin Return Request Detail Modal #}
+<div id="adminReturnRequestModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50 hidden">
+    <div class="bg-white p-0 rounded-lg shadow-xl w-11/12 max-w-3xl relative overflow-hidden">
+        {# Content will be loaded dynamically here #}
+        <div id="adminReturnModalContent">
+            {# admin_panel/order_return_modal.html will be loaded here #}
+        </div>
+    </div>
+</div>
+
 <script>
   function updateStatusColor(select) {
     select.classList.remove("bg-yellow-100", "text-yellow-800", "bg-blue-100", "text-blue-800", "bg-green-100", "text-green-800", "bg-red-100", "text-red-800", "bg-orange-100", "text-orange-800");
@@ -127,19 +108,89 @@
       select.classList.add("bg-blue-100", "text-blue-800");
     } else if (value === "Delivered") {
       select.classList.add("bg-green-100", "text-green-800");
-    } else if (value === "Cancelled") {
+    }else if (value === "Cancelled") {
       select.classList.add("bg-red-100", "text-red-800");
-    } else if (value === "Out for Delivery") { // Corrected "Out of delivery" to "Out for Delivery"
+    }else if (value === "Out of delivery") {
       select.classList.add("bg-orange-100", "text-orange-800");
-    } else {
-        // Default styling if none of the above
-        select.classList.add("bg-gray-100", "text-gray-800");
+    } else if (value === "Returned") { // NEW: Add color for Returned status
+      select.classList.add("bg-purple-100", "text-purple-800");
     }
   }
 
-  // Apply initial color to all status dropdowns on load
   document.addEventListener("DOMContentLoaded", function () {
     document.querySelectorAll(".status-dropdown").forEach(select => updateStatusColor(select));
   });
+
+
+  {# Admin Return Modal JavaScript #}
+  const adminReturnRequestModal = document.getElementById('adminReturnRequestModal');
+  const adminReturnModalContent = document.getElementById('adminReturnModalContent');
+
+  function openAdminReturnModal(returnRequestId) {
+      adminReturnModalContent.innerHTML = '<div class="p-6 text-center text-gray-500">Loading return request details...</div>';
+      adminReturnRequestModal.classList.remove('hidden');
+
+      fetch(`/api/admin/returns/${returnRequestId}/details/`)
+          .then(response => {
+              if (!response.ok) {
+                  return response.text().then(errText => Promise.reject(new Error(errText || 'Failed to fetch return details.')));
+              }
+              return response.text();
+          })
+          .then(html => {
+              adminReturnModalContent.innerHTML = html;
+          })
+          .catch(error => {
+              console.error('Error loading admin return modal:', error);
+              adminReturnModalContent.innerHTML = `<div class="p-6 text-center text-red-600">Error: ${error.message}</div>`;
+          });
+  }
+
+  function closeAdminReturnModal() {
+      adminReturnRequestModal.classList.add('hidden');
+      adminReturnModalContent.innerHTML = '';
+      location.reload(); // Reload the page to reflect status changes and button visibility
+  }
+
+  function processReturn(returnRequestId, action) {
+      const adminNotes = document.getElementById('adminNotes').value.trim();
+      const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+      if (!confirm(`Are you sure you want to ${action} this return request?`)) {
+          return;
+      }
+
+      fetch(`/api/admin/returns/${returnRequestId}/process/`, {
+          method: 'POST',
+          headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': csrfToken,
+              'X-Requested-With': 'XMLHttpRequest'
+          },
+          body: JSON.stringify({
+              action: action,
+              admin_notes: adminNotes
+          })
+      })
+      .then(response => {
+          if (!response.ok) {
+              return response.json().then(err => Promise.reject(new Error(err.message || err.error || 'Server responded with an error.')));
+          }
+          return response.json();
+      })
+      .then(data => {
+          if (data.status === 'success') {
+              alert(data.message);
+              closeAdminReturnModal();
+          } else {
+              alert('Error: ' + (data.message || 'Failed to process return request.'));
+          }
+      })
+      .catch(error => {
+          console.error('Error processing return request:', error);
+          alert('An unexpected error occurred: ' + error.message);
+      });
+  }
+
 </script>
 {% endblock %}

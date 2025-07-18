@@ -1,0 +1,93 @@
+{# admin_panel/order_return_modal.html #}
+{% load custom_filters %} {# Keep this line, it's essential for the 'multiply' filter #}
+
+{# This file is now used to render the *content* of the admin return modal, #}
+{# which is dynamically loaded via AJAX. It expects `return_request` object and `total_refund_calculated` as context. #}
+
+<div class="modal-header bg-gray-100 p-4 border-b rounded-t-lg">
+    <h5 class="modal-title text-xl font-semibold">Return Request #{{ return_request.id }} for Order #{{ return_request.order.custom_order_id }}</h5>
+    <button type="button" class="text-gray-500 hover:text-red-800 text-2xl font-bold" onclick="closeAdminReturnModal()">&times;</button>
+</div>
+<div class="modal-body p-6">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div>
+            <p><strong class="font-medium">User:</strong> {{ return_request.user.username }} ({{ return_request.user.email }})</p>
+            <p><strong class="font-medium">Requested At:</strong> {{ return_request.requested_at|date:"M d, Y H:i" }}</p>
+            <p><strong class="font-medium">Current Status:</strong> 
+                <span class="font-semibold {% if return_request.status == 'Requested' %}text-yellow-600
+                {% elif return_request.status == 'Approved' %}text-green-600
+                {% elif return_request.status == 'Rejected' %}text-red-600
+                {% elif return_request.status == 'Refunded' %}text-blue-600{% endif %}">
+                    {{ return_request.status }}
+                </span>
+            </p>
+        </div>
+        <div>
+            <p><strong class="font-medium">Reason:</strong> {{ return_request.reason.reason_text|default:"N/A" }}</p>
+            {% if return_request.custom_reason %}
+                <p><strong class="font-medium">Custom Reason:</strong> {{ return_request.custom_reason }}</p>
+            {% endif %}
+            {% if return_request.admin_notes %}
+                <p><strong class="font-medium">Admin Notes:</strong> {{ return_request.admin_notes }}</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <h6 class="text-lg font-semibold mb-3">Items Requested for Return:</h6>
+    <div class="border rounded-lg overflow-hidden mb-6">
+        <table class="min-w-full text-sm text-gray-700">
+            <thead class="bg-gray-50 border-b">
+                <tr>
+                    <th class="px-4 py-2 text-left">Product</th>
+                    <th class="px-4 py-2 text-left">Quantity</th>
+                    <th class="px-4 py-2 text-left">Price/Unit</th>
+                    <th class="px-4 py-2 text-left">Total Refund (Item)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in return_request.requested_items.all %}
+                <tr class="border-t">
+                    <td class="px-4 py-2 flex items-center gap-3">
+                        {% if item.order_item.product.images.first %}
+                            <img src="{{ item.order_item.product.images.first.image.url }}" alt="{{ item.order_item.product.name }}" class="w-12 h-12 object-cover rounded">
+                        {% else %}
+                            <div class="w-12 h-12 bg-gray-200 rounded flex items-center justify-center text-xs text-gray-500">No Image</div>
+                        {% endif %}
+                        <span>{{ item.order_item.product.name|default:"Deleted Product" }}</span>
+                    </td>
+                    <td class="px-4 py-2">{{ item.quantity }}</td>
+                    <td class="px-4 py-2">₹{{ item.order_item.price_at_purchase }}</td>
+                    {# FIX: Use the 'multiply' filter here #}
+                    <td class="px-4 py-2 font-medium">₹{{ item.quantity|multiply:item.order_item.price_at_purchase|floatformat:2 }}</td> 
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {# The total_refund_calculated is passed from the view, so this is correct #}
+    <p class="text-right text-lg font-bold">Calculated Refund Total: ₹<span id="calculatedRefundTotal">{{ total_refund_calculated|floatformat:2 }}</span></p>
+
+    <div class="mt-6">
+        <label for="adminNotes" class="block text-gray-700 text-sm font-bold mb-2">Admin Notes (Optional):</label>
+        <textarea id="adminNotes" rows="3" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" placeholder="Add any notes related to this return..."></textarea>
+    </div>
+</div>
+<div class="modal-footer flex justify-end gap-3 p-4 bg-gray-100 border-t rounded-b-lg">
+    {% if return_request.status == 'Requested' %}
+        <button type="button" onclick="processReturn('{{ return_request.id }}', 'approve')" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition">Approve Return</button>
+        <button type="button" onclick="processReturn('{{ return_request.id }}', 'reject')" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition">Reject Return</button>
+    {% else %}
+        <p class="text-gray-600">This request has already been {{ return_request.status }}.</p>
+    {% endif %}
+    <button type="button" onclick="closeAdminReturnModal()" class="bg-gray-300 text-gray-800 px-4 py-2 rounded hover:bg-gray-400">Close</button>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const adminNotesField = document.getElementById('adminNotes');
+        if (adminNotesField && '{{ return_request.admin_notes|escapejs }}') {
+            adminNotesField.value = '{{ return_request.admin_notes|escapejs }}';
+        }
+    });
+</script>

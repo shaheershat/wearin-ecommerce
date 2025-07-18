@@ -1,0 +1,73 @@
+{# core/templates/user/main/coupon_list.html #}
+{% extends 'user/base.html' %}
+{% load static %}
+
+{% block title %}Available Coupons{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-12 max-w-4xl">
+    <h2 class="text-3xl font-bold mb-8 text-center">Available Coupons</h2>
+
+    {% if coupons %}
+        <div class="grid grid-cols-1 gap-6">
+            {% for item in coupons %} {# 'item' here is the dictionary {'coupon': coupon_obj, 'can_apply': bool, 'reason': str} #}
+            <div class="bg-white shadow rounded-lg p-6 border border-gray-200">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-2xl font-bold text-gray-900">{{ item.coupon.code }}</h3>
+                    {% if item.can_apply %}
+                        <span class="px-3 py-1 bg-green-100 text-green-800 text-sm font-semibold rounded-full">Applicable</span>
+                    {% else %}
+                        <span class="px-3 py-1 bg-red-100 text-red-800 text-sm font-semibold rounded-full">Not Applicable</span>
+                    {% endif %}
+                </div>
+                <p class="text-gray-700 mb-2">
+                    Get <span class="font-bold">₹{{ item.coupon.discount|floatformat:2 }} OFF</span> on your order.
+                </p>
+                {% if item.coupon.min_purchase > 0 %}
+                    <p class="text-gray-600 text-sm mb-2">
+                        Minimum purchase: <span class="font-semibold">₹{{ item.coupon.min_purchase|floatformat:2 }}</span>
+                    </p>
+                {% endif %}
+                {% if item.coupon.applies_to_new_users_only %}
+                    <p class="text-gray-600 text-sm mb-2">Condition: For new users only</p>
+                {% endif %}
+                {% if item.coupon.min_orders_for_user > 0 %}
+                    <p class="text-gray-600 text-sm mb-2">Condition: Requires {{ item.coupon.min_orders_for_user }} successful orders</p>
+                {% endif %}
+                {% if item.coupon.min_unique_products_in_cart > 0 %}
+                    <p class="text-gray-600 text-sm mb-2">Condition: Requires {{ item.coupon.min_unique_products_in_cart }} unique products in cart</p>
+                {% endif %}
+                {% if item.coupon.min_total_items_in_cart > 0 %}
+                    <p class="text-gray-600 text-sm mb-2">Condition: Requires {{ item.coupon.min_total_items_in_cart }} total items in cart</p>
+                {% endif %}
+
+                <p class="text-gray-600 text-sm mb-2">
+                    Valid from: {{ item.coupon.valid_from|date:"M d, Y" }}
+                </p>
+                <p class="text-gray-600 text-sm">
+                    Expires on: {{ item.coupon.valid_to|date:"M d, Y" }}
+                </p>
+
+                {# Display reason if not applicable, using a tooltip or direct text #}
+                {% if not item.can_apply %}
+                    <p class="text-red-500 text-xs mt-2">{{ item.reason }}</p>
+                {% endif %}
+
+                <div class="mt-4 flex justify-end">
+                    <a href="{% url 'checkout' %}?coupon={{ item.coupon.code }}"
+                       class="px-4 py-2 bg-black text-white rounded hover:bg-gray-800 transition
+                              {% if not item.can_apply %}opacity-50 cursor-not-allowed{% endif %}"
+                       {% if not item.can_apply %}aria-disabled="true" tabindex="-1"{% endif %}>
+                        Apply
+                    </a>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="bg-white shadow rounded-lg p-6 text-center text-gray-600">
+            <p>No active coupons available at the moment. Check back later!</p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

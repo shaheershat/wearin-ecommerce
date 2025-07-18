@@ -1,3 +1,4 @@
+{# core/templates/user/checkout.html #}
 {% extends 'user/base.html' %}
 {% load static %}
 
@@ -12,8 +13,8 @@
         <div class="space-y-3">
             {% for item in cart_items %}
             <div class="flex justify-between text-sm">
-                <div>{{ item.product.name }} × {{ item.quantity }}</div>
-                <div>₹{{ item.total_price }}</div>
+                <div>{{ item.product.name }} &times; {{ item.quantity }}</div>
+                <div>₹{{ item.total_price|floatformat:2 }}</div>
             </div>
             {% endfor %}
         </div>
@@ -22,12 +23,12 @@
 
         <div class="flex justify-between font-medium text-base">
             <span>Subtotal:</span>
-            <span>₹{{ subtotal }}</span>
+            <span>₹{{ subtotal|floatformat:2 }}</span>
         </div>
         {% if discount %}
         <div class="flex justify-between text-sm text-green-600">
-            <span>Discount:</span>
-            <span>-₹{{ discount }}</span>
+            <span>Discount ({{ applied_coupon_object.code }}):</span> {# Show coupon code #}
+            <span>-₹{{ discount|floatformat:2 }}</span>
         </div>
         {% endif %}
         <div class="flex justify-between text-sm text-gray-500">
@@ -36,23 +37,43 @@
         </div>
         <div class="flex justify-between text-xl font-bold mt-2">
             <span>Total:</span>
-            <span>₹{{ total_price }}</span>
+            <span>₹{{ total_price|floatformat:2 }}</span>
         </div>
     </div>
 
     <div class="bg-white shadow rounded-lg p-6 mb-6">
         <h3 class="text-xl font-semibold mb-4">Apply Coupon</h3>
-        <form method="get" action="{% url 'checkout' %}" class="flex flex-col sm:flex-row gap-3">
-            <input type="text" name="coupon" value="{{ coupon_applied }}" placeholder="Enter promo code"
-                class="flex-1 px-4 py-2 border border-gray-300 rounded focus:outline-none">
-            <button type="submit"
-                class="px-6 py-2 bg-black text-white rounded hover:bg-gray-800 transition">Apply</button>
-        </form>
-        {% if discount %}
-        <p class="mt-2 text-green-600 text-sm font-semibold">Coupon applied: ₹{{ discount }}</p>
-        {% elif coupon_applied %}
-        <p class="mt-2 text-red-600 text-sm font-semibold">Invalid or expired coupon.</p>
+        {% if applied_coupon_object %} {# If a coupon is applied, hide input #}
+            <div class="flex justify-between items-center bg-green-50 p-3 rounded border border-green-200">
+                <p class="text-green-800 font-semibold">
+                    Coupon <span class="font-bold">"{{ applied_coupon_object.code }}"</span> applied.
+                    Saved ₹{{ discount|floatformat:2 }}.
+                </p>
+                <form action="{% url 'remove_applied_coupon' %}" method="post">
+                    {% csrf_token %}
+                    <button type="submit" class="text-red-600 hover:text-red-800 text-sm font-semibold underline">Remove</button>
+                </form>
+            </div>
+        {% else %} {# Show coupon input if no coupon applied #}
+            <form method="get" action="{% url 'checkout' %}" class="flex flex-col sm:flex-row gap-3">
+                <input type="text" name="coupon" placeholder="Enter promo code"
+                    class="flex-1 px-4 py-2 border border-gray-300 rounded focus:outline-none">
+                <button type="submit"
+                    class="px-6 py-2 bg-black text-white rounded hover:bg-gray-800 transition">Apply</button>
+            </form>
+            {# Display messages from views, if any after coupon attempt #}
+            {% if messages %}
+                <ul class="messages list-none p-0 mt-2">
+                    {% for message in messages %}
+                        <li{% if message.tags %} class="{{ message.tags }} text-sm font-semibold p-1 rounded {% if 'error' in message.tags %}text-red-600{% elif 'success' in message.tags %}text-green-600{% elif 'warning' in message.tags %}text-yellow-600{% else %}text-gray-600{% endif %}"{% endif %}>{{ message }}</li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
         {% endif %}
+
+        <div class="mt-4 text-center">
+            <a href="{% url 'coupon_list' %}" class="text-blue-600 hover:underline text-sm">View available coupons</a>
+        </div>
     </div>
 
     <div class="bg-white shadow rounded-lg p-6 mb-6">
@@ -91,7 +112,7 @@
             <label class="block p-4 border rounded mb-3 cursor-pointer {% if wallet_balance < total_price %}opacity-50{% endif %}">
                 <input type="radio" name="payment_method" value="wallet"
                     {% if wallet_balance < total_price %}disabled{% endif %}>
-                <span class="ml-2">Use Wallet (₹{{ wallet_balance }})</span>
+                <span class="ml-2">Use Wallet (₹{{ wallet_balance|floatformat:2 }})</span>
                 {% if wallet_balance < total_price %}
                     <p class="text-sm text-red-500 ml-6">Insufficient balance</p>
                 {% endif %}
@@ -121,60 +142,67 @@
 
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <script>
-    const rzp = new Razorpay({
-        "key": "{{ razorpay_key }}",
-        "amount": "{{ total_price|floatformat:'0' }}" * 100,
-        "currency": "INR",
-        "name": "WEARIN",
-        "description": "Order Payment",
-        "order_id": "{{ order_id }}",
-        "handler": function (response) {
-            const form = document.getElementById('payment-form');
-            const selectedAddress = document.querySelector('input[name="selected_address"]:checked');
-            if (!selectedAddress) {
-                alert("Please select a shipping address.");
-                return;
-            }
+    // Moved Razorpay logic to a function for better organization
+    function handleRazorpayPayment() {
+        const form = document.getElementById('payment-form');
+        const selectedAddress = document.querySelector('input[name="selected_address"]:checked');
+        if (!selectedAddress) {
+            alert("Please select a shipping address.");
+            return;
+        }
 
-            const addressInput = document.createElement('input');
-            addressInput.type = 'hidden';
-            addressInput.name = 'address_id';
-            addressInput.value = selectedAddress.value;
-            form.appendChild(addressInput);
+        const addressInput = document.createElement('input');
+        addressInput.type = 'hidden';
+        addressInput.name = 'address_id';
+        addressInput.value = selectedAddress.value;
+        form.appendChild(addressInput);
 
-            // Add Razorpay payment details to the form
-            const rzpPaymentIdInput = document.createElement('input');
-            rzpPaymentIdInput.type = 'hidden';
-            rzpPaymentIdInput.name = 'razorpay_payment_id';
-            rzpPaymentIdInput.value = response.razorpay_payment_id;
-            form.appendChild(rzpPaymentIdInput);
+        const rzp = new Razorpay({
+            "key": "{{ razorpay_key }}",
+            "amount": Math.round({{ total_price|floatformat:'0' }}) * 100, // Ensure amount is integer cents
+            "currency": "INR",
+            "name": "WEARIN",
+            "description": "Order Payment",
+            "order_id": "{{ order_id }}",
+            "handler": function (response) {
+                // Add Razorpay payment details to the form
+                const rzpPaymentIdInput = document.createElement('input');
+                rzpPaymentIdInput.type = 'hidden';
+                rzpPaymentIdInput.name = 'razorpay_payment_id';
+                rzpPaymentIdInput.value = response.razorpay_payment_id;
+                form.appendChild(rzpPaymentIdInput);
 
-            const rzpSignatureInput = document.createElement('input');
-            rzpSignatureInput.type = 'hidden';
-            rzpSignatureInput.name = 'razorpay_signature';
-            rzpSignatureInput.value = response.razorpay_signature;
-            form.appendChild(rzpSignatureInput);
+                const rzpSignatureInput = document.createElement('input');
+                rzpSignatureInput.type = 'hidden';
+                rzpSignatureInput.name = 'razorpay_signature';
+                rzpSignatureInput.value = response.razorpay_signature;
+                form.appendChild(rzpSignatureInput);
 
-            const rzpOrderIdInput = document.createElement('input');
-            rzpOrderIdInput.type = 'hidden';
-            rzpOrderIdInput.name = 'razorpay_order_id';
-            rzpOrderIdInput.value = "{{ order_id }}"; // Use the order_id from context
-            form.appendChild(rzpOrderIdInput);
+                const rzpOrderIdInput = document.createElement('input');
+                rzpOrderIdInput.type = 'hidden';
+                rzpOrderIdInput.name = 'razorpay_order_id';
+                rzpOrderIdInput.value = "{{ order_id }}"; // Use the order_id from context
+                form.appendChild(rzpOrderIdInput);
 
-            form.submit();
-        },
-        "theme": { "color": "#000000" }
-    });
+                form.submit();
+            },
+            "theme": { "color": "#000000" }
+        });
+        rzp.open();
+    }
+
 
     document.getElementById('rzp-button').onclick = function (e) {
         const selectedPayment = document.querySelector('input[name="payment_method"]:checked');
         const selectedAddress = document.querySelector('input[name="selected_address"]:checked');
         if (!selectedAddress) {
             alert("Please select a shipping address.");
+            e.preventDefault(); // Prevent form submission
             return;
         }
         if (!selectedPayment) {
             alert("Please select a payment method.");
+            e.preventDefault(); // Prevent form submission
             return;
         }
 
@@ -186,7 +214,7 @@
         form.appendChild(addressInput);
 
         if (selectedPayment.value === 'razorpay') {
-            rzp.open();
+            handleRazorpayPayment(); // Call the function for Razorpay
         } else {
             // For Wallet or COD, explicitly set the method value on the form before submission
             const paymentMethodInput = document.createElement('input');

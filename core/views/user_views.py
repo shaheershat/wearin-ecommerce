@@ -11,6 +11,7 @@ from django.conf import settings
 from django.contrib.auth.backends import ModelBackend 
 from django.db import models
 from django.core.mail import send_mail
+from django.views.decorators.http import require_GET
 from datetime import timedelta
 from core.tasks import send_order_cancelled_email 
 from django.contrib.auth import login
@@ -20,6 +21,7 @@ from core.decorators import user_login_required
 from django.views.decorators.csrf import csrf_protect
 from django.contrib.auth import get_user
 import json
+import uuid 
 from decimal import Decimal
 from django.db.models import Sum
 import logging
@@ -33,7 +35,7 @@ from django.core.mail import send_mail
 import razorpay
 from django.views.decorators.csrf import csrf_exempt
 from core.forms import UserLoginForm, UserRegistrationForm, ProfileForm, AddressForm, NewsletterForm
-from core.models import Product, Category, Wishlist, Order, UserProfile, EmailOTP, Address, NewsletterSubscriber, NotificationSubscription
+from core.models import Product, Category, Wishlist, Order, UserProfile, EmailOTP, Address, NewsletterSubscriber, NotificationSubscription, ReturnReason,ReturnItem, ReturnRequest
 from core.emails import send_product_available_email, send_product_sold_email, send_product_removed_from_cart_email, send_order_confirmation_email
 from core.tasks import release_expired_reservations_task
 from core.utils import send_otp_email
@@ -97,46 +99,194 @@ def cancel_order_view(request, order_id):
     order = get_object_or_404(Order, id=order_id, user=request.user)
 
     if order.status not in ['Pending', 'Shipped']:
-        messages.error(request, 'This order cannot be cancelled.')
+        messages.error(request, 'This order cannot be cancelled at its current status.')
         return redirect('my_profile')
 
-    order.status = 'Cancelled'
-    order.save()
+    try:
+        with transaction.atomic():
+            order.status = 'Cancelled'
+            order.save()
 
-    # Refund amount to wallet
-    wallet = request.user.wallet
-    wallet.credit(order.total_price)
+            # Get or create wallet (ensure it exists before crediting)
+            wallet, created = Wallet.objects.get_or_create(user=request.user)
+            
+            # Refund amount to wallet
+            wallet.credit(order.total_price)
 
-    # Add wallet transaction record
-    WalletTransaction.objects.create(
-        wallet=wallet,
-        transaction_type='refund',
-        amount=order.total_price,
-        reason=f"Refund for cancelled order #{order.id}"
-    )
+            # Add wallet transaction record
+            WalletTransaction.objects.create(
+                wallet=wallet,
+                transaction_type='refund',
+                amount=order.total_price,
+                reason=f"Refund for cancelled order #{order.custom_order_id or order.id}"
+            )
 
-    # ✅ Send cancellation email
-    send_order_cancelled_email.delay(order.id)
+            # --- NEW/UPDATED LOGIC FOR STOCK UPDATION AND IS_SOLD FLAG ---
+            for item in order.items.all():
+                if item.product:
+                    # Increment stock quantity
+                    item.product.stock_quantity += item.quantity
+                    # Un-tick 'is_sold' checkbox
+                    item.product.is_sold = False
+                    item.product.save()
+                    logger.info(f"Product '{item.product.name}' (ID: {item.product.id}) stock updated to {item.product.stock_quantity}, is_sold set to False due to order cancellation.")
+                else:
+                    logger.warning(f"Product for OrderItem {item.id} in Order {order.id} not found during cancellation stock update.")
+            # --- END NEW/UPDATED LOGIC ---
 
-    messages.success(request, f"Order has been cancelled and ₹{order.total_price} has been refunded to your wallet.")
-    return redirect('my_profile')
+            # ✅ Send cancellation email (ensure send_order_cancelled_email is a Celery task)
+            # send_order_cancelled_email.delay(order.id) # Uncomment if you have this Celery task
+
+            messages.success(request, f"Order has been cancelled and ₹{order.total_price} has been refunded to your wallet.")
+            return redirect('my_profile')
+
+    except Exception as e:
+        logger.error(f"Error cancelling order {order_id}: {e}", exc_info=True)
+        messages.error(request, 'An unexpected error occurred while cancelling the order.')
+        return redirect('my_profile')
 
 @user_login_required
-def return_order_view(request, order_id):
-    order = get_object_or_404(Order, id=order_id, user=request.user)
-    
-    if order.status != 'Delivered':
-        messages.error(request, 'Only delivered orders can be returned.')
-        return redirect('my_profile')
+@require_GET
+def get_order_items_for_return(request, order_id):
+    """
+    AJAX endpoint to fetch order items and return reasons for the return modal.
+    """
+    try:
+        order = get_object_or_404(Order, id=order_id, user=request.user)
+        
+        # Only allow returns for delivered orders that haven't been fully returned/cancelled
+        if order.status != 'Delivered':
+            return JsonResponse({'status': 'error', 'message': 'Only delivered orders can be returned.'}, status=400)
 
-    if order.return_status == 'Requested':
-        messages.info(request, 'Return already requested.')
-        return redirect('my_profile')
+        # Fetch OrderItems that are not already fully returned
+        # An item is eligible if its total requested return quantity across all ReturnRequests
+        # associated with it is less than its original quantity.
+        eligible_items = []
+        for item in order.items.all().select_related('product'):
+            # Calculate total quantity already requested for return for this specific OrderItem
+            total_requested_qty = ReturnItem.objects.filter(order_item=item, 
+                return_request__status__in=['Requested', 'Approved', 'Processing Refund']).aggregate(Sum('quantity'))['quantity__sum'] or 0
+            
+            # If the item's original quantity is greater than what's already requested
+            if item.quantity > total_requested_qty:
+                eligible_items.append({
+                    'id': item.id,
+                    'product_name': item.product.name if item.product else 'Deleted Product',
+                    'image_url': item.product.images.first().image.url if item.product and item.product.images.first() else '',
+                    'price_at_purchase': str(item.price_at_purchase),
+                    'quantity': item.quantity,
+                    'max_return_quantity': item.quantity - total_requested_qty, # Quantity still available for return
+                })
+        
+        if not eligible_items:
+             return JsonResponse({'status': 'error', 'message': 'No eligible items for return in this order.'}, status=400)
 
-    order.return_status = 'Requested'
-    order.save()
-    messages.success(request, 'Return request submitted.')
-    return redirect('my_profile')
+        # Fetch pre-defined return reasons
+        reasons = list(ReturnReason.objects.values('id', 'reason_text', 'requires_custom_input'))
+
+        return JsonResponse({
+            'status': 'success',
+            'order_id': order.id,
+            'custom_order_id': order.custom_order_id,
+            'items': eligible_items,
+            'reasons': reasons,
+        })
+
+    except Order.DoesNotExist:
+        return JsonResponse({'status': 'error', 'message': 'Order not found.'}, status=404)
+    except Exception as e:
+        logger.error(f"Error fetching order items for return: {e}")
+        return JsonResponse({'status': 'error', 'message': 'An unexpected error occurred.'}, status=500)
+
+
+@user_login_required
+@require_POST
+def create_return_request(request):
+    """
+    AJAX endpoint to create a new return request based on user selection.
+    """
+    try:
+        data = json.loads(request.body)
+        order_id = data.get('order_id')
+        selected_items_data = data.get('selected_items') # [{'item_id': X, 'quantity': Y}, ...]
+        reason_id = data.get('reason_id')
+        custom_reason_text = data.get('custom_reason', '').strip()
+
+        if not order_id or not selected_items_data or not reason_id:
+            return JsonResponse({'status': 'error', 'message': 'Missing required data.'}, status=400)
+        
+        if not selected_items_data:
+             return JsonResponse({'status': 'error', 'message': 'Please select at least one item to return.'}, status=400)
+
+
+        order = get_object_or_404(Order, id=order_id, user=request.user)
+
+        if order.status != 'Delivered':
+            return JsonResponse({'status': 'error', 'message': 'Only delivered orders can be returned.'}, status=400)
+        
+        return_reason = get_object_or_404(ReturnReason, id=reason_id)
+
+        if return_reason.requires_custom_input and not custom_reason_text:
+            return JsonResponse({'status': 'error', 'message': 'Please provide a custom reason.'}, status=400)
+        
+        if not return_reason.requires_custom_input and custom_reason_text:
+            # If a custom reason is provided but not required for the chosen reason, ignore it
+            custom_reason_text = ''
+
+        with transaction.atomic():
+            new_return_request = ReturnRequest.objects.create(
+                user=request.user,
+                order=order,
+                reason=return_reason,
+                custom_reason=custom_reason_text if return_reason.requires_custom_input else None,
+                status='Requested'
+            )
+
+            for item_data in selected_items_data:
+                item_id = item_data.get('item_id')
+                return_qty = int(item_data.get('quantity', 1)) # Default to 1 if not specified
+
+                order_item = get_object_or_404(OrderItem, id=item_id, order=order)
+
+                # Calculate current returned quantity for this order item across all ReturnRequests
+                # that have been 'Requested', 'Approved', or 'Processing Refund'
+                current_returned_qty = ReturnItem.objects.filter(
+                    order_item=order_item,
+                    return_request__status__in=['Requested', 'Approved', 'Processing Refund']
+                ).aggregate(Sum('quantity'))['quantity__sum'] or 0
+
+                # Ensure requested return quantity does not exceed available quantity
+                if return_qty <= 0 or (current_returned_qty + return_qty) > order_item.quantity:
+                    raise ValueError(f"Invalid return quantity {return_qty} for item {order_item.product.name}. Max available for return: {order_item.quantity - current_returned_qty}.")
+                
+                # Create ReturnItem entry
+                ReturnItem.objects.create(
+                    return_request=new_return_request,
+                    order_item=order_item,
+                    quantity=return_qty
+                )
+            
+            # Optional: Update Order status to 'Returned' if all items are covered by return requests.
+            # This logic can be more complex, considering partial returns.
+            # For simplicity, we'll let admin manage overall order status
+            # unless ALL items are requested for return.
+            # However, you already had a 'return_status' field on Order, so if you still want
+            # to signal something on the Order itself, you could update it here.
+            # Since Order doesn't have return_status anymore, we just create the ReturnRequest.
+            
+            messages.success(request, "Return request submitted successfully!")
+            return JsonResponse({'status': 'success', 'message': 'Return request submitted successfully.'})
+
+    except ValueError as ve:
+        logger.warning(f"Validation error in create_return_request: {ve}")
+        return JsonResponse({'status': 'error', 'message': str(ve)}, status=400)
+    except Order.DoesNotExist:
+        return JsonResponse({'status': 'error', 'message': 'Order not found or does not belong to you.'}, status=404)
+    except ReturnReason.DoesNotExist:
+        return JsonResponse({'status': 'error', 'message': 'Invalid return reason.'}, status=400)
+    except Exception as e:
+        logger.error(f"Error creating return request: {e}", exc_info=True)
+        return JsonResponse({'status': 'error', 'message': 'An unexpected error occurred during submission.'}, status=500)
 
 razorpay_client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
 
@@ -165,126 +315,323 @@ def mini_cart_data(request):
 razorpay_client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
 
 @user_login_required
+@require_POST
+def remove_applied_coupon(request):
+    """
+    Removes the applied coupon from the user's session.
+    """
+    if 'applied_coupon_code' in request.session:
+        del request.session['applied_coupon_code']
+        messages.info(request, "Coupon has been removed.")
+    return redirect('checkout')
+
+
+@user_login_required
+@require_GET
+def user_coupon_list_view(request):
+    """
+    Displays a list of active and valid coupons for the user,
+    with an indication if the user meets its specific criteria.
+    """
+    now = timezone.now()
+    all_coupons = Coupon.objects.filter(
+        is_active=True,
+        valid_from__lte=now, # Corrected field name
+        valid_to__gte=now    # Corrected field name
+    ).order_by('-created_at')
+
+    coupons_with_applicability = []
+
+    # Get current cart data for applicability checks
+    cart = None
+    cart_items_queryset = CartItem.objects.none() # Initialize as empty queryset
+    cart_total_price = Decimal('0.00')
+    cart_unique_products_count = 0
+    cart_total_quantity = 0
+
+    if request.user.is_authenticated:
+        try:
+            cart = Cart.objects.get(user=request.user)
+            cart_items_queryset = CartItem.objects.filter(
+                cart=cart,
+                product__is_sold=False,
+                product__stock_quantity__gt=0
+            )
+            # Calculate cart_total_price from the filtered queryset
+            for item in cart_items_queryset:
+                # Assuming CartItem has a 'total_price' attribute or calculate it from product price and quantity
+                cart_total_price += item.product.price * item.quantity 
+            cart_unique_products_count = cart_items_queryset.values('product').distinct().count()
+            cart_total_quantity = cart_items_queryset.aggregate(Sum('quantity'))['quantity__sum'] or 0
+        except Cart.DoesNotExist:
+            pass # cart_items_queryset remains an empty queryset
+
+    for coupon in all_coupons:
+        # Use the coupon's is_valid method to determine applicability and reason
+        can_apply, reason = coupon.is_valid(
+            cart_total_price,
+            user=request.user,
+            cart_items=cart_items_queryset
+        )
+
+        coupons_with_applicability.append({
+            'coupon': coupon,
+            'can_apply': can_apply,
+            'reason': reason
+        })
+
+    context = {
+        'coupons': coupons_with_applicability, # Pass the list of dicts
+    }
+    return render(request, 'user/main/coupon_list.html', context)
+
+@user_login_required
 def checkout_view(request):
+    """
+    Handles displaying the checkout page, including order summary,
+    address selection, payment methods, and coupon application/validation.
+    Prioritizes actual cart items over lingering 'buy_now_item' session data.
+    """
     cart_items_for_order = []
     subtotal = Decimal('0.00')
+    buy_now_item_data = None # FIX: Initialize buy_now_item_data here
 
     with transaction.atomic():
-        buy_now_item_data = request.session.get('buy_now_item')
-        if buy_now_item_data:
-            try:
-                product = Product.objects.select_for_update().get(id=buy_now_item_data['id'])
+        # --- PHASE 1: Always try to process the regular cart items first ---
+        try:
+            db_cart = Cart.objects.get(user=request.user)
+            cart_items_to_delete_ids = []
+
+            for item in db_cart.items.select_for_update().select_related('product'):
+                product = item.product
 
                 if product.is_sold:
-                    messages.error(request, f"'{product.name}' is already sold and cannot be purchased.")
-                    del request.session['buy_now_item']
-                    request.session.modified = True
-                    return redirect('shop')
+                    messages.error(request, f"'{product.name}' is already sold and removed from your cart.")
+                    cart_items_to_delete_ids.append(item.id) # FIX: Corrected typo here
+                    continue
 
                 if product.reserved_by_user:
                     if product.reserved_by_user != request.user:
-                        messages.warning(request, f"'{product.name}' is currently reserved by another customer.")
-                        del request.session['buy_now_item']
-                        request.session.modified = True
-                        return redirect('product_detail', id=product.id)
+                        messages.warning(request, f"'{product.name}' is now reserved by another customer and removed from your cart.")
+                        cart_items_to_delete_ids.append(item.id)
+                        continue
                     elif not product.is_currently_reserved:
-                        messages.warning(request, f"Your reservation for '{product.name}' has expired. It is now available for others.")
+                        # FIX: Added request as first argument
+                        messages.warning(request, f"Your reservation for '{product.name}' has expired and it was removed from your cart.")
                         product.release_reservation()
-                        del request.session['buy_now_item']
-                        request.session.modified = True
-                        return redirect('product_detail', id=product.id)
-                else:
-                    product.reserved_by_user = request.user
-                    product.reservation_expires_at = timezone.now() + timedelta(minutes=CART_RESERVATION_TIME_MINUTES)
-                    product.is_reserved = True
-                    product.save()
+                        cart_items_to_delete_ids.append(item.id)
+                        continue
 
-                quantity = buy_now_item_data['quantity']
-                item_total = product.price * quantity
+                item_total = product.price * item.quantity
                 cart_items_for_order.append({
                     'product': product,
-                    'quantity': quantity,
+                    'quantity': item.quantity,
                     'total_price': item_total
                 })
                 subtotal += item_total
 
-                # Do NOT delete buy_now_item here if valid — it will be handled after order is placed
-            except Product.DoesNotExist:
-                messages.error(request, "The 'Buy Now' product is no longer available.")
+            if cart_items_to_delete_ids:
+                CartItem.objects.filter(id__in=cart_items_to_delete_ids).delete()
+
+            # If we successfully populated cart_items_for_order from db_cart,
+            # clear any lingering 'buy_now_item' from session.
+            # This ensures the actual cart takes precedence.
+            if cart_items_for_order and 'buy_now_item' in request.session:
                 del request.session['buy_now_item']
                 request.session.modified = True
-                return redirect('shop')
 
+        except Cart.DoesNotExist:
+            pass # No cart, cart_items_for_order remains empty
+
+        # --- PHASE 2: If regular cart is empty, then check for a 'buy_now_item' ---
+        # This only runs if PHASE 1 didn't populate cart_items_for_order.
         if not cart_items_for_order:
-            try:
-                db_cart = Cart.objects.get(user=request.user)
-                cart_items_to_delete_ids = []
+            buy_now_item_data = request.session.get('buy_now_item') # Now this is a re-assignment, not first assignment
+            if buy_now_item_data:
+                try:
+                    product = Product.objects.select_for_update().get(id=buy_now_item_data['id'])
 
-                for item in db_cart.items.select_for_update().select_related('product'):
-                    product = item.product
-
+                    # Re-check product availability for buy-now item
                     if product.is_sold:
-                        messages.error(request, f"'{product.name}' is already sold and removed from your cart.")
-                        cart_items_to_delete_ids.append(item.id)
-                        continue
+                        messages.error(request, f"'{product.name}' from 'Buy Now' is already sold.")
+                        del request.session['buy_now_item']
+                        request.session.modified = True
+                        return redirect('shop') # Or redirect back to product detail
 
                     if product.reserved_by_user:
                         if product.reserved_by_user != request.user:
-                            messages.warning(request, f"'{product.name}' is now reserved by another customer and removed from your cart.")
-                            cart_items_to_delete_ids.append(item.id)
-                            continue
+                            # FIX: Added request as first argument
+                            messages.warning(request, f"'{product.name}' from 'Buy Now' is reserved by another customer.")
+                            del request.session['buy_now_item']
+                            request.session.modified = True
+                            return redirect('product_detail', id=product.id)
                         elif not product.is_currently_reserved:
-                            messages.warning(request, f"Your reservation for '{product.name}' has expired and it was removed from your cart.")
+                            # FIX: Added request as first argument
+                            messages.warning(request, f"Your 'Buy Now' reservation for '{product.name}' has expired.")
                             product.release_reservation()
-                            cart_items_to_delete_ids.append(item.id)
-                            continue
+                            del request.session['buy_now_item']
+                            request.session.modified = True
+                            return redirect('product_detail', id=product.id)
+                    else:
+                        # If not reserved, reserve it now for buy-now flow
+                        product.reserved_by_user = request.user
+                        product.reservation_expires_at = timezone.now() + timedelta(minutes=CART_RESERVATION_TIME_MINUTES)
+                        product.save()
+                        # FIX: Added request as first argument
+                        messages.info(request, f"'{product.name}' reserved for 'Buy Now'.")
 
-                    item_total = product.price * item.quantity
+                    quantity = buy_now_item_data['quantity']
+                    item_total = product.price * quantity
                     cart_items_for_order.append({
                         'product': product,
-                        'quantity': item.quantity,
+                        'quantity': quantity,
                         'total_price': item_total
                     })
                     subtotal += item_total
 
-                if cart_items_to_delete_ids:
-                    CartItem.objects.filter(id__in=cart_items_to_delete_ids).delete()
-            except Cart.DoesNotExist:
-                pass
+                except Product.DoesNotExist:
+                    messages.error(request, "The 'Buy Now' product is no longer available.")
+                    del request.session['buy_now_item']
+                    request.session.modified = True
+                    return redirect('shop')
+            # If buy_now_item_data was processed and added to cart_items_for_order, it's already handled.
+            # If buy_now_item_data was invalid/non-existent, it's already cleared.
+            # So, no further action needed here for buy_now_item.
 
     if subtotal <= 0 or not cart_items_for_order:
         messages.error(request, "Your cart is empty or contains invalid/expired items.")
-        return redirect('shop')
+        # Ensure buy_now_item is cleared if cart is empty after all checks
+        if 'buy_now_item' in request.session:
+            del request.session['buy_now_item']
+            request.session.modified = True
+        return redirect('shop') # Redirect to shop or cart page
 
     total_price = subtotal
+    discount_amount = Decimal('0.00')
+    coupon_applied_code = request.session.get('applied_coupon_code')
+    applied_coupon_object = None # This will hold the actual Coupon object if valid
 
-    payment = razorpay_client.order.create({
-        "amount": int(total_price * 100),
-        "currency": "INR",
-        "payment_capture": "1"
-    })
+    # Get current cart items for coupon validation (as a QuerySet for efficiency)
+    user_cart_obj = None
+    user_cart_items_queryset = CartItem.objects.none() # Initialize as empty queryset
+    try:
+        user_cart_obj = Cart.objects.get(user=request.user)
+        user_cart_items_queryset = CartItem.objects.filter(
+            cart=user_cart_obj,
+            product__is_sold=False,
+            product__stock_quantity__gt=0
+        )
+    except Cart.DoesNotExist:
+        pass # user_cart_items_queryset remains an empty queryset
 
-    addresses = Address.objects.filter(user=request.user)
-    selected_address = addresses.filter(is_default=True).first()
+    # Handle coupon application initiated from GET request (e.g., from coupon list or direct input)
+    if request.method == 'GET' and 'coupon' in request.GET:
+        coupon_code_from_url = request.GET.get('coupon', '').strip().upper()
+        if coupon_code_from_url:
+            try:
+                coupon = Coupon.objects.get(code=coupon_code_from_url)
 
-    wallet_balance = Decimal('0.00')
-    if request.user.is_authenticated:
-        wallet, _ = Wallet.objects.get_or_create(user=request.user)
-        wallet_balance = wallet.balance
+                # Call the coupon's is_valid method with full context
+                is_valid, validation_message = coupon.is_valid(
+                    subtotal,
+                    user=request.user,
+                    cart_items=user_cart_items_queryset # Pass QuerySet of cart items
+                )
 
-    return render(request, 'user/main/checkout.html', {
+                if is_valid:
+                    discount_amount = coupon.discount
+                    total_price = coupon.apply_discount(subtotal)
+                    request.session['applied_coupon_code'] = coupon.code # Store code in session
+                    # FIX: Use Python's f-string formatting for Decimal
+                    messages.success(request, f"Coupon '{coupon.code}' applied successfully! You saved ₹{discount_amount:.2f}.")
+                    applied_coupon_object = coupon # Store object for template
+                else:
+                    messages.error(request, f"Coupon '{coupon.code}' not applied: {validation_message}")
+                    # If new coupon fails, ensure any old one is removed
+                    if 'applied_coupon_code' in request.session:
+                        del request.session['applied_coupon_code']
+                        coupon_applied_code = None # Clear for template
+                        applied_coupon_object = None
+            except Coupon.DoesNotExist:
+                messages.error(request, "Invalid coupon code.")
+                if 'applied_coupon_code' in request.session: # Clear if input was for non-existent coupon
+                    del request.session['applied_coupon_code']
+                    coupon_applied_code = None
+                    applied_coupon_object = None
+        else: # 'coupon' parameter was present but empty (user cleared input field)
+            if 'applied_coupon_code' in request.session:
+                del request.session['applied_coupon_code']
+                messages.info(request, "Coupon field cleared.")
+            coupon_applied_code = None # Ensure it's clear
+            applied_coupon_object = None
+
+    # Re-validate previously applied coupon from session on subsequent loads of checkout page
+    # (e.g., after refreshing, or coming from another page)
+    elif coupon_applied_code:
+        try:
+            coupon = Coupon.objects.get(code=coupon_applied_code)
+            is_valid, validation_message = coupon.is_valid(
+                subtotal,
+                user=request.user,
+                cart_items=user_cart_items_queryset
+            )
+            if is_valid:
+                discount_amount = coupon.discount
+                total_price = coupon.apply_discount(subtotal)
+                applied_coupon_object = coupon
+            else:
+                # If previously applied coupon is no longer valid, remove it
+                # FIX: Added request as first argument
+                messages.warning(request, f"Applied coupon '{coupon.code}' is no longer valid: {validation_message}. It has been removed.")
+                del request.session['applied_coupon_code']
+                coupon_applied_code = None
+                applied_coupon_object = None
+        except Coupon.DoesNotExist:
+            # If coupon was deleted from admin, remove from session
+            if 'applied_coupon_code' in request.session:
+                del request.session['applied_coupon_code']
+            # FIX: Added request as first argument
+            messages.warning(request, f"The previously applied coupon is invalid or no longer exists. It has been removed.")
+            coupon_applied_code = None
+            applied_coupon_object = None
+
+    # Wallet Balance
+    wallet, created = Wallet.objects.get_or_create(user=request.user)
+    wallet_balance = wallet.balance
+
+    # Razorpay details (order_id needs to be generated before payment)
+    # This razorpay_order_id is a placeholder for the checkout page.
+    # The actual Razorpay order creation happens in your create_order view.
+    # Removed the razorpay_client.order.create call from here.
+    razorpay_temp_order_id = request.session.get('razorpay_temp_order_id', str(uuid.uuid4()))
+    request.session['razorpay_temp_order_id'] = razorpay_temp_order_id
+
+    # Addresses for checkout
+    addresses = Address.objects.filter(user=request.user).order_by('-is_default')
+    selected_address_id = None
+    if addresses.exists():
+        default_address = addresses.filter(is_default=True).first()
+        if default_address:
+            selected_address_id = default_address.id
+        else:
+            selected_address_id = addresses.first().id
+
+
+    context = {
         "cart_items": cart_items_for_order,
         "subtotal": subtotal,
         "total_price": total_price,
-        "order_id": payment['id'],
+        "discount": discount_amount,
+        "coupon_applied": coupon_applied_code, # String code if any is applied
+        "applied_coupon_object": applied_coupon_object, # The actual Coupon object
+        "order_id": razorpay_temp_order_id,
         "razorpay_key": settings.RAZORPAY_KEY_ID,
         "addresses": addresses,
-        "selected_address_id": selected_address.id if selected_address else None,
+        "selected_address_id": selected_address_id,
         "wallet_balance": wallet_balance,
         "buy_now_active": bool(buy_now_item_data)
-    })
-
-
+    }
+    return render(request, 'user/main/checkout.html', context)
 
 @user_login_required
 @transaction.atomic # Crucial: Ensure all operations are atomic for POST
@@ -763,7 +1110,7 @@ def my_profile(request):
     profile_form = ProfileForm(instance=request.user)
     user_addresses = Address.objects.filter(user=request.user).order_by('-is_default', 'id')
     add_address_form = AddressForm()
-    orders = Order.objects.filter(user=request.user).order_by('-created_at')
+    orders = Order.objects.filter(user=request.user).order_by('-created_at').prefetch_related('items')
 
     # Ensure Wallet exists for the user
     wallet, _ = Wallet.objects.get_or_create(user=request.user)
@@ -1601,14 +1948,14 @@ def buy_now_checkout_view(request, product_id):
             messages.info(request, f"{product.name} is already reserved by you, reservation extended for {CART_RESERVATION_TIME_MINUTES} minutes.")
             logger.debug(f"[{user.username}] Product {product.id} reservation extended for current user.")
         else:
-            messages.warning(request, f"{product.name} is currently reserved by another customer. Please try again later or click 'Notify Me'.")
+            messages.warning(f"{product.name} is currently reserved by another customer. Please try again later or click 'Notify Me'.")
             logger.warning(f"[{user.username}] Product {product.id} reserved by another user during buy-now attempt.")
             return redirect('product_detail', id=product.id)
     else:
         # If not reserved, reserve the product immediately for "Buy Now"
         product.reserved_by_user = user
         product.reservation_expires_at = timezone.now() + timedelta(minutes=CART_RESERVATION_TIME_MINUTES)
-        product.is_reserved = True # Explicitly set is_reserved to True
+        # product.is_reserved = True # This field does not exist on Product model
         product.save()
         messages.success(request, f"{product.name} has been reserved for you for {CART_RESERVATION_TIME_MINUTES} minutes.")
         logger.debug(f"[{user.username}] Product {product.id} reserved for current user via buy-now.")
@@ -1628,6 +1975,7 @@ def buy_now_checkout_view(request, product_id):
     logger.debug(f"[{user.username}] buy_now_item successfully set in session by buy_now_checkout_view: {request.session.get('buy_now_item')}")
 
     return redirect('checkout')
+
 
 @user_login_required # This decorator already ensures the user is authenticated
 @require_POST

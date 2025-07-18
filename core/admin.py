@@ -3,56 +3,54 @@ from django.db import models
 from django.db.models import Sum
 from decimal import Decimal
 from django.contrib import messages
-from .models import Order, WalletTransaction, Wallet
 
 # Import ALL your models
 from .models import (
     Product, Order, OrderItem, Address, Category, ProductImage,
     NewsletterSubscriber, EmailOTP, OTP, UserProfile, Coupon,
-    Cart, CartItem, Wishlist, EmailTemplate, NewsletterCampaign, NewsletterSubscription
+    Cart, CartItem, Wishlist, EmailTemplate, NewsletterCampaign, NewsletterSubscription,
+    ReturnRequest, ReturnReason, ReturnItem, Wallet, WalletTransaction
 )
+
+# Import forms
+from .forms import ProductForm, CouponForm, EmailTemplateForm, NewsletterCampaignForm
+
+
+@admin.register(OrderItem)
+class OrderItemAdmin(admin.ModelAdmin):
+    list_display = ('product', 'order', 'quantity', 'price_at_purchase')
+    search_fields = ('product__name', 'order__custom_order_id')
+    readonly_fields = ('price_at_purchase',)
+
 
 class OrderItemInline(admin.TabularInline):
     model = OrderItem
     extra = 1
     autocomplete_fields = ['product']
-    fields = ('product',)
-
-    readonly_fields = ('get_price_at_purchase_display',)
-
-    def get_price_at_purchase_display(self, obj):
-        return obj.price_at_purchase if obj.price_at_purchase is not None else 'N/A'
-
-    get_price_at_purchase_display.short_description = 'Price at Purchase'
+    fields = ('product', 'quantity', 'price_at_purchase',)
+    readonly_fields = ('price_at_purchase',)
 
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ['name', 'category', 'price', 'is_sold', 'created_at']
+    list_display = ['name', 'category', 'price', 'is_sold', 'created_at', 'stock_quantity']
     list_filter = ['is_sold', 'category', 'created_at']
     search_fields = ['name']
+
 
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
     list_display = ['name', 'slug']
     prepopulated_fields = {'slug': ('name',)}
 
-# Removed the first NewsletterSubscriberAdmin class (the one with 'subscribed_at')
-# @admin.register(NewsletterSubscriber)
-# class NewsletterSubscriberAdmin(admin.ModelAdmin):
-#     list_display = ('email', 'subscribed_at')
-#     search_fields = ('email',)
-#     list_filter = ('subscribed_at',)
-
-
-# --- NEW REGISTRATIONS FOR UNREGISTERED MODELS ---
 
 @admin.register(EmailOTP)
 class EmailOTPAdmin(admin.ModelAdmin):
     list_display = ('email', 'otp', 'purpose', 'created_at')
     list_filter = ('purpose', 'created_at')
     search_fields = ('email', 'otp')
-    readonly_fields = ('created_at',) # OTPs are usually not edited manually
+    readonly_fields = ('created_at',)
+
 
 @admin.register(OTP)
 class OTPAdmin(admin.ModelAdmin):
@@ -61,71 +59,79 @@ class OTPAdmin(admin.ModelAdmin):
     search_fields = ('user__username', 'code')
     readonly_fields = ('created_at',)
 
+
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
-    list_display = ('user',) # Display the associated user
+    list_display = ('user',)
     search_fields = ('user__username', 'user__email')
+
 
 @admin.register(Coupon)
 class CouponAdmin(admin.ModelAdmin):
-    list_display = ('code', 'discount', 'limit', 'min_purchase', 'valid_from', 'valid_to', 'is_active')
-    list_filter = ('is_active', 'valid_from', 'valid_to')
-    search_fields = ('code',)
+    # UPDATED: list_display to match the new Coupon model fields
+    list_display = (
+        'code', 'discount', 'min_purchase', 'valid_from', 'valid_to',
+        'is_active', 'usage_limit', 'used_count',
+        'applies_to_new_users_only', 'min_orders_for_user',
+        'min_unique_products_in_cart', 'min_total_items_in_cart'
+    )
+    # UPDATED: list_filter to match new Coupon model fields
+    list_filter = (
+        'is_active', 'valid_from', 'valid_to',
+        'applies_to_new_users_only', 'min_orders_for_user'
+    )
+    search_fields = ('code',) # Keep search by code
+    form = CouponForm # Ensure you are using the updated CouponForm
+
+    # UPDATED: fieldsets to organize the new fields in the admin form
+    fieldsets = (
+        (None, {
+            'fields': ('code', 'discount', 'is_active', 'usage_limit', 'used_count'),
+        }),
+        ('Validity Period', {
+            'fields': ('valid_from', 'valid_to'),
+            'description': 'Set the dates and times when this coupon is valid.'
+        }),
+        ('Minimum Requirements', {
+            'fields': ('min_purchase', 'min_unique_products_in_cart', 'min_total_items_in_cart'),
+            'description': 'Conditions based on cart contents.'
+        }),
+        ('User Specific Conditions', {
+            'fields': ('applies_to_new_users_only', 'min_orders_for_user'),
+            'description': 'Conditions based on user history. Cannot apply to new users AND require minimum orders.'
+        }),
+    )
+
+    readonly_fields = ('used_count',) # used_count should typically be read-only
+
 
 @admin.register(Cart)
 class CartAdmin(admin.ModelAdmin):
-    list_display = ('user',)
+    list_display = ('user', 'created_at', 'updated_at',)
     search_fields = ('user__username',)
+
 
 @admin.register(CartItem)
 class CartItemAdmin(admin.ModelAdmin):
-    list_display = ('cart', 'product')
-    list_filter = ('cart__user',)
+    list_display = ('cart', 'product', 'quantity', 'is_reserved', 'reserved_until',)
+    list_filter = ('cart__user', 'is_reserved',)
     search_fields = ('cart__user__username', 'product__name')
+
 
 @admin.register(Wishlist)
 class WishlistAdmin(admin.ModelAdmin):
-    list_display = ('user', 'product')
+    list_display = ('user', 'product', 'added_at',)
     list_filter = ('user',)
     search_fields = ('user__username', 'product__name')
 
+
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
-    list_display = ('id', 'user', 'status', 'return_status', 'total_price', 'created_at')
-    list_filter = ('status', 'return_status')
-    actions = ['approve_return', 'reject_return']
+    list_display = ('custom_order_id', 'user', 'status', 'total_price', 'payment_status', 'payment_method', 'created_at')
+    list_filter = ('status', 'payment_status', 'payment_method', 'created_at')
+    search_fields = ('custom_order_id', 'user__username', 'user__email')
     inlines = [OrderItemInline]
-    readonly_fields = ('total_price',)
-
-    def approve_return(self, request, queryset):
-        count = 0
-        for order in queryset:
-            if order.return_status == 'Requested':
-                order.return_status = 'Approved'
-                order.status = 'Returned'
-                order.save()
-
-                wallet, _ = Wallet.objects.get_or_create(user=order.user)
-                wallet.credit(order.total_price)
-
-                WalletTransaction.objects.create(
-                    wallet=wallet,
-                    transaction_type='refund',
-                    amount=order.total_price,
-                    reason=f"Refund for returned Order #{order.id}"
-                )
-
-                count += 1
-        self.message_user(request, f"{count} return(s) approved and refunded.", level=messages.SUCCESS)
-
-    def reject_return(self, request, queryset):
-        count = 0
-        for order in queryset:
-            if order.return_status == 'Requested':
-                order.return_status = 'Rejected'
-                order.save()
-                count += 1
-        self.message_user(request, f"{count} return(s) rejected.", level=messages.WARNING)
+    readonly_fields = ('total_price', 'razorpay_order_id', 'razorpay_payment_id', 'razorpay_signature', 'created_at', 'updated_at')
 
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
@@ -135,28 +141,34 @@ class OrderAdmin(admin.ModelAdmin):
                     item.product.is_sold = True
                     item.product.save()
 
+                    from core.models import CartItem
+                    CartItem.objects.filter(product=item.product).delete()
+
     def save_formset(self, request, form, formset, change):
         super().save_formset(request, form, formset, change)
         order = form.instance
         order.refresh_from_db()
-        total_price_agg = order.items.aggregate(Sum('price_at_purchase'))['price_at_purchase__sum']
+        total_price_agg = order.items.aggregate(Sum(models.F('quantity') * models.F('price_at_purchase')))['quantity__price_at_purchase__sum']
         order.total_price = total_price_agg if total_price_agg is not None else Decimal('0.00')
         order.save()
 
-# Models that don't need custom Admin classes (default display is fine)
+
 admin.site.register(Address)
 admin.site.register(ProductImage)
+admin.site.register(Wallet)
+admin.site.register(WalletTransaction)
+
 
 @admin.register(EmailTemplate)
 class EmailTemplateAdmin(admin.ModelAdmin):
-    list_display = ('name', 'subject', 'created_at')
+    list_display = ('name', 'subject', 'created_at', 'updated_at')
     search_fields = ('name', 'subject')
     list_filter = ('created_at',)
 
 
 @admin.register(NewsletterCampaign)
 class NewsletterCampaignAdmin(admin.ModelAdmin):
-    list_display = ('title', 'email_template', 'status', 'scheduled_at', 'sent_at', 'sent_by', 'sent_count')
+    list_display = ('title', 'email_template', 'status', 'scheduled_at', 'sent_at', 'sent_by', 'sent_count_display')
     list_filter = ('status', 'scheduled_at', 'recipients_type')
     search_fields = ('title', 'email_template__name')
     date_hierarchy = 'created_at'
@@ -173,7 +185,7 @@ class NewsletterCampaignAdmin(admin.ModelAdmin):
     )
 
     @admin.display(description='Sent Count')
-    def sent_count(self, obj):
+    def sent_count_display(self, obj):
         return obj.total_recipients
 
 
@@ -183,3 +195,44 @@ class NewsletterSubscriberAdmin(admin.ModelAdmin):
     list_filter = ('is_active',)
     search_fields = ('email',)
     ordering = ('-created_at',)
+
+
+@admin.register(ReturnReason)
+class ReturnReasonAdmin(admin.ModelAdmin):
+    list_display = ('reason_text', 'requires_custom_input')
+    search_fields = ('reason_text',)
+
+
+class ReturnItemInlineForReturnRequest(admin.TabularInline):
+    model = ReturnItem
+    extra = 0
+    fields = ('order_item', 'quantity',)
+    readonly_fields = ('order_item',)
+    autocomplete_fields = ('order_item',)
+
+
+@admin.register(ReturnRequest)
+class ReturnRequestAdmin(admin.ModelAdmin):
+    list_display = ('id', 'user', 'order_custom_id_display', 'reason_display', 'status', 'requested_at', 'reviewed_at',)
+    list_filter = ('status', 'requested_at', 'reason',)
+    search_fields = ('user__username', 'order__custom_order_id', 'custom_reason')
+    date_hierarchy = 'requested_at'
+    inlines = [ReturnItemInlineForReturnRequest]
+    readonly_fields = ('user', 'order', 'requested_at', 'reviewed_at',)
+
+    fieldsets = (
+        (None, {
+            'fields': ('user', 'order', 'status', 'requested_at', 'reviewed_at', 'admin_notes',)
+        }),
+        ('Return Details', {
+            'fields': ('reason', 'custom_reason',)
+        }),
+    )
+
+    @admin.display(description='Order ID')
+    def order_custom_id_display(self, obj):
+        return obj.order.custom_order_id if obj.order else 'N/A'
+
+    @admin.display(description='Reason')
+    def reason_display(self, obj):
+        return obj.reason.reason_text if obj.reason else 'N/A'

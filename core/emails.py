@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 User = get_user_model() # Make sure this is defined for tasks that need it
 
+# CONSOLIDATED _send_email helper function (removed the duplicate)
 def _send_email(subject, template_name, context, recipient_list):
     """Helper function to send HTML emails with enhanced logging."""
     if not recipient_list:
@@ -27,14 +28,10 @@ def _send_email(subject, template_name, context, recipient_list):
     plain_message = strip_tags(html_message)
     
     try:
-        send_mail(
-            subject,
-            plain_message,
-            settings.DEFAULT_FROM_EMAIL,
-            recipient_list,
-            html_message=html_message,
-            fail_silently=False,
-        )
+        # Using EmailMultiAlternatives is generally better than send_mail directly for HTML
+        msg = EmailMultiAlternatives(subject, plain_message, settings.DEFAULT_FROM_EMAIL, recipient_list)
+        msg.attach_alternative(html_message, "text/html") # Attach HTML version
+        msg.send()
         logger.info(f"Email '{subject}' sent successfully to {', '.join(recipient_list)}")
         return True # Indicate success
     except Exception as e:
@@ -98,10 +95,6 @@ def send_product_sold_email(product_name, product_id, purchaser_email=None):
         product = Product.objects.get(id=product_id)
         
         # Filter for subscribers who want to know about 'sold' status or 'availability'
-        # and haven't been notified for this event type yet.
-        # It's usually better to have a specific 'event_type' like 'sold_notification'
-        # if this is a distinct event from 'available'.
-        # Assuming 'available' subscriptions also get notified when sold, or adjust event_type as needed.
         subscribers = NotificationSubscription.objects.filter(product=product, event_type='available', notified_at__isnull=True)
         
         recipient_emails = []
@@ -121,9 +114,6 @@ def send_product_sold_email(product_name, product_id, purchaser_email=None):
         }
         
         if _send_email(subject, 'emails/product_sold.html', context, recipient_emails):
-            # Mark these specific subscriptions as notified for the 'available' type
-            # (assuming 'available' subscriptions also cover 'sold' if not distinct).
-            # If you introduce `event_type='sold'`, you'd update those instead.
             subscribers.update(notified_at=timezone.now())
             logger.info(f"Successfully sent 'product sold' emails and updated {len(recipient_emails)} subscriber(s) for product {product_name}.")
         else:
@@ -139,7 +129,6 @@ def send_product_sold_email(product_name, product_id, purchaser_email=None):
 def send_product_removed_from_cart_email(user_id, product_id):
     """
     Sends an email to a user when a product is removed from their cart.
-    This is distinct from reservation expiry. E.g., if a user manually removes it.
     """
     logger.info(f"Attempting to send 'product removed from cart' email to user ID {user_id} for product ID {product_id}.")
     try:
@@ -163,32 +152,6 @@ def send_product_removed_from_cart_email(user_id, product_id):
     except Exception as e:
         logger.error(f"Unexpected error sending product removed from cart email for user {user_id}, product {product_id}: {e}", exc_info=True)
 
-def _send_email(subject, template_name, context, recipient_list):
-    """Helper function to send HTML emails with enhanced logging."""
-    if not recipient_list:
-        logger.info(f"No recipients specified for email '{subject}'. Skipping.")
-        return False
-
-    html_message = render_to_string(template_name, context)
-    plain_message = strip_tags(html_message)
-
-    try:
-        # Using EmailMultiAlternatives is generally better than send_mail directly for HTML
-        msg = EmailMultiAlternatives(subject, plain_message, settings.DEFAULT_FROM_EMAIL, recipient_list)
-        msg.attach_alternative(html_message, "text/html") # Attach HTML version
-        msg.send()
-        logger.info(f"Email '{subject}' sent successfully to {', '.join(recipient_list)}")
-        return True
-    except Exception as e:
-        logger.error(f"Error sending email '{subject}' to {', '.join(recipient_list)}: {e}", exc_info=True)
-        return False
-
-# ... (all your other @shared_task functions: send_product_available_email,
-# send_reservation_expired_email, send_product_sold_email,
-# send_product_removed_from_cart_email) ...
-
-# Now, your send_order_confirmation_email should be next,
-# and there should NOT be another _send_email definition here.
 
 @shared_task
 def send_order_confirmation_email(order_id):
@@ -199,18 +162,15 @@ def send_order_confirmation_email(order_id):
 
     try:
         order = Order.objects.get(id=order_id)
+        # Force refresh to ensure the latest database schema is used
+        order.refresh_from_db() # ADDED THIS LINE
         user = order.user
 
         if not user.email:
             logger.warning(f"User {user.username} (ID: {user.id}) has no email. Skipping order confirmation email for order {order_id}.")
             return
 
-        print(f"--- DEBUG: Order object attributes (dir): {dir(order)} ---")
-        print(f"--- DEBUG: Type of order object: {type(order)} ---")
-
         invoice_absolute_url = settings.SITE_URL + reverse('download_invoice', args=[order.id])
-
-        print(f"--- DEBUG: send_order_confirmation_email - Generated URL: {invoice_absolute_url} ---")
 
         context = {
             'order': order,
@@ -234,3 +194,78 @@ def send_order_confirmation_email(order_id):
         logger.error(f"Order with ID {order_id} not found for sending confirmation email. Skipping.")
     except Exception as e:
         logger.error(f"Unexpected error in send_order_confirmation_email for order {order_id}: {e}", exc_info=True)
+
+@shared_task
+def send_order_cancelled_email(order_id):
+    """
+    Sends an email to the user when their order has been cancelled.
+    """
+    logger.info(f"Attempting to send order cancellation email for Order ID: {order_id}.")
+    try:
+        order = Order.objects.get(id=order_id)
+        order.refresh_from_db() # ADDED THIS LINE
+        user = order.user
+
+        if not user.email:
+            logger.warning(f"User {user.username} (ID: {user.id}) has no email. Skipping order cancellation email for order {order_id}.")
+            return
+
+        context = {
+            'order': order,
+            'user': user,
+            'order_items': order.items.all(), # Pass order items to the template
+            'site_name': settings.SITE_NAME,
+        }
+
+        subject = f"Your Order #{order.id} has been Cancelled - {settings.SITE_NAME}"
+        template_name = 'emails/order_cancelled.html'
+
+        if _send_email(subject, template_name, context, [user.email]):
+            logger.info(f"Successfully queued order cancellation email for order {order.id} to {user.email}.")
+        else:
+            logger.error(f"Failed to queue order cancellation email for order {order.id} to {user.email}.")
+
+    except Order.DoesNotExist:
+        logger.error(f"Order with ID {order_id} not found for sending cancellation email. Skipping.")
+    except Exception as e:
+        logger.error(f"Unexpected error in send_order_cancelled_email for order {order_id}: {e}", exc_info=True)
+
+
+@shared_task
+def send_return_processed_email(return_request_id, status):
+    """
+    Sends an email to the user when their return request has been processed (approved/rejected).
+    """
+    logger.info(f"Attempting to send return processed email for Return Request ID: {return_request_id} with status: {status}.")
+    try:
+        from core.models import ReturnRequest # Local import to avoid circular dependency
+        return_request = ReturnRequest.objects.get(id=return_request_id)
+        return_request.refresh_from_db() # ADDED THIS LINE
+        order = return_request.order
+        user = return_request.user
+
+        if not user.email:
+            logger.warning(f"User {user.username} (ID: {user.id}) has no email. Skipping return processed email for request {return_request_id}.")
+            return
+
+        context = {
+            'return_request': return_request,
+            'order': order,
+            'user': user,
+            'returned_items': return_request.requested_items.all(), # Pass returned items
+            'status': status,
+            'site_name': settings.SITE_NAME,
+        }
+
+        subject = f"Your Return Request #{return_request.id} for Order #{order.custom_order_id} has been {status} - {settings.SITE_NAME}"
+        template_name = 'emails/return_processed.html'
+
+        if _send_email(subject, template_name, context, [user.email]):
+            logger.info(f"Successfully queued return processed email for request {return_request.id} to {user.email}.")
+        else:
+            logger.error(f"Failed to queue return processed email for request {return_request.id} to {user.email}.")
+
+    except ReturnRequest.DoesNotExist:
+        logger.error(f"ReturnRequest with ID {return_request_id} not found for sending processed email. Skipping.")
+    except Exception as e:
+        logger.error(f"Unexpected error in send_return_processed_email for request {return_request_id}: {e}", exc_info=True)

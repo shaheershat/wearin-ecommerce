@@ -143,6 +143,7 @@ LOGOUT_REDIRECT_URL = 'home' # Redirect after successful logout (should be a URL
 ACCOUNT_LOGOUT_ON_GET = True # Consider changing to False for production for CSRF protection
 ACCOUNT_LOGIN_METHODS = ['email'] # Replaces ACCOUNT_AUTHENTICATION_METHOD
 ACCOUNT_SIGNUP_FIELDS = ['email'] # Consistent signup fields
+ACCOUNT_USERNAME_REQUIRED = False # NEW: Explicitly set to False for email-only flow
 
 SOCIALACCOUNT_AUTO_SIGNUP = True
 SOCIALACCOUNT_EMAIL_REQUIRED = True

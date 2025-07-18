@@ -18,6 +18,8 @@ from core.views.user_views import (
     subscribe_newsletter,
     add_address_form_view,
     notify_me_view,
+    # NEW: Import the new return views
+    get_order_items_for_return, create_return_request,
 )
 
 urlpatterns = [
@@ -45,8 +47,17 @@ urlpatterns = [
     path('dashboard/sales/', admin_views.admin_sales_view, name='admin_sales'),
     path('dashboard/sales/export-excel/', admin_views.export_sales_excel_view, name='export_sales_excel'),
     path('dashboard/sales/export-pdf/', admin_views.export_sales_pdf, name='export_sales_pdf'),
-    path('orders/<int:order_id>/approve-return/', admin_views.approve_return_view, name='admin_approve_return'),
-    path('orders/<int:order_id>/reject-return/', admin_views.reject_return_view, name='admin_reject_return'),
+    
+    # REMOVED: Direct approve/reject return URLs from admin
+    # path('orders/<int:order_id>/approve-return/', admin_views.approve_return_view, name='admin_approve_return'),
+    # path('orders/<int:order_id>/reject-return/', admin_views.reject_return_view, name='admin_reject_return'),
+    
+    # UPDATED/NEW: Admin Return Request API Endpoints
+    # The old admin_return_request_detail is effectively replaced by an AJAX endpoint
+    # path('admin/return-request/<int:order_id>/', admin_views.admin_return_request_detail, name='admin_return_request_detail'), # Old
+    path('api/admin/returns/<int:request_id>/details/', admin_views.get_return_request_for_admin_modal, name='admin_get_return_request_details'), # NEW
+    path('api/admin/returns/<int:request_id>/process/', admin_views.process_admin_return_request, name='admin_process_return_request'), # NEW
+
 
     # --- Coupon Management ---
     path('coupons/', admin_views.coupon_list, name='admin_coupon_list'),
@@ -96,14 +107,23 @@ urlpatterns = [
 
     # --- User Profile & Address Management ---
     path('profile/', user_views.my_profile, name='my_profile'),
-    # path('profile/orders/', user_views.my_orders, name='my_orders'),
     path('profile/update/', update_profile, name='update_profile'),
     path('contact/send/', user_views.send_contact_email, name='send_contact_email'),
     path('order/<int:order_id>/view/', user_views.view_order_view, name='view_order'),
     path('order/<int:order_id>/cancel/', user_views.cancel_order_view, name='cancel_order'),
-    path('order/<int:order_id>/return/', user_views.return_order_view, name='return_order'),
+    # REMOVED old return_order_view URL, it's replaced by AJAX modal interaction
+    # path('order/<int:order_id>/return/', user_views.return_order_view, name='return_order'), 
     path('order/<int:order_id>/', user_views.view_order_view, name='view_order'),
     path('order/<int:order_id>/invoice/', user_views.download_invoice_view, name='download_invoice'),
+    path('checkout/coupons/', user_views.user_coupon_list_view, name='coupon_list'),
+    path('checkout/remove-coupon/', user_views.remove_applied_coupon, name='remove_applied_coupon'),
+    
+    # UPDATED/NEW: User Return Request API Endpoints
+    # The submit_return_request you provided earlier (now renamed for clarity)
+    # path('return-request/', user_views.submit_return_request, name='submit_return_request'), # Old
+    path('api/orders/<int:order_id>/return-items/', get_order_items_for_return, name='get_order_items_for_return_api'), # NEW
+    path('api/returns/create/', create_return_request, name='create_return_request_api'), # NEW
+
 
     path('profile/address/add/', add_address_form_view, name='add_address_form'),
     path('api/profile/address/add/', add_address, name='add_address_api'),

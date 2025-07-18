@@ -23,17 +23,17 @@
             <div class="relative w-full">
                 {# IMPORTANT: Changed 'id' to 'class' for all price elements #}
                 <input type="range" class="price-slider w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                       min="0" max="10000" step="100"
-                       value="{{ selected_max_price|default:"10000" }}">
-                {# Re-added priceIndicator div with a class #}
+                       min="0" max="1000" step="50"
+                       value="{{ selected_max_price|default:"1000" }}">
+                
                 <div class="price-indicator absolute -top-7 left-0 transform -translate-x-1/2 text-xs bg-gray-700 text-white px-2 py-0.5 rounded shadow pointer-events-none">
-                    ₹{{ selected_max_price|default:"10000" }}
+                    ₹{{ selected_max_price|default:"1000" }}
                 </div>
             </div>
-            <span class="text-sm text-gray-600">₹<span class="price-value">{{ selected_max_price|default:"10000" }}</span></span>
+            <span class="text-sm text-gray-600">₹<span class="price-value">{{ selected_max_price|default:"1000" }}</span></span>
         </div>
         {# Changed 'id' to 'class' for priceInput #}
-        <input type="hidden" name="max_price" class="price-input" value="{{ selected_max_price|default:"10000" }}">
+        <input type="hidden" name="max_price" class="price-input" value="{{ selected_max_price|default:"1000" }}">
     </div>
 </div>
 

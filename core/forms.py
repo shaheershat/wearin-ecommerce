@@ -1,13 +1,10 @@
-
-# core/forms.py
 from django import forms
-from django.forms.widgets import ClearableFileInput
+from django.forms.widgets import ClearableFileInput, DateTimeInput # Import DateTimeInput
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
-from django.contrib.auth.models import User
+from django.contrib.auth.models import User # You might use get_user_model() instead of direct User import
 from django.contrib.auth import get_user_model
-from core.models import Product, Coupon
+from core.models import Product, Coupon, EmailTemplate, NewsletterCampaign # Ensure Coupon is imported
 import uuid
-from .models import EmailTemplate, NewsletterCampaign
 # Import the actual Address model and UserProfile
 from core.models import UserProfile, Address, NewsletterSubscriber # Import NewsletterSubscriber
 
@@ -18,7 +15,6 @@ class ProfileForm(forms.ModelForm):
         fields = ['first_name', 'last_name', 'email']
 
 class AddressForm(forms.ModelForm):
-    # Changed model from UserProfile to Address
     class Meta:
         model = Address
         fields = ['full_name', 'phone', 'house_name', 'street', 'city', 'state', 'pincode', 'country', 'is_default']
@@ -34,7 +30,6 @@ class AddressForm(forms.ModelForm):
             'is_default': forms.CheckboxInput(attrs={'class': 'mr-2'}), # Added widget for checkbox
         }
 
-# --- NEW FORM FOR NEWSLETTER ---
 class NewsletterForm(forms.ModelForm):
     class Meta:
         model = NewsletterSubscriber
@@ -44,7 +39,6 @@ class NewsletterForm(forms.ModelForm):
         }
 
 
-# --- Rest of your forms.py remains the same ---
 # --- Login Form ---
 class UserLoginForm(AuthenticationForm):
     def __init__(self, request=None, *args, **kwargs):
@@ -89,7 +83,7 @@ class UserRegistrationForm(UserCreationForm):
     )
 
     class Meta:
-        model = User
+        model = get_user_model() # Use get_user_model() here
         fields = ['first_name', 'last_name', 'email', 'password1', 'password2']
 
     def clean_email(self):
@@ -122,23 +116,49 @@ class ProductForm(forms.ModelForm):
             'description': forms.Textarea(attrs={'class': 'w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400', 'rows': 4}),
         }
 
-# --- Coupon Form ---
+# UPDATED: Coupon Form with new fields and datetime widgets
 class CouponForm(forms.ModelForm):
     class Meta:
         model = Coupon
-        fields = ['code', 'discount', 'limit', 'min_purchase', 'redeemable_price', 'valid_from', 'valid_to', 'is_active']
+        fields = [
+            'code', 'discount', 'min_purchase', 'valid_from', 'valid_to',
+            'usage_limit',
+            'min_orders_for_user',
+            'min_unique_products_in_cart',
+            'min_total_items_in_cart','is_active','applies_to_new_users_only',
+        ]
         widgets = {
-            'valid_from': forms.DateInput(attrs={'type': 'date', 'class': 'w-full border border-gray-300 px-3 py-2 rounded'}),
-            'valid_to': forms.DateInput(attrs={'type': 'date', 'class': 'w-full border border-gray-300 px-3 py-2 rounded'}),
+            'valid_from': forms.DateTimeInput(attrs={'type': 'datetime-local', 'class': 'w-full border border-gray-300 px-3 py-2 rounded'}),
+            'valid_to': forms.DateTimeInput(attrs={'type': 'datetime-local', 'class': 'w-full border border-gray-300 px-3 py-2 rounded'}),
+            # Add widgets for new fields if you want specific styling
+            'code': forms.TextInput(attrs={'class': 'w-full border border-gray-300 px-3 py-2 rounded'}),
+            'discount': forms.NumberInput(attrs={'class': 'w-full border border-gray-300 px-3 py-2 rounded'}),
+            'min_purchase': forms.NumberInput(attrs={'class': 'w-full border border-gray-300 px-3 py-2 rounded'}),
+            'usage_limit': forms.NumberInput(attrs={'class': 'w-full border border-gray-300 px-3 py-2 rounded'}),
+            'applies_to_new_users_only': forms.CheckboxInput(attrs={'class': 'form-checkbox'}),
+            'min_orders_for_user': forms.NumberInput(attrs={'class': 'w-full border border-gray-300 px-3 py-2 rounded'}),
+            'min_unique_products_in_cart': forms.NumberInput(attrs={'class': 'w-full border border-gray-300 px-3 py-2 rounded'}),
+            'min_total_items_in_cart': forms.NumberInput(attrs={'class': 'w-full border border-gray-300 px-3 py-2 rounded'}),
+            'is_active': forms.CheckboxInput(attrs={'class': 'form-checkbox'}),
+        }
+        help_texts = {
+            'min_orders_for_user': 'Minimum number of successful (Delivered/Returned) orders a user must have to use this coupon (0 for no minimum).',
+            'min_unique_products_in_cart': 'Minimum number of different products in the cart to use this coupon (0 for no minimum).',
+            'min_total_items_in_cart': 'Minimum total quantity of all items in the cart to use this coupon (0 for no minimum).',
+            'usage_limit': 'Maximum number of times this coupon can be used (0 for unlimited).',
         }
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        for field_name, field in self.fields.items():
-            if field_name not in ['valid_from', 'valid_to', 'is_active']:
-                field.widget.attrs.update({'class': 'w-full border border-gray-300 px-3 py-2 rounded'})
-            if isinstance(field.widget, forms.CheckboxInput):
-                field.widget.attrs.update({'class': 'form-checkbox'})
+    def clean(self):
+        cleaned_data = super().clean()
+        applies_to_new_users_only = cleaned_data.get('applies_to_new_users_only')
+        min_orders_for_user = cleaned_data.get('min_orders_for_user')
+
+        # Custom validation: Cannot be for new users AND require minimum orders
+        if applies_to_new_users_only and min_orders_for_user and min_orders_for_user > 0:
+            self.add_error('min_orders_for_user', "Cannot set 'Minimum Orders for User' if 'Applies to New Users Only' is checked.")
+            self.add_error('applies_to_new_users_only', "Cannot apply to new users only if a minimum order count is specified.")
+
+        return cleaned_data
 
 # --- MultiFile Input Widget ---
 class MultiFileInput(ClearableFileInput):
@@ -165,7 +185,7 @@ class BatchUploadForm(forms.Form):
 class EmailTemplateForm(forms.ModelForm):
     class Meta:
         model = EmailTemplate
-        fields = ['name', 'subject', 'html_content', 'plain_content']
+        fields = ['name', 'subject', 'html_content', 'plain_content'] # Added plain_content back
         widgets = {
             'html_content': forms.Textarea(attrs={'rows': 20}), # Make textarea larger
             'plain_content': forms.Textarea(attrs={'rows': 10}),
@@ -207,8 +227,6 @@ class NewsletterCampaignForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Apply Tailwind classes to the label for consistency, if needed
-        # self.fields['title'].label_attrs = {'class': 'block text-sm font-medium text-gray-700'} # Example
         self.fields['email_template'].empty_label = "-- Select Template --"
 
     def clean(self):
@@ -220,23 +238,3 @@ class NewsletterCampaignForm(forms.ModelForm):
             self.add_error('custom_recipient_emails', "Custom recipient emails are required if 'Custom Email List' is selected.")
         return cleaned_data
 
-
-class EmailTemplateForm(forms.ModelForm):
-    class Meta:
-        model = EmailTemplate
-        fields = ['name', 'subject', 'html_content']
-        widgets = {
-            'name': forms.TextInput(attrs={
-                'class': 'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500',
-                'placeholder': 'Enter template name'
-            }),
-            'subject': forms.TextInput(attrs={
-                'class': 'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500',
-                'placeholder': 'Enter email subject'
-            }),
-            'html_content': forms.Textarea(attrs={
-                'class': 'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500',
-                'rows': 15, # Increased rows for better HTML content editing
-                'placeholder': 'Enter HTML content for the email'
-            }),
-        }

@@ -1,4 +1,3 @@
-# core/models.py
 from django.db import models
 from django.utils.text import slugify
 from cloudinary.models import CloudinaryField
@@ -8,6 +7,9 @@ from decimal import Decimal
 from datetime import timedelta # Import timedelta
 from django.urls import reverse # Import reverse for get_absolute_url
 import logging
+
+# Import Sum for aggregation in Coupon.is_valid
+from django.db.models import Sum
 
 logger = logging.getLogger(__name__) # Setup logger for models.py
 
@@ -52,18 +54,90 @@ class UserProfile(models.Model):
     def __str__(self):
         return self.user.username
 
+# UPDATED: Coupon Model with new fields and is_valid method
 class Coupon(models.Model):
-    code = models.CharField(max_length=20, unique=True)
-    discount = models.DecimalField(max_digits=5, decimal_places=2)
-    limit = models.PositiveIntegerField()
-    min_purchase = models.DecimalField(max_digits=8, decimal_places=2)
-    redeemable_price = models.DecimalField(max_digits=8, decimal_places=2)
-    valid_from = models.DateField(null=True, blank=True)
-    valid_to = models.DateField()
-    is_active = models.BooleanField(default=True)
+    code = models.CharField(max_length=50, unique=True, help_text="The unique code users will enter")
+    discount = models.DecimalField(max_digits=10, decimal_places=2, help_text="Discount amount")
+    min_purchase = models.DecimalField(max_digits=10, decimal_places=2, default=0,
+                                       help_text="Minimum total price required to use this coupon")
+    valid_from = models.DateTimeField(help_text="Date and time from which the coupon is valid")
+    valid_to = models.DateTimeField(help_text="Date and time until which the coupon is valid")
+    is_active = models.BooleanField(default=True, help_text="Whether the coupon is currently active")
+    usage_limit = models.PositiveIntegerField(default=0, help_text="Maximum number of times this coupon can be used (0 for unlimited)")
+    used_count = models.PositiveIntegerField(default=0, editable=False, help_text="Number of times this coupon has been used")
+
+    # --- NEW FIELDS FOR CONDITIONS ---
+    applies_to_new_users_only = models.BooleanField(default=False,
+                                                    help_text="If checked, only users with no prior orders can use this coupon.")
+    min_orders_for_user = models.PositiveIntegerField(default=0,
+                                                      help_text="Minimum number of successful orders a user must have to use this coupon. (0 means no minimum).")
+    min_unique_products_in_cart = models.PositiveIntegerField(default=0,
+                                                              help_text="Minimum number of different products in the cart to use this coupon. (0 means no minimum).")
+    min_total_items_in_cart = models.PositiveIntegerField(default=0,
+                                                          help_text="Minimum total quantity of items in the cart to use this coupon. (0 means no minimum).")
+    # --- END NEW FIELDS ---
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Coupon"
+        verbose_name_plural = "Coupons"
+        ordering = ['-created_at']
 
     def __str__(self):
         return self.code
+
+    def is_valid(self, cart_total_price, user=None, cart_items=None):
+        now = timezone.now()
+        if not self.is_active:
+            return False, "This coupon is not active."
+        if self.valid_from > now:
+            return False, "This coupon is not yet valid."
+        if self.valid_to < now:
+            return False, "This coupon has expired."
+        if self.usage_limit > 0 and self.used_count >= self.usage_limit:
+            return False, "This coupon has reached its usage limit."
+        if cart_total_price < self.min_purchase:
+            return False, f"Minimum purchase of ₹{self.min_purchase} required."
+
+        # Apply new conditions
+        if user and user.is_authenticated: # Ensure user is logged in for these checks
+            # Check for 'new user' condition
+            if self.applies_to_new_users_only:
+                # Assuming 'Order' model tracks user orders and 'Delivered' means successful
+                # Import Order locally to avoid circular dependency if Order imports Coupon
+                from .order import Order # Assuming Order is defined later in this file or in a separate file
+                if Order.objects.filter(user=user, status__in=['Delivered', 'Returned', 'Shipped', 'Processing', 'Pending']).exists():
+                    return False, "This coupon is for new users only."
+
+            # Check for 'minimum orders' condition
+            if self.min_orders_for_user > 0:
+                from .order import Order # Local import
+                user_successful_orders_count = Order.objects.filter(user=user, status__in=['Delivered', 'Returned']).count()
+                if user_successful_orders_count < self.min_orders_for_user:
+                    return False, f"You must have at least {self.min_orders_for_user} previous successful orders to use this coupon."
+
+        if cart_items is not None: # Check if cart_items is provided
+            # Check for 'minimum unique products' condition
+            if self.min_unique_products_in_cart > 0:
+                unique_products_count = cart_items.values('product').distinct().count()
+                if unique_products_count < self.min_unique_products_in_cart:
+                    return False, f"Your cart must contain at least {self.min_unique_products_in_cart} different products."
+
+            # Check for 'minimum total items' condition
+            if self.min_total_items_in_cart > 0:
+                total_items_quantity = cart_items.aggregate(Sum('quantity'))['quantity__sum'] or 0
+                if total_items_quantity < self.min_total_items_in_cart:
+                    return False, f"Your cart must contain at least {self.min_total_items_in_cart} items in total."
+
+        return True, "Coupon is valid."
+
+    def apply_discount(self, total_price):
+        if total_price <= self.discount:
+            return Decimal('0.00')
+        return total_price - self.discount
+
 
 class Category(models.Model):
     name = models.CharField(max_length=100)
@@ -131,6 +205,7 @@ class Product(models.Model):
             logger.info(f"Reservation fields cleared for product {self.name}.")
 
             if previous_reserved_user:
+                from core.models import CartItem # Local import
                 deleted_count, _ = CartItem.objects.filter(
                     user=previous_reserved_user,
                     product=self,
@@ -151,6 +226,7 @@ class Product(models.Model):
                     logger.info(f"Queued reservation expired email for {previous_reserved_user.email}.")
 
             if self.is_available_for_purchase:
+                from core.models import NotificationSubscription # Local import
                 subscribers = NotificationSubscription.objects.filter(
                     product=self,
                     event_type='available',
@@ -230,7 +306,7 @@ class Order(models.Model):
         ('Out of delivery', 'Out of delivery'),
         ('Delivered', 'Delivered'),
         ('Cancelled', 'Cancelled'),
-        ('Returned', 'Returned'),
+        ('Returned', 'Returned'), # Keep 'Returned' status for the order level
     ]
     PAYMENT_STATUS_CHOICES = [
         ('Pending', 'Pending'),
@@ -241,12 +317,6 @@ class Order(models.Model):
     ('COD', 'Cash on Delivery'),
     ('Razorpay', 'Razorpay'),
     ]
-    RETURN_STATUS_CHOICES = [
-    ('None', 'None'),
-    ('Requested', 'Requested'),
-    ('Approved', 'Approved'),
-    ('Rejected', 'Rejected'),
-    ]
 
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     address = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, blank=True)
@@ -254,109 +324,81 @@ class Order(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Pending')
     payment_status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default='Pending')
     payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES, default='COD')
-    return_status = models.CharField(max_length=10, choices=RETURN_STATUS_CHOICES, default='None') # This was duplicated, but now correct
     razorpay_order_id = models.CharField(max_length=100, blank=True, null=True)
     razorpay_payment_id = models.CharField(max_length=100, blank=True, null=True)
     razorpay_signature = models.CharField(max_length=255, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    # --- ADD THIS NEW FIELD ---
     custom_order_id = models.CharField(max_length=20, unique=True, blank=True, null=True)
-    # --------------------------
 
     class Meta:
         ordering = ['-created_at'] # Good practice to order by creation date
 
-    # --- ADD OR REPLACE THE save METHOD WITH THIS ---
     def save(self, *args, **kwargs):
-        # Handle product sold status update logic first (existing logic)
-        is_new = not self.pk # Check if this is a new object being saved for the first time
+        is_new = not self.pk
         old_order_status = None
         if not is_new:
             try:
                 old_order = Order.objects.get(pk=self.pk)
                 old_order_status = old_order.status
             except Order.DoesNotExist:
-                pass # Should not happen, but good to handle
+                pass
 
-        # Generate custom_order_id ONLY if it's a new order and the field is empty
         if is_new and not self.custom_order_id:
             prefix = "WN"
-            # Get the highest existing numeric part of custom_order_id,
-            # or use the database PK if no custom IDs exist yet.
-            # This is more robust than just `last_order_pk` as it accounts for existing custom IDs.
             last_custom_id_num = 0
             latest_order_with_custom_id = Order.objects.filter(custom_order_id__startswith=prefix).order_by('-pk').first()
             if latest_order_with_custom_id and latest_order_with_custom_id.custom_order_id:
                 try:
                     last_custom_id_num = int(latest_order_with_custom_id.custom_order_id[len(prefix):])
                 except ValueError:
-                    # Fallback if an old custom_order_id isn't purely numeric after prefix
                     last_custom_id_num = Order.objects.all().order_by('-pk').values_list('pk', flat=True).first() or 0
 
             next_num = last_custom_id_num + 1
 
-            # Loop to ensure uniqueness, especially in case of race conditions
-            for _ in range(10): # Try up to 10 times to find a unique ID
-                formatted_num = f"{next_num:04d}" # Pads with leading zeros
+            for _ in range(10):
+                formatted_num = f"{next_num:04d}"
                 new_custom_id = f"{prefix}{formatted_num}"
 
                 if not Order.objects.filter(custom_order_id=new_custom_id).exists():
                     self.custom_order_id = new_custom_id
                     break
-                next_num += 1 # Increment and try again
+                next_num += 1
 
-            if not self.custom_order_id: # If after 10 tries, no unique ID was found (highly unlikely)
+            if not self.custom_order_id:
                 logger.error("Failed to generate a unique custom_order_id after multiple attempts.")
-                # You might want to raise an exception or fallback to pk based ID here
 
-        # Call the original save method before checking status changes
         super().save(*args, **kwargs)
 
-        # Move your `is_sold` update logic AFTER super().save()
-        # This ensures `self.pk` and other fields are correctly set for the newly created object.
         if not is_new and old_order_status != 'Delivered' and self.status == 'Delivered':
             for item in self.items.all():
                 if item.product:
                     item.product.is_sold = True
-                    item.product.reserved_by_user = None # Clear reservation on sale
-                    item.product.reservation_expires_at = None # Clear reservation on sale
+                    item.product.reserved_by_user = None
+                    item.product.reservation_expires_at = None
                     item.product.save()
 
-                    # Also, remove from any carts if it's sold
-                    from core.models import CartItem # Local import to avoid circular dependency
+                    from core.models import CartItem
                     CartItem.objects.filter(product=item.product).delete()
 
-    # --- UPDATE YOUR __str__ METHOD TO USE custom_order_id ---
     def __str__(self):
         return f"Order #{self.custom_order_id or self.id} by {self.user.username}"
 
 class OrderItem(models.Model):
-    RETURN_STATUS_CHOICES = [
-        ('None', 'None'),
-        ('Requested', 'Requested'),
-        ('Approved', 'Approved'),
-        ('Rejected', 'Rejected'),
-    ]
-
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items')
     product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True)
     quantity = models.PositiveIntegerField(default=1)
     price_at_purchase = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
-    return_status = models.CharField(max_length=10, choices=RETURN_STATUS_CHOICES, default='None')
 
     def __str__(self):
         product_name = self.product.name if self.product else "N/A"
-        # --- UPDATED LINE HERE ---
-        # Use order.custom_order_id for display, falling back to order.id if custom_order_id is not set
         return f"{product_name} (x{self.quantity}) in Order #{self.order.custom_order_id or self.order.id}"
 
     def save(self, *args, **kwargs):
         if not self.pk and self.product:
             self.price_at_purchase = self.product.price
         super().save(*args, **kwargs)
-
 
 
 class Cart(models.Model):
@@ -405,7 +447,7 @@ class Wishlist(models.Model):
 class NewsletterSubscriber(models.Model):
     email = models.EmailField(unique=True)
     subscribed_at = models.DateTimeField(auto_now_add=True)
-    is_active = models.BooleanField(default=True)  # ✅ Add this line
+    is_active = models.BooleanField(default=True)
 
     def __str__(self):
         return self.email
@@ -502,8 +544,76 @@ class NewsletterCampaign(models.Model):
 
 class NewsletterSubscription(models.Model):
     email = models.EmailField(unique=True)
-    is_active = models.BooleanField(default=True)  # ✅ Required for admin
-    created_at = models.DateTimeField(auto_now_add=True)  # ✅ Required for admin
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return self.email
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Newsletter Subscriber"
+        verbose_name_plural = "Newsletter Subscribers"
+
+# NEW: ReturnReason Model
+class ReturnReason(models.Model):
+    reason_text = models.CharField(max_length=255, unique=True)
+    requires_custom_input = models.BooleanField(default=False)
+
+    def __str__(self):
+        return self.reason_text
+
+# UPDATED: ReturnRequest Model
+class ReturnRequest(models.Model):
+    STATUS_CHOICES = [
+        ('Requested', 'Requested'),
+        ('Approved', 'Approved'),
+        ('Rejected', 'Rejected'),
+        ('Processing Refund', 'Processing Refund'), # Optional intermediate state
+        ('Refunded', 'Refunded'), # Final state after refund
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    order = models.ForeignKey(Order, on_delete=models.CASCADE)
+    
+    # Link to the new ReturnReason model
+    reason = models.ForeignKey(ReturnReason, on_delete=models.SET_NULL, null=True, blank=True)
+    custom_reason = models.TextField(blank=True, null=True, help_text="User's custom reason if 'Other' was selected.")
+    
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Requested')
+    requested_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    admin_notes = models.TextField(blank=True, null=True)
+
+    def __str__(self):
+        return f"Return Request #{self.pk} for Order #{self.order.custom_order_id} ({self.status})"
+
+    # NEW: Through model for ReturnRequest and OrderItem to store return quantity
+class ReturnItem(models.Model):
+    return_request = models.ForeignKey(ReturnRequest, on_delete=models.CASCADE, related_name='requested_items')
+    order_item = models.ForeignKey(OrderItem, on_delete=models.CASCADE)
+    # The quantity of this specific order_item being returned
+    quantity = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        unique_together = ('return_request', 'order_item') # Prevent duplicate order_items in one request
+
+    def __str__(self):
+        product_name = self.order_item.product.name if self.order_item.product else "N/A"
+        return f"{self.quantity} x {product_name} for Return Request #{self.return_request.pk}"
+
+# Update ReturnRequest to use the through model for items
+# IMPORTANT: This line should be outside the class definition if it's adding to an existing class
+# It's better to define the ManyToManyField directly within the ReturnRequest class
+# using `through='ReturnItem'` if ReturnItem is defined before it.
+
+# Correct way to define the M2M with a through model:
+# class ReturnRequest(models.Model):
+#     ...
+#     items = models.ManyToManyField(OrderItem, through='ReturnItem', related_name='return_requests')
+#     ...
+
+# If you have `ReturnRequest.add_to_class` at the end, it should be removed.
+# The M2M field should be defined directly in the ReturnRequest class.
+# Assuming you want to keep the M2M field to OrderItem as 'items',
+# I'll update the ReturnRequest model directly.

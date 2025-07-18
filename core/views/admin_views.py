@@ -12,6 +12,7 @@ from datetime import timedelta
 from django.views.decorators.clickjacking import xframe_options_exempt
 from django.contrib import messages
 from core.tasks import send_return_processed_email
+from django.views.decorators.http import require_GET
 from django.contrib.auth import authenticate
 from django.contrib.auth import get_user_model
 from django.conf import settings
@@ -32,55 +33,143 @@ from django.urls import reverse_lazy
 from django.views.generic import ListView, CreateView, UpdateView, DeleteView
 from django.template import Template, Context 
 from django.db.models import Q 
-from core.models import EmailTemplate, NewsletterCampaign, NewsletterSubscriber 
+from core.models import EmailTemplate, NewsletterCampaign, NewsletterSubscriber ,ReturnRequest, ReturnReason, ReturnItem
 from core.forms import EmailTemplateForm, NewsletterCampaignForm 
 from core.tasks import send_newsletter_task 
 from django.utils.decorators import method_decorator 
 import logging
+from django.db import transaction
+
+logger = logging.getLogger(__name__)
+
+@admin_login_required
+@require_GET
+def get_return_request_for_admin_modal(request, request_id):
+    """
+    Renders the admin_panel/order_return_modal.html directly
+    with the return request details, instead of returning JSON.
+    """
+    try:
+        return_request = get_object_or_404(
+            ReturnRequest.objects.select_related('user', 'order', 'reason'),
+            id=request_id
+        )
+
+        total_refund_calculated = Decimal('0.00')
+        for ri in return_request.requested_items.all().select_related('order_item__product'):
+            if ri.order_item and ri.order_item.product:
+                total_refund_calculated += ri.quantity * ri.order_item.price_at_purchase
+
+        context = {
+            'return_request': return_request,
+            'total_refund_calculated': total_refund_calculated,
+        }
+        
+        return render(request, 'admin_panel/order_return_modal.html', context)
+
+    except ReturnRequest.DoesNotExist:
+        if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+            return HttpResponse("Return request not found.", status=404)
+        messages.error(request, "Return request not found.")
+        return redirect('admin_order_list')
+    except Exception as e:
+        logger.error(f"Error fetching return request details for admin: {e}", exc_info=True)
+        if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+            return HttpResponse("An unexpected error occurred.", status=500)
+        messages.error(request, "An unexpected error occurred while loading return details.")
+        return redirect('admin_order_list')
 
 
 @admin_login_required
-def approve_return_view(request, order_id):
-    order = get_object_or_404(Order, id=order_id)
+@require_POST
+def process_admin_return_request(request, request_id):
+    """
+    AJAX endpoint for admin to approve or reject a return request.
+    UPDATED: Now updates the main Order status based on return request outcome,
+             and sets product is_sold to False on approval, and corrects variable name.
+    """
+    try:
+        data = json.loads(request.body)
+        action = data.get('action') # 'approve' or 'reject'
+        admin_notes = data.get('admin_notes', '').strip()
 
-    if order.return_status != 'Requested':
-        messages.error(request, 'Invalid return state.')
-        return redirect('admin_order_list')
+        if action not in ['approve', 'reject']:
+            return JsonResponse({'status': 'error', 'message': 'Invalid action.'}, status=400)
 
-    order.return_status = 'Approved'
-    order.status = 'Returned'
-    order.save()
+        return_request = get_object_or_404(ReturnRequest, id=request_id)
+        order = return_request.order # Get the associated Order
 
-    # Refund to wallet
-    wallet, _ = Wallet.objects.get_or_create(user=order.user)
-    wallet.credit(order.total_price)
-    WalletTransaction.objects.create(
-        wallet=wallet,
-        transaction_type='refund',
-        amount=order.total_price,
-        reason=f"Refund for returned Order #{order.id}"
-    )
+        if return_request.status not in ['Requested', 'Processing Refund']:
+            return JsonResponse({'status': 'error', 'message': f'Return request is already {return_request.status}.'}, status=400)
 
-    # ✅ Trigger return processed email
-    returned_item_ids = [item.id for item in order.items.filter(return_status='Approved')]
-    send_return_processed_email.delay(order.id, returned_item_ids)
+        with transaction.atomic():
+            return_request.reviewed_at = timezone.now()
+            return_request.admin_notes = admin_notes
 
-    messages.success(request, 'Return approved and wallet refunded.')
-    return redirect('admin_order_list')
+            if action == 'approve':
+                total_refund_amount = Decimal('0.00')
 
-@admin_login_required
-def reject_return_view(request, order_id):
-    order = get_object_or_404(Order, id=order_id)
-    if order.return_status != 'Requested':
-        messages.error(request, 'Invalid return state.')
-        return redirect('admin_order_list')
+                for ri in return_request.requested_items.all().select_related('order_item__product'):
+                    order_item = ri.order_item
+                    if order_item and order_item.product:
+                        # Increment product stock
+                        # CORRECTED: Using 'order_item.product' instead of 'item.product'
+                        order_item.product.stock_quantity += ri.quantity
+                        # Un-tick 'is_sold' checkbox
+                        # CORRECTED: Using 'order_item.product' instead of 'item.product'
+                        order_item.product.is_sold = False
+                        # Save the product changes
+                        # CORRECTED: Using 'order_item.product' instead of 'item.product'
+                        order_item.product.save()
+                        logger.info(f"Product '{order_item.product.name}' (ID: {order_item.product.id}) stock updated to {order_item.product.stock_quantity}, is_sold set to False due to return approval.")
+                        total_refund_amount += ri.quantity * order_item.price_at_purchase
+                    else:
+                        logger.warning(f"Product for ReturnItem {ri.id} in ReturnRequest {return_request.id} not found during return approval stock update.")
+                
+                if total_refund_amount > 0:
+                    wallet, created = Wallet.objects.get_or_create(user=return_request.user)
+                    wallet.balance += total_refund_amount
+                    wallet.save()
 
-    order.return_status = 'Rejected'
-    order.save()
+                    WalletTransaction.objects.create(
+                        wallet=wallet,
+                        transaction_type='refund',
+                        amount=total_refund_amount,
+                        reason=f"Refund for Return Request #{return_request.id} (Order #{order.custom_order_id})"
+                    )
+                    return_request.status = 'Refunded' # Final status after refund
+                else:
+                    return_request.status = 'Approved' # If no items or amount to refund, just approve
 
-    messages.warning(request, 'Return request rejected.')
-    return redirect('admin_order_list')
+                # Set the main Order status to 'Returned'
+                order.status = 'Returned'
+                order.save()
 
+                messages.success(request, f'Return Request #{return_request.id} approved and wallet refunded. Order status set to Returned.')
+
+            elif action == 'reject':
+                return_request.status = 'Rejected'
+                
+                # Set the main Order status back to 'Delivered' if it was 'Returned' or 'Pending' return
+                order.status = 'Delivered'
+                order.save()
+
+                messages.warning(request, f'Return Request #{return_request.id} rejected. Order status set to Delivered.')
+
+            return_request.save()
+
+            # Optional: Send email confirmation to user
+            # send_return_processed_email.delay(return_request.id, return_request.status)
+
+        return JsonResponse({'status': 'success', 'message': f'Return request {action}ed successfully.'})
+
+    except ReturnRequest.DoesNotExist:
+        return JsonResponse({'status': 'error', 'message': 'Return request not found.'}, status=404)
+    except Exception as e:
+        logger.error(f"Error processing admin return request: {e}", exc_info=True)
+        return JsonResponse({'status': 'error', 'message': 'An unexpected error occurred.'}, status=500)
+    
+    
 @require_POST
 def create_category(request):
     try:
