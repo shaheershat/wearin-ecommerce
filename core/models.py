@@ -672,6 +672,17 @@ class Offer(models.Model):
         default="SALE",
         help_text="Text to display as a tag on product cards (e.g., 'SALE', '20% OFF')."
     )
+    background_color = models.CharField(
+        max_length=7,
+        default='#FF0000', # Default to red if not specified
+        help_text="Hex color code for tag background (e.g., #FF0000 or a named color like 'red')"
+    )
+    text_color = models.CharField(
+        max_length=7,
+        default='#FFFFFF', # Default to white if not specified
+        help_text="Hex color code for tag text (e.g., #FFFFFF or a named color like 'white')"
+    )
+    # --- END NEW FIELDS ---
     discount_percentage = models.DecimalField(
         max_digits=5,
         decimal_places=2,
@@ -696,7 +707,7 @@ class Offer(models.Model):
         help_text="Overall status of the offer. Set to False to disable."
     )
     products = models.ManyToManyField(
-        'Product',
+        'Product', # Make sure 'Product' is correctly defined/imported or adjust if in a different app
         related_name='offers',
         blank=True,
         help_text="Select products to apply this offer to."
@@ -716,6 +727,7 @@ class Offer(models.Model):
     def is_currently_active(self):
         """Checks if the offer is active based on dates and is_active flag."""
         now = timezone.now()
+        # --- FIX: Change valid_from/valid_to to start_date/end_date here ---
         return self.is_active and self.start_date <= now and self.end_date >= now
 
     def get_discounted_price(self, original_price):

@@ -263,15 +263,12 @@ class OfferBannerForm(forms.ModelForm):
         }
 
 class OfferForm(forms.ModelForm):
-    """
-    Form for creating/editing Product Offers.
-    Products selection will be handled separately in the custom view.
-    """
     class Meta:
         model = Offer
         fields = [
             'name', 'tag_text', 'discount_percentage', 'discount_amount',
-            'start_date', 'end_date', 'is_active'
+            'start_date', 'end_date', 'is_active',
+            'background_color', 'text_color'
         ]
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g., Summer Sale'}),
@@ -280,7 +277,9 @@ class OfferForm(forms.ModelForm):
             'discount_amount': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0', 'placeholder': 'e.g., 10.00'}),
             'start_date': forms.DateTimeInput(attrs={'type': 'datetime-local', 'class': 'form-control'}),
             'end_date': forms.DateTimeInput(attrs={'type': 'datetime-local', 'class': 'form-control'}),
-            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'})
+            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'background_color': forms.TextInput(attrs={'type': 'color', 'class': 'form-control form-control-color'}), # Keep type="color"
+            'text_color': forms.TextInput(attrs={'type': 'color', 'class': 'form-control form-control-color'}),     # Keep type="color"
         }
         labels = {
             'name': 'Offer Name',
@@ -289,7 +288,9 @@ class OfferForm(forms.ModelForm):
             'discount_amount': 'Discount Amount ($)',
             'start_date': 'Start Date & Time',
             'end_date': 'End Date & Time',
-            'is_active': 'Offer Active'
+            'is_active': 'Offer Active',
+            'background_color': 'Tag Background Color',
+            'text_color': 'Tag Text Color',
         }
 
     def clean(self):
@@ -313,7 +314,7 @@ class OfferForm(forms.ModelForm):
             raise forms.ValidationError("End date must be after start date.")
 
         return cleaned_data
-
+    
 class ProductFilterForm(forms.Form):
     """
     Form for filtering and sorting products in the custom admin offer page.

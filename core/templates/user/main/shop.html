@@ -149,7 +149,8 @@
                 <!-- Offer Tag -->
                 {% for offer in product.offers.all %}
                     {% if forloop.first and offer.is_currently_active %}
-                    <span class="absolute top-4 left-4 bg-red-600 text-white text-xs font-semibold px-4 py-2 rounded-full z-10 shadow-md">
+                    <span class="absolute top-4 left-4 text-xs font-semibold px-4 py-2 rounded-full z-10 shadow-md"
+                          style="background-color: {{ offer.background_color }}; color: {{ offer.text_color }};"> {# <-- THIS IS THE KEY CHANGE #}
                         {{ offer.tag_text }}
                     </span>
                     {% endif %}

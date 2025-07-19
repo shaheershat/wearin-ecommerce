@@ -10,11 +10,99 @@
         <form method="post">
             {% csrf_token %}
             {{ form|crispy:'tailwind' }}
-            <div class="flex justify-end space-x-4">
+            <div class="flex justify-end space-x-4 mt-6">
                 <a href="{% url 'admin_offer_management' %}" class="px-4 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400">Cancel</a>
                 <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Save Changes</button>
             </div>
         </form>
     </div>
 </div>
+
+<style>
+    /* Ensure crispy form field containers are block-level and have margin */
+    .form-group, .form-field, .control-group, .field {
+        display: block !important;
+        margin-bottom: 1.5rem !important;
+    }
+
+    /* Ensure labels are visible and correctly styled */
+    label {
+        display: block !important;
+        font-weight: bold !important;
+        margin-bottom: 0.5rem !important;
+        color: #374151 !important; /* Tailwind's gray-700 */
+        font-size: 0.875rem !important; /* text-sm */
+    }
+
+    /* Target ALL inputs, textareas, and selects (except specific types handled below) for full width */
+    input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="color"]),
+    textarea,
+    select {
+        display: block !important;
+        width: 100% !important;
+        padding: 0.75rem 1rem !important;
+        border: 1px solid #D1D5DB !important;
+        border-radius: 0.375rem !important;
+        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important;
+        color: #1F2937 !important;
+        background-color: #FFFFFF !important;
+        -webkit-appearance: none !important;
+        -moz-appearance: none !important;
+        appearance: none !important;
+        box-sizing: border-box !important; /* Important for width calculations */
+    }
+
+    /* Specific styles for color inputs */
+    input[type="color"].form-control-color {
+        /* Reset any browser defaults that might make it too small or too large */
+        -webkit-appearance: none !important;
+        -moz-appearance: none !important;
+        appearance: none !important;
+        border: 1px solid #D1D5DB !important; /* Keep the border from previous step */
+        padding: 0 !important; /* Remove default padding within the color swatch */
+        width: 50px !important; /* Adjust width as desired, e.g., 50px */
+        min-width: 50px !important; /* Ensure it doesn't get smaller */
+        height: 40px !important; /* Adjust height as desired, e.g., 40px */
+        min-height: 40px !important; /* Ensure it doesn't get smaller */
+        border-radius: 0.375rem !important;
+        background-color: transparent !important; /* Make sure background is transparent */
+        cursor: pointer !important; /* Indicate it's clickable */
+        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important; /* Keep the shadow */
+    }
+
+    /* Keep DateTimeInput styles, which are fine at 100% width */
+    input[type="datetime-local"].form-control {
+        display: block !important;
+        width: 100% !important;
+        min-height: 2.5rem !important;
+        box-sizing: border-box !important;
+    }
+
+    /* Checkbox specific styles */
+    input[type="checkbox"] {
+        display: inline-block !important;
+        width: auto !important;
+        margin-right: 0.5rem !important;
+        vertical-align: middle !important;
+        height: 1.25rem !important;
+        width: 1.25rem !important;
+        border: 1px solid #D1D5DB !important;
+        border-radius: 0.25rem !important;
+    }
+
+    /* Help text and error messages */
+    .helptext, .errorlist {
+        font-size: 0.875rem !important;
+        color: #6B7280 !important;
+        margin-top: 0.25rem !important;
+    }
+    .errorlist {
+        color: #EF4444 !important;
+        list-style: none !important;
+        padding-left: 0 !important;
+    }
+    .errorlist li {
+        margin-bottom: 0.25rem !important;
+    }
+</style>
 {% endblock %}

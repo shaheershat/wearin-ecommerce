@@ -40,6 +40,16 @@
                     <img src="{{ product.images.first.image.url }}" alt="{{ product.name }}"
                          class="w-full h-[400px] object-cover transform transition-transform duration-300 group-hover:scale-105">
 
+                    {# Offer Tag - ADDED/UPDATED HERE #}
+                    {% for offer in product.offers.all %}
+                        {% if forloop.first and offer.is_currently_active %}
+                        <span class="absolute top-4 left-4 text-xs font-semibold px-4 py-2 rounded-full z-10 shadow-md"
+                              style="background-color: {{ offer.background_color }}; color: {{ offer.text_color }};">
+                            {{ offer.tag_text }}
+                        </span>
+                        {% endif %}
+                    {% endfor %}
+
                     {# Wishlist Heart Icon #}
                     <button class="absolute top-3 right-3 bg-white p-2 rounded-full shadow-md z-10 hover:scale-110 transition-transform duration-200"
                             onclick="toggleWishlist(this, {{ product.id }})">
@@ -69,6 +79,16 @@
                 <div class="relative overflow-hidden">
                     <img src="{{ product.images.first.image.url }}" alt="{{ product.name }}"
                          class="w-full h-[500px] object-cover transform transition-transform duration-300 group-hover:scale-105">
+
+                    {# Offer Tag - ADDED/UPDATED HERE #}
+                    {% for offer in product.offers.all %}
+                        {% if forloop.first and offer.is_currently_active %}
+                        <span class="absolute top-4 left-4 text-xs font-semibold px-4 py-2 rounded-full z-10 shadow-md"
+                              style="background-color: {{ offer.background_color }}; color: {{ offer.text_color }};">
+                            {{ offer.tag_text }}
+                        </span>
+                        {% endif %}
+                    {% endfor %}
 
                     {# Wishlist Heart Icon #}
                     <button class="absolute top-3 right-3 bg-white p-2 rounded-full shadow-md z-10 hover:scale-110 transition-transform duration-200"
