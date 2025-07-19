@@ -1,0 +1,5 @@
+{# core/templates/admin_panel/_offer_form_fields.html #}
+{# This template is used to render the OfferForm fields for AJAX injection into modals #}
+{% load crispy_forms_tags %}
+
+{{ offer_form|crispy:'tailwind' }}

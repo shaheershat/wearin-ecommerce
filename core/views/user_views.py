@@ -1569,6 +1569,7 @@ def shop_view(request):
         'selected_sizes': selected_sizes,
         'selected_max_price': selected_max_price,
         'search_query': search_query,
+        'now': timezone.now(),
     }
 
     # Ensure your partial template filename matches this.

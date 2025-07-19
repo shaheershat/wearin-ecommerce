@@ -3,6 +3,90 @@
 
 {% block title %}Shop{% endblock %}
 
+{% block extra_head %}
+    <style>
+        /* CSS for the Product Offer Tag */
+        .product-offer-tag {
+            position: absolute;
+            top: 10px;    /* Distance from the top of the container */
+            left: 10px;   /* Distance from the left of the container */
+            padding: 6px 10px; /* Adjust padding for desired size */
+            border-radius: 5px; /* Rounded corners for the tag */
+            font-size: 0.8em; /* Font size of the tag text */
+            font-weight: bold;
+            color: #FFFFFF; /* Default text color (white) */
+            background-color: #FF0000; /* Default background color (red) */
+            z-index: 40; /* Ensure it's above the image and other overlays like wishlist button */
+            text-transform: uppercase; /* Make text uppercase, e.g., "SALE" */
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2); /* Subtle shadow for depth */
+            line-height: 1; /* Adjust line height to prevent extra space around text */
+            white-space: nowrap; /* Prevents text from wrapping if tag_text is long */
+            display: block; /* Ensure it behaves as a block element for positioning */
+        }
+
+        /* Ensure the product card and its inner image container are positioned correctly */
+        .product-card {
+            position: relative; /* Crucial: This makes it a positioning context for absolute children within the whole card */
+            border-radius: 0.75rem; /* Tailwind's rounded-xl */
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06); /* Tailwind's shadow-sm */
+            overflow: hidden; /* Ensures anything outside the card is clipped, useful for rounded corners */
+            background-color: #fff; /* Tailwind's bg-white */
+        }
+
+        /* The div directly containing the image and other absolutely positioned elements */
+        .product-card > .relative.overflow-hidden {
+            position: relative; /* This div also needs to be relative to contain its absolute children */
+            overflow: hidden; /* Keeps image overflow contained, useful for hover effects */
+            height: 18rem; /* Equivalent to Tailwind's h-72 (72 * 4px = 288px). This fixes the container's height. */
+            width: 100%; /* Ensure it takes full width */
+        }
+
+        /* Ensure wishlist button has a z-index lower than the offer tag but higher than the image */
+        .product-card button.absolute {
+            z-index: 30; /* Should be lower than offer tag (40) but higher than image (default 1) */
+        }
+
+        /* The overlay for "View Product" */
+        .product-card .absolute.inset-0 {
+            z-index: 20; /* Lower than tag and wishlist, higher than image */
+        }
+
+        /* Styling for the Image itself - IMPORTANT CHANGES HERE */
+        .product-card .relative.overflow-hidden img {
+            position: absolute; /* Make the image absolute to ensure it fills the parent div without pushing other content */
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%; /* Make it fill the parent container's defined height */
+            object-fit: cover;
+            /* Initial state for the transform, the group-hover will apply the scale */
+            transform: scale(1); 
+            transition: transform 0.3s ease-in-out;
+        }
+
+        /* Apply the hover scale directly */
+        .product-card .relative.overflow-hidden .group:hover & img { /* This might need adjustment if group-hover is on parent of 'relative.overflow-hidden' */
+            transform: scale(1.05);
+        }
+
+        /* Corrected hover for img scale */
+        .group:hover .relative.overflow-hidden img {
+            transform: scale(1.05);
+        }
+
+        /* Placeholder for no image */
+        .product-card .relative.overflow-hidden .no-image-placeholder {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #E2E8F0; /* Tailwind's bg-gray-200 */
+            color: #A0AEC0; /* Tailwind's text-gray-400 */
+        }
+    </style>
+{% endblock %}
+
 {% block content %}
 <div class="container mx-auto px-4 py-8">
     <section class="mb-12">
@@ -56,45 +140,65 @@
         </aside>
 
 
-        <section class="flex-1">
-            <div id="productGrid" class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                {% for product in products %}
-                <div class="bg-white rounded-xl shadow-sm overflow-hidden group">
-                    <div class="relative overflow-hidden">
-                        {% if product.images.first %}
-                            <img src="{{ product.images.first.image.url }}" alt="{{ product.name }}"
-                                 class="w-full h-72 object-cover transform transition-transform duration-300 group-hover:scale-105">
-                        {% else %}
-                            <img src="https://placehold.co/400x500/E2E8F0/A0AEC0?text=No+Image" alt="No Image"
-                                 class="w-full h-72 object-cover transform transition-transform duration-300 group-hover:scale-105">
-                        {% endif %}
-
-                        <button class="absolute top-3 right-3 bg-white p-2 rounded-full shadow-md z-10 hover:scale-110 transition-transform duration-200"
-                                onclick="toggleWishlist(this, {{ product.id }})">
-                            <svg xmlns="http://www.w3.org/2000/svg"
-                                 class="h-6 w-6 {% if product.id in wishlisted_product_ids %}text-red-500{% else %}text-gray-400{% endif %} hover:text-red-500 transition-colors duration-200"
-                                 fill="{% if product.id in wishlisted_product_ids %}currentColor{% else %}none{% endif %}"
-                                 viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                <path stroke-linecap="round" stroke-linejoin="round"
-                                      d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                            </svg>
-                        </button>
-
-                        <div class="absolute inset-0 bg-black bg-opacity-25 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                            <a href="{% url 'product_detail' product.id %}"
-                               class="bg-white text-gray-800 px-6 py-2 rounded-full font-medium hover:bg-gray-100 transition-colors">View Product</a>
-                        </div>
-                    </div>
-                    <div class="p-4 text-center">
-                        <h4 class="font-semibold text-lg mb-1">{{ product.name }}</h4>
-                        <p class="text-gray-600">₹{{ product.price }}</p>
-                    </div>
-                </div>
-                {% empty %}
-                <p class="col-span-full text-center text-gray-500">No products available at the moment.</p>
+        <section class="flex-1 px-2 sm:px-4 lg:px-0">
+    <div id="productGrid" class="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+        {% for product in products %}
+        <div class="bg-white rounded-xl shadow group product-card overflow-hidden relative">
+            <!-- Image Container -->
+            <div class="relative aspect-[4/5] w-full overflow-hidden">
+                <!-- Offer Tag -->
+                {% for offer in product.offers.all %}
+                    {% if forloop.first and offer.is_currently_active %}
+                    <span class="absolute top-4 left-4 bg-red-600 text-white text-xs font-semibold px-4 py-2 rounded-full z-10 shadow-md">
+                        {{ offer.tag_text }}
+                    </span>
+                    {% endif %}
                 {% endfor %}
+
+                <!-- Wishlist Button -->
+                <button class="absolute top-3 right-3 bg-white p-2 rounded-full shadow z-10 hover:scale-110 transition"
+                        onclick="toggleWishlist(this, {{ product.id }})">
+                    <svg xmlns="http://www.w3.org/2000/svg"
+                         class="h-6 w-6 {% if product.id in wishlisted_product_ids %}text-red-500{% else %}text-gray-400{% endif %} transition-colors duration-200"
+                         fill="{% if product.id in wishlisted_product_ids %}currentColor{% else %}none{% endif %}"
+                         viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                              d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                    </svg>
+                </button>
+
+                <!-- Product Image -->
+                {% if product.images.first %}
+                    <img src="{{ product.images.first.image.url }}"
+                         alt="{{ product.name }}"
+                         class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                {% else %}
+                    <div class="w-full h-full bg-gray-100 flex items-center justify-center text-gray-400 text-sm">
+                        No Image
+                    </div>
+                {% endif %}
+
+                <!-- View Product Overlay -->
+                <div class="absolute inset-0 bg-black bg-opacity-25 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                    <a href="{% url 'product_detail' product.id %}"
+                       class="bg-white text-gray-800 px-4 py-2 rounded-full text-sm font-medium hover:bg-gray-100 transition">
+                        View Product
+                    </a>
+                </div>
             </div>
-        </section>
+
+            <!-- Product Info -->
+            <div class="p-3 sm:p-4 text-center">
+                <h4 class="font-semibold text-base sm:text-lg mb-1 truncate">{{ product.name }}</h4>
+                <p class="text-gray-600 text-sm sm:text-base">₹{{ product.price }}</p>
+            </div>
+        </div>
+        {% empty %}
+        <p class="col-span-full text-center text-gray-500">No products available at the moment.</p>
+        {% endfor %}
+    </div>
+</section>
+
     </div>
 
     <section class="relative h-[747px] bg-cover bg-center bg-no-repeat mt-12" style="background-image: url('{% static 'images/nsnew.png' %}');">
@@ -116,6 +220,7 @@
     </section>
 </div>
 
+{# Javascript code remains the same #}
 <script>
     function toggleMobileFilters() {
         const drawer = document.getElementById('mobileFilterDrawer');
@@ -201,6 +306,12 @@
             const newGrid = doc.querySelector('#productGrid');
             if (newGrid) {
                 document.getElementById('productGrid').innerHTML = newGrid.innerHTML;
+                // Re-initialize wishlist toggles for newly loaded products
+                document.getElementById('productGrid').querySelectorAll('.wishlist-btn').forEach(btn => {
+                    btn.onclick = function() {
+                        toggleWishlist(this, this.dataset.productId);
+                    };
+                });
             } else {
                 console.error("Could not find #productGrid in the response HTML.");
             }

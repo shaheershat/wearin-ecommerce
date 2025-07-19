@@ -36,8 +36,7 @@ INSTALLED_APPS = [
     'core.apps.CoreConfig', # Your core app
     'crispy_forms',
     'crispy_tailwind',
-    'crispy_bootstrap5',
-    'django_celery_beat', # Celery Beat for periodic tasks
+    'django_celery_beat',
 ]
 
 MIDDLEWARE = [

@@ -17,11 +17,12 @@ from django.contrib.auth import authenticate
 from django.contrib.auth import get_user_model
 from django.conf import settings
 from core.decorators import admin_login_required
-from core.models import Order, OrderItem, Product, Address, Category, ProductImage, Coupon
+from core.models import Order, OrderItem, Product, Address, Category, ProductImage, Coupon,Offer
 from core.forms import ProductForm, CouponForm
 from django.db.models import Count
 from django.utils.timezone import now
 from django.db.models.functions import TruncDate
+from django.template.loader import render_to_string
 from datetime import datetime
 import pandas as pd
 from io import BytesIO
@@ -50,7 +51,6 @@ def offer_management_view(request):
     and viewing active offers.
     """
     # --- Offer Banner Management ---
-    # Get the single OfferBanner instance, create if it doesn't exist
     offer_banner_instance, created = OfferBanner.objects.get_or_create(pk=1, defaults={'text_content': 'Limited Time Offer!', 'is_active': False})
     
     if request.method == 'POST' and 'banner_submit' in request.POST:
@@ -64,12 +64,11 @@ def offer_management_view(request):
     else:
         banner_form = OfferBannerForm(instance=offer_banner_instance)
 
-    # NEW: Fetch the currently active banner from the database for the "Live Preview"
     active_live_banner = OfferBanner.objects.filter(is_active=True).first()
 
 
     # --- Product Offer Management ---
-    offer_form = OfferForm()
+    offer_form = OfferForm() # Form for creating new offers in the modal
     product_filter_form = ProductFilterForm(request.GET)
 
     products_queryset = Product.objects.all().order_by('-created_at')
@@ -94,33 +93,42 @@ def offer_management_view(request):
         if sort_by:
             products_queryset = products_queryset.order_by(sort_by)
 
-    # Handle product offer actions (Apply New Offer, Apply Existing Offer, Remove Offer)
+    # Handle product offer actions (Apply Existing Offer, Remove Offer, Create New Offer via AJAX)
     if request.method == 'POST':
+        # --- Handle Create New Offer Modal Submission (AJAX) ---
+        if 'create_new_offer_modal' in request.POST:
+            offer_form = OfferForm(request.POST)
+            if offer_form.is_valid():
+                offer = offer_form.save()
+                return JsonResponse({
+                    'status': 'success',
+                    'message': f"Offer '{offer.name}' created successfully!",
+                    'offer': {
+                        'id': offer.id,
+                        'name': offer.name, # Use 'name' for display in dropdown
+                    }
+                })
+            else:
+                errors = offer_form.errors.as_json()
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Validation failed.',
+                    'errors': errors
+                }, status=400)
+
+        # For the following actions, products must be selected
         selected_product_ids = request.POST.getlist('selected_products')
         if not selected_product_ids:
-            if 'apply_new_offer' in request.POST or 'apply_existing_offer' in request.POST or 'remove_offer' in request.POST:
-                messages.warning(request, "Please select at least one product.")
-                return redirect('admin_offer_management') # Redirect to refresh page with messages
+            messages.warning(request, "Please select at least one product.")
+            return redirect('admin_offer_management')
 
         try:
             with transaction.atomic():
-                if 'apply_new_offer' in request.POST:
-                    offer_form = OfferForm(request.POST)
-                    if offer_form.is_valid():
-                        new_offer = offer_form.save()
-                        products_to_update = Product.objects.filter(id__in=selected_product_ids)
-                        new_offer.products.set(products_to_update) # Set products for the new offer
-                        messages.success(request, f"New offer '{new_offer.name}' created and applied to {len(selected_product_ids)} products.")
-                        return redirect('admin_offer_management')
-                    else:
-                        messages.error(request, "Error creating new offer. Please check the form.")
-
-                elif 'apply_existing_offer' in request.POST:
+                if 'apply_existing_offer' in request.POST:
                     offer_id = request.POST.get('existing_offer_id')
                     if offer_id:
                         existing_offer = get_object_or_404(Offer, id=offer_id)
                         products_to_update = Product.objects.filter(id__in=selected_product_ids)
-                        # Add products to the existing offer's ManyToMany
                         existing_offer.products.add(*products_to_update)
                         messages.success(request, f"Existing offer '{existing_offer.name}' applied to {len(selected_product_ids)} products.")
                         return redirect('admin_offer_management')
@@ -128,18 +136,16 @@ def offer_management_view(request):
                         messages.warning(request, "Please select an existing offer.")
 
                 elif 'remove_offer' in request.POST:
-                    offer_id_to_remove = request.POST.get('offer_to_remove_id') # Can be specific offer or 'all'
+                    offer_id_to_remove = request.POST.get('offer_to_remove_id')
                     
                     products_to_update = Product.objects.filter(id__in=selected_product_ids)
 
                     if offer_id_to_remove == 'all':
-                        # Remove all offers from selected products
                         for product in products_to_update:
-                            product.offers.clear() # Disassociate all offers from this product
+                            product.offers.clear()
                         messages.success(request, f"All offers removed from {len(selected_product_ids)} selected products.")
                     elif offer_id_to_remove:
                         specific_offer = get_object_or_404(Offer, id=offer_id_to_remove)
-                        # Remove specific offer from selected products
                         for product in products_to_update:
                             if specific_offer in product.offers.all():
                                 product.offers.remove(specific_offer)
@@ -155,22 +161,64 @@ def offer_management_view(request):
 
 
     # --- Active Offers List ---
-    active_offers = Offer.objects.filter(
-        is_active=True,
-        start_date__lte=timezone.now(),
-        end_date__gte=timezone.now()
-    ).prefetch_related('products').order_by('-start_date')
+    active_offers = Offer.objects.filter(is_active=True).prefetch_related('products').order_by('-start_date')
 
     context = {
         'banner_form': banner_form,
         'offer_form': offer_form,
         'product_filter_form': product_filter_form,
-        'products': products_queryset,
+        'products': products_queryset.distinct(),
         'active_offers': active_offers,
-        'all_offers': Offer.objects.all().order_by('name'), # For "Apply Existing Offer" dropdown
-        'active_live_banner': active_live_banner, # NEW: Pass the active live banner to context
+        'all_offers': Offer.objects.all().order_by('name'),
+        'active_live_banner': active_live_banner,
     }
     return render(request, 'admin_panel/offer_management.html', context)
+
+
+@admin_login_required
+def edit_offer_view(request, offer_id):
+    """
+    Handles editing an existing offer.
+    GET: Renders the edit form populated with existing offer data.
+    POST: Processes the form submission to update the offer.
+    """
+    try:
+        offer = get_object_or_404(Offer, id=offer_id)
+        if request.method == 'POST':
+            form = OfferForm(request.POST, instance=offer)
+            if form.is_valid():
+                form.save()
+                messages.success(request, f"Offer '{offer.name}' updated successfully!")
+                return redirect('admin_offer_management')
+            else:
+                messages.error(request, 'Please correct the errors below.')
+        else:
+            form = OfferForm(instance=offer)
+        return render(request, 'admin_panel/offer_edit.html', {'form': form, 'offer': offer})
+    except Exception as e:
+        logger.error(f"Error in edit_offer_view for offer {offer_id}: {e}", exc_info=True)
+        messages.error(request, f"An unexpected error occurred: {e}")
+        return render(request, 'admin_panel/offer_edit.html', {'form': form, 'offer': offer})
+    
+@admin_login_required    
+def delete_offer_view(request, offer_id):
+    """
+    Handles deleting an offer.
+    GET: Renders the delete confirmation page.
+    POST: Deletes the offer and redirects to the offer management page.
+    """
+    try:
+        offer = get_object_or_404(Offer, id=offer_id)
+        if request.method == 'POST':
+            offer_name = offer.name
+            offer.delete()
+            messages.success(request, f"Offer '{offer_name}' deleted successfully!")
+            return redirect('admin_offer_management')
+        return render(request, 'admin_panel/offer_delete.html', {'offer': offer})
+    except Exception as e:
+        logger.error(f"Error deleting offer {offer_id}: {e}", exc_info=True)
+        messages.error(request, f"Failed to delete offer due to server error: {e}")
+        return render(request, 'admin_panel/offer_delete.html', {'offer': offer})
 
 @admin_login_required
 @require_GET

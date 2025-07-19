@@ -102,9 +102,7 @@
         }
         .offer-banner-container {
             width: 100%;
-            padding: 8px 0;
             text-align: center;
-            font-weight: bold;
             overflow: hidden;
         }
     </style>
@@ -226,10 +224,21 @@
             </div>
         </div>
         {# Flash Message Banner Section - NOW AT THE BOTTOM #}
+        {% comment %}
+            Conditional display for the banner:
+            Check if the current path is 'home' or 'shop'.
+            request.path is the full URL path, e.g., '/' for home, '/shop/' for shop.
+            Ensure your URL patterns are correctly named 'home' and 'shop'.
+        {% endcomment %}
+        {% url 'home' as home_url %}
+        {% url 'shop' as shop_url %}
+
         {% if active_offer_banner and active_offer_banner.is_active %}
-        <div class="offer-banner-container" style="background-color: {{ active_offer_banner.bg_color }}; color: {{ active_offer_banner.text_color }};">
-            <span class="animate-marquee">{{ active_offer_banner.text_content }}</span>
-        </div>
+            {% if request.path == home_url or request.path == shop_url %}
+                <div class="offer-banner-container" style="background-color: {{ active_offer_banner.bg_color }}; color: {{ active_offer_banner.text_color }};">
+                    <span class="animate-marquee">{{ active_offer_banner.text_content }}</span>
+                </div>
+            {% endif %}
         {% endif %}
         {# END Flash Message Banner Section #}
     </header>

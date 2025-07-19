@@ -1,0 +1,20 @@
+{% extends 'admin_panel/dashboard.html' %}
+{% load crispy_forms_tags %}
+
+{% block title %}Delete Offer{% endblock %}
+
+{% block content %}
+<div class="container mx-auto p-4">
+    <h1 class="text-3xl font-bold mb-6 text-gray-800">Delete Offer: {{ offer.name }}</h1>
+    <div class="bg-white shadow-md rounded-lg p-6">
+        <p class="mb-6 text-gray-700">Are you sure you want to delete the offer "<span class="font-bold">{{ offer.name }}</span>"? This action cannot be undone.</p>
+        <form method="post" action="{% url 'admin_delete_offer' offer.id %}">
+            {% csrf_token %}
+            <div class="flex justify-end space-x-4">
+                <a href="{% url 'admin_offer_management' %}" class="px-4 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400">Cancel</a>
+                <button type="submit" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">Delete</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
