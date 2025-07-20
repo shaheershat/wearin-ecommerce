@@ -12,6 +12,7 @@ from django.contrib.auth.backends import ModelBackend
 from django.db import models
 from django.core.mail import send_mail
 from django.views.decorators.http import require_GET
+from core.utils import get_cart_items_data, validate_coupon
 from datetime import timedelta
 from core.tasks import send_order_cancelled_email 
 from django.contrib.auth import login
@@ -35,7 +36,7 @@ from django.core.mail import send_mail
 import razorpay
 from django.views.decorators.csrf import csrf_exempt
 from core.forms import UserLoginForm, UserRegistrationForm, ProfileForm, AddressForm, NewsletterForm
-from core.models import Product, Category, Wishlist, Order, UserProfile, EmailOTP, Address, NewsletterSubscriber, NotificationSubscription, ReturnReason,ReturnItem, ReturnRequest
+from core.models import Product, Category, Wishlist, Order, UserProfile, EmailOTP, Address, NewsletterSubscriber, NotificationSubscription, ReturnReason,ReturnItem, ReturnRequest,Offer
 from core.emails import send_product_available_email, send_product_sold_email, send_product_removed_from_cart_email, send_order_confirmation_email
 from core.tasks import release_expired_reservations_task
 from core.utils import send_otp_email
@@ -55,6 +56,8 @@ from django.http import HttpResponse
 from django.template.loader import get_template
 from django.db import transaction
 CART_RESERVATION_TIME_MINUTES = 5
+DEFAULT_SHIPPING_CHARGE = Decimal('50.00')
+MIN_PURCHASE_FOR_FREE_SHIPPING = Decimal('1000.00')
 
 def refund_to_wallet(user, amount):
     with transaction.atomic():
@@ -79,7 +82,7 @@ def download_invoice_view(request, order_id):
     html = template.render(context)
 
     response = HttpResponse(content_type='application/pdf')
-    response['Content-Disposition'] = f'attachment; filename="invoice_{order.id}.pdf"'
+    response['Content-Disposition'] = f'attachment; filename="invoice_{order.custom_order_id}.pdf"'
 
     pisa_status = pisa.CreatePDF(html, dest=response)
 
@@ -111,13 +114,13 @@ def cancel_order_view(request, order_id):
             wallet, created = Wallet.objects.get_or_create(user=request.user)
             
             # Refund amount to wallet
-            wallet.credit(order.total_price)
+            wallet.credit(order.total_amount)
 
             # Add wallet transaction record
             WalletTransaction.objects.create(
                 wallet=wallet,
                 transaction_type='refund',
-                amount=order.total_price,
+                amount=order.total_amount,
                 reason=f"Refund for cancelled order #{order.custom_order_id or order.id}"
             )
 
@@ -131,14 +134,14 @@ def cancel_order_view(request, order_id):
                     item.product.save()
                     logger.info(f"Product '{item.product.name}' (ID: {item.product.id}) stock updated to {item.product.stock_quantity}, is_sold set to False due to order cancellation.")
                 else:
-                    logger.warning(f"Product for OrderItem {item.id} in Order {order.id} not found during cancellation stock update.")
+                    logger.warning(f"Product for OrderItem {item.id} in Order {order.custom_order_id} not found during cancellation stock update.")
             # --- END NEW/UPDATED LOGIC ---
 
-            logger.info(f"User cancelled order {order.id}. Scheduling cancellation email.")
+            logger.info(f"User cancelled order {order.custom_order_id}. Scheduling cancellation email.")
             # FIX: Call with .delay() and pass order.id
             send_order_cancelled_email.delay(order.id) 
 
-            messages.success(request, f"Order has been cancelled and ₹{order.total_price} has been refunded to your wallet.")
+            messages.success(request, f"Order has been cancelled and ₹{order.total_amount} has been refunded to your wallet.")
             return redirect('my_profile')
 
     except Exception as e:
@@ -392,250 +395,279 @@ def user_coupon_list_view(request):
 @user_login_required
 def checkout_view(request):
     """
-    Handles displaying the checkout page, including order summary,
-    address selection, payment methods, and coupon application/validation.
-    Prioritizes actual cart items over lingering 'buy_now_item' session data.
+    Handles displaying the checkout page (GET) and processing order submission (POST).
+    Applies custom offers (BOGO, Free Shipping, Fixed/Percentage per product) and coupons.
+    Integrates Razorpay order creation for online payments.
     """
-    cart_items_for_order = []
-    subtotal = Decimal('0.00')
-    buy_now_item_data = None # FIX: Initialize buy_now_item_data here
-
+    
+    # --- Always calculate cart data within a transaction for select_for_update ---
     with transaction.atomic():
-        # --- PHASE 1: Always try to process the regular cart items first ---
+        cart_data = get_cart_items_data(request)
+    
+    cart_items_for_order_display = cart_data['items']
+    total_cart_items_original_price = cart_data['subtotal_original']
+    offer_level_discount = cart_data['discount_from_offers']
+    subtotal_after_offers = cart_data['subtotal_after_offers']
+    user_cart_obj = cart_data['cart_obj']
+
+    is_free_shipping = cart_data['is_free_shipping']
+    if Offer.objects.filter(offer_type='FREESHIP', is_active=True, start_date__lte=timezone.now(), end_date__gte=timezone.now()).exists():
+        is_free_shipping = True
+
+    shipping_charge = Decimal('0.00') if is_free_shipping else DEFAULT_SHIPPING_CHARGE
+    
+    total_before_coupon = subtotal_after_offers + shipping_charge
+    final_total_price = total_before_coupon
+    coupon_discount_amount = Decimal('0.00')
+
+    coupon_applied_code = request.session.get('coupon_code')
+    applied_coupon_object = None
+
+    if coupon_applied_code:
         try:
-            db_cart = Cart.objects.get(user=request.user)
-            cart_items_to_delete_ids = []
-
-            for item in db_cart.items.select_for_update().select_related('product'):
-                product = item.product
-
-                if product.is_sold:
-                    messages.error(request, f"'{product.name}' is already sold and removed from your cart.")
-                    cart_items_to_delete_ids.append(item.id) # FIX: Corrected typo here
-                    continue
-
-                if product.reserved_by_user:
-                    if product.reserved_by_user != request.user:
-                        messages.warning(request, f"'{product.name}' is now reserved by another customer and removed from your cart.")
-                        cart_items_to_delete_ids.append(item.id)
-                        continue
-                    elif not product.is_currently_reserved:
-                        # FIX: Added request as first argument
-                        messages.warning(request, f"Your reservation for '{product.name}' has expired and it was removed from your cart.")
-                        product.release_reservation()
-                        cart_items_to_delete_ids.append(item.id)
-                        continue
-
-                item_total = product.price * item.quantity
-                cart_items_for_order.append({
-                    'product': product,
-                    'quantity': item.quantity,
-                    'total_price': item_total
-                })
-                subtotal += item_total
-
-            if cart_items_to_delete_ids:
-                CartItem.objects.filter(id__in=cart_items_to_delete_ids).delete()
-
-            # If we successfully populated cart_items_for_order from db_cart,
-            # clear any lingering 'buy_now_item' from session.
-            # This ensures the actual cart takes precedence.
-            if cart_items_for_order and 'buy_now_item' in request.session:
-                del request.session['buy_now_item']
-                request.session.modified = True
-
-        except Cart.DoesNotExist:
-            pass # No cart, cart_items_for_order remains empty
-
-        # --- PHASE 2: If regular cart is empty, then check for a 'buy_now_item' ---
-        # This only runs if PHASE 1 didn't populate cart_items_for_order.
-        if not cart_items_for_order:
-            buy_now_item_data = request.session.get('buy_now_item') # Now this is a re-assignment, not first assignment
-            if buy_now_item_data:
-                try:
-                    product = Product.objects.select_for_update().get(id=buy_now_item_data['id'])
-
-                    # Re-check product availability for buy-now item
-                    if product.is_sold:
-                        messages.error(request, f"'{product.name}' from 'Buy Now' is already sold.")
-                        del request.session['buy_now_item']
-                        request.session.modified = True
-                        return redirect('shop') # Or redirect back to product detail
-
-                    if product.reserved_by_user:
-                        if product.reserved_by_user != request.user:
-                            # FIX: Added request as first argument
-                            messages.warning(request, f"'{product.name}' from 'Buy Now' is reserved by another customer.")
-                            del request.session['buy_now_item']
-                            request.session.modified = True
-                            return redirect('product_detail', id=product.id)
-                        elif not product.is_currently_reserved:
-                            # FIX: Added request as first argument
-                            messages.warning(request, f"Your 'Buy Now' reservation for '{product.name}' has expired.")
-                            product.release_reservation()
-                            del request.session['buy_now_item']
-                            request.session.modified = True
-                            return redirect('product_detail', id=product.id)
-                    else:
-                        # If not reserved, reserve it now for buy-now flow
-                        product.reserved_by_user = request.user
-                        product.reservation_expires_at = timezone.now() + timedelta(minutes=CART_RESERVATION_TIME_MINUTES)
-                        product.save()
-                        # FIX: Added request as first argument
-                        messages.info(request, f"'{product.name}' reserved for 'Buy Now'.")
-
-                    quantity = buy_now_item_data['quantity']
-                    item_total = product.price * quantity
-                    cart_items_for_order.append({
-                        'product': product,
-                        'quantity': quantity,
-                        'total_price': item_total
-                    })
-                    subtotal += item_total
-
-                except Product.DoesNotExist:
-                    messages.error(request, "The 'Buy Now' product is no longer available.")
-                    del request.session['buy_now_item']
-                    request.session.modified = True
-                    return redirect('shop')
-            # If buy_now_item_data was processed and added to cart_items_for_order, it's already handled.
-            # If buy_now_item_data was invalid/non-existent, it's already cleared.
-            # So, no further action needed here for buy_now_item.
-
-    if subtotal <= 0 or not cart_items_for_order:
-        messages.error(request, "Your cart is empty or contains invalid/expired items.")
-        # Ensure buy_now_item is cleared if cart is empty after all checks
-        if 'buy_now_item' in request.session:
-            del request.session['buy_now_item']
-            request.session.modified = True
-        return redirect('shop') # Redirect to shop or cart page
-
-    total_price = subtotal
-    discount_amount = Decimal('0.00')
-    coupon_applied_code = request.session.get('applied_coupon_code')
-    applied_coupon_object = None # This will hold the actual Coupon object if valid
-
-    # Get current cart items for coupon validation (as a QuerySet for efficiency)
-    user_cart_obj = None
-    user_cart_items_queryset = CartItem.objects.none() # Initialize as empty queryset
-    try:
-        user_cart_obj = Cart.objects.get(user=request.user)
-        user_cart_items_queryset = CartItem.objects.filter(
-            cart=user_cart_obj,
-            product__is_sold=False,
-            product__stock_quantity__gt=0
-        )
-    except Cart.DoesNotExist:
-        pass # user_cart_items_queryset remains an empty queryset
-
-    # Handle coupon application initiated from GET request (e.g., from coupon list or direct input)
-    if request.method == 'GET' and 'coupon' in request.GET:
-        coupon_code_from_url = request.GET.get('coupon', '').strip().upper()
-        if coupon_code_from_url:
-            try:
-                coupon = Coupon.objects.get(code=coupon_code_from_url)
-
-                # Call the coupon's is_valid method with full context
-                is_valid, validation_message = coupon.is_valid(
-                    subtotal,
-                    user=request.user,
-                    cart_items=user_cart_items_queryset # Pass QuerySet of cart items
-                )
-
-                if is_valid:
-                    discount_amount = coupon.discount
-                    total_price = coupon.apply_discount(subtotal)
-                    request.session['applied_coupon_code'] = coupon.code # Store code in session
-                    # FIX: Use Python's f-string formatting for Decimal
-                    messages.success(request, f"Coupon '{coupon.code}' applied successfully! You saved ₹{discount_amount:.2f}.")
-                    applied_coupon_object = coupon # Store object for template
-                else:
-                    messages.error(request, f"Coupon '{coupon.code}' not applied: {validation_message}")
-                    # If new coupon fails, ensure any old one is removed
-                    if 'applied_coupon_code' in request.session:
-                        del request.session['applied_coupon_code']
-                        coupon_applied_code = None # Clear for template
-                        applied_coupon_object = None
-            except Coupon.DoesNotExist:
-                messages.error(request, "Invalid coupon code.")
-                if 'applied_coupon_code' in request.session: # Clear if input was for non-existent coupon
-                    del request.session['applied_coupon_code']
-                    coupon_applied_code = None
-                    applied_coupon_object = None
-        else: # 'coupon' parameter was present but empty (user cleared input field)
-            if 'applied_coupon_code' in request.session:
-                del request.session['applied_coupon_code']
-                messages.info(request, "Coupon field cleared.")
-            coupon_applied_code = None # Ensure it's clear
-            applied_coupon_object = None
-
-    # Re-validate previously applied coupon from session on subsequent loads of checkout page
-    # (e.g., after refreshing, or coming from another page)
-    elif coupon_applied_code:
-        try:
-            coupon = Coupon.objects.get(code=coupon_applied_code)
-            is_valid, validation_message = coupon.is_valid(
-                subtotal,
-                user=request.user,
-                cart_items=user_cart_items_queryset
+            coupon_obj = Coupon.objects.get(code=coupon_applied_code, is_active=True, valid_from__lte=timezone.now(), valid_to__gte=timezone.now())
+            
+            is_valid_coupon, validation_message_coupon = validate_coupon(
+                coupon_obj, request.user, subtotal_after_offers, cart_items_for_order_display
             )
-            if is_valid:
-                discount_amount = coupon.discount
-                total_price = coupon.apply_discount(subtotal)
-                applied_coupon_object = coupon
+            
+            if is_valid_coupon:
+                if coupon_obj.discount_type == 'percentage':
+                    coupon_discount_amount = (subtotal_after_offers * coupon_obj.discount) / Decimal('100.00')
+                else:
+                    coupon_discount_amount = coupon_obj.discount
+                
+                if coupon_discount_amount > subtotal_after_offers:
+                    coupon_discount_amount = subtotal_after_offers
+                
+                final_total_price = total_before_coupon - coupon_discount_amount
+                applied_coupon_object = coupon_obj
             else:
-                # If previously applied coupon is no longer valid, remove it
-                # FIX: Added request as first argument
-                messages.warning(request, f"Applied coupon '{coupon.code}' is no longer valid: {validation_message}. It has been removed.")
-                del request.session['applied_coupon_code']
+                messages.warning(request, f"Applied coupon '{coupon_applied_code}' is no longer valid: {validation_message_coupon}. It has been removed.")
+                del request.session['coupon_code']
                 coupon_applied_code = None
                 applied_coupon_object = None
         except Coupon.DoesNotExist:
-            # If coupon was deleted from admin, remove from session
-            if 'applied_coupon_code' in request.session:
-                del request.session['applied_coupon_code']
-            # FIX: Added request as first argument
-            messages.warning(request, f"The previously applied coupon is invalid or no longer exists. It has been removed.")
+            messages.warning(request, "The previously applied coupon is invalid or no longer exists. It has been removed.")
+            del request.session['coupon_code']
             coupon_applied_code = None
             applied_coupon_object = None
+    
+    final_total_price = max(Decimal('0.00'), final_total_price)
 
-    # Wallet Balance
     wallet, created = Wallet.objects.get_or_create(user=request.user)
     wallet_balance = wallet.balance
 
-    # Razorpay details (order_id needs to be generated before payment)
-    # This razorpay_order_id is a placeholder for the checkout page.
-    # The actual Razorpay order creation happens in your create_order view.
-    # Removed the razorpay_client.order.create call from here.
-    razorpay_temp_order_id = request.session.get('razorpay_temp_order_id', str(uuid.uuid4()))
-    request.session['razorpay_temp_order_id'] = razorpay_temp_order_id
-
-    # Addresses for checkout
     addresses = Address.objects.filter(user=request.user).order_by('-is_default')
     selected_address_id = None
+    selected_address = None # <--- ADDED THIS LINE HERE
+
     if addresses.exists():
         default_address = addresses.filter(is_default=True).first()
         if default_address:
+            selected_address = default_address
             selected_address_id = default_address.id
         else:
+            selected_address = addresses.first()
             selected_address_id = addresses.first().id
 
 
+    # --- POST Request Handling for Order Submission and Payment ---
+    if request.method == 'POST':
+        selected_address_id = request.POST.get('selected_address')
+        payment_method = request.POST.get('payment_method')
+
+        if not selected_address_id:
+            messages.error(request, "Please select a shipping address.")
+            return redirect('checkout')
+        
+        try:
+            # Re-fetch selected_address for POST request to ensure it's the correct instance
+            selected_address = Address.objects.get(id=selected_address_id, user=request.user)
+        except Address.DoesNotExist:
+            messages.error(request, "Selected address is invalid or does not belong to your account.")
+            return redirect('checkout')
+
+        if not cart_items_for_order_display:
+            messages.error(request, "Your cart is empty. Please add items before proceeding.")
+            return redirect('shop')
+
+        with transaction.atomic():
+            new_order = Order.objects.create(
+                user=request.user,
+                address=selected_address,
+                total_amount=final_total_price,
+                coupon_discount=coupon_discount_amount,
+                shipping_charge=shipping_charge,
+                payment_method=payment_method,
+                status='Pending',
+                payment_status='Pending'
+            )
+
+            for item_data in cart_items_for_order_display:
+                product = item_data['product']
+                quantity = item_data['quantity']
+                
+                price_at_purchase_unit = item_data['total_price'] / quantity if quantity > 0 else Decimal('0.00')
+
+                product_db = Product.objects.select_for_update().get(id=product.id)
+                if product_db.is_sold or product_db.stock_quantity < quantity:
+                    transaction.set_rollback(True)
+                    messages.error(request, f"Sorry, '{product_db.name}' is no longer available in the requested quantity or is sold out.")
+                    return redirect('checkout')
+                
+                OrderItem.objects.create(
+                    order=new_order,
+                    product=product_db,
+                    quantity=quantity,
+                    price_at_purchase=price_at_purchase_unit,
+                    original_total_price=item_data['original_item_total'],
+                    discount_amount=item_data['discount_applied'],
+                )
+
+                product_db.stock_quantity -= quantity
+                if product_db.reserved_by_user == request.user:
+                    product_db.release_reservation()
+                product_db.save()
+
+            if user_cart_obj:
+                user_cart_obj.items.all().delete()
+            
+            if request.session.get('buy_now_active'):
+                del request.session['buy_now_active']
+                if 'buy_now_item_id' in request.session: del request.session['buy_now_item_id']
+                if 'buy_now_quantity' in request.session: del request.session['buy_now_quantity']
+                request.session.modified = True
+
+            if applied_coupon_object:
+                applied_coupon_object.used_count = F('used_count') + 1
+                applied_coupon_object.save(update_fields=['used_count'])
+                applied_coupon_object.refresh_from_db()
+                if 'coupon_code' in request.session:
+                    del request.session['coupon_code']
+                    request.session.modified = True
+
+            if payment_method == 'razorpay':
+                try:
+                    client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+                    amount_in_paisa = int(final_total_price * 100) 
+
+                    razorpay_order = client.order.create({
+                        "amount": amount_in_paisa,  
+                        "currency": "INR",
+                        "receipt": f"order_receipt_{new_order.id}",
+                        "payment_capture": "1"
+                    })
+                    
+                    new_order.razorpay_order_id = razorpay_order['id']
+                    new_order.save() 
+
+                    return JsonResponse({
+                        'status': 'success',
+                        'razorpay_order_id': razorpay_order['id'],
+                        'amount': razorpay_order['amount'],
+                        'currency': razorpay_order['currency'],
+                        'key': settings.RAZORPAY_KEY_ID,
+                        'name': 'WEARIN',
+                        'description': f'Order #{new_order.id} Payment',
+                        'image': '/static/images/your_logo.png',
+                        'prefill': {
+                            'name': request.user.get_full_name() or request.user.username,
+                            'email': request.user.email,
+                            'contact': selected_address.phone if selected_address.phone else '',
+                        },
+                        'theme': {'color': '#000000'},
+                        'callback_url': request.build_absolute_uri(reverse('payment_success')),
+                        'notes': {
+                            'order_id': str(new_order.id),
+                            'user_id': str(request.user.id),
+                        }
+                    })
+
+                except razorpay.errors.BadRequestError as e:
+                    messages.error(request, f"Razorpay processing error: {e}")
+                    logger.error(f"Razorpay API Error: {e}", exc_info=True)
+                    transaction.set_rollback(True)
+                    return JsonResponse({'status': 'error', 'message': f"Payment processing error: {e}"}, status=400)
+                except Exception as e:
+                    messages.error(request, f"An unexpected error occurred during payment initiation: {e}")
+                    logger.error(f"General Razorpay integration error: {e}", exc_info=True)
+                    transaction.set_rollback(True)
+                    return JsonResponse({'status': 'error', 'message': f"An unexpected error occurred during payment initiation: {e}"}, status=500)
+            
+            elif payment_method == 'cod':
+                if final_total_price > getattr(settings, 'COD_LIMIT', Decimal('1000.00')):
+                    transaction.set_rollback(True)
+                    messages.error(request, f"Cash on Delivery is not available for orders above ₹{getattr(settings, 'COD_LIMIT', Decimal('1000.00'))}.")
+                    return redirect('checkout')
+                
+                new_order.payment_method = 'COD'
+                new_order.status = 'Placed'
+                new_order.payment_status = 'Pending'
+                new_order.save()
+
+                messages.success(request, "Your order has been placed successfully via Cash on Delivery!")
+                return redirect(reverse('order_detail', args=[new_order.id]))
+
+            elif payment_method == 'wallet':
+                if wallet.balance >= final_total_price:
+                    wallet.balance -= final_total_price
+                    wallet.save()
+                    
+                    WalletTransaction.objects.create(
+                        wallet=wallet,
+                        transaction_type='Debit',
+                        amount=final_total_price,
+                        description=f"Order payment for #{new_order.custom_order_id or new_order.id}"
+                    )
+
+                    new_order.payment_method = 'Wallet'
+                    new_order.status = 'Placed'
+                    new_order.payment_status = 'Paid'
+                    new_order.save()
+
+                    messages.success(request, "Your order has been placed successfully using Wallet Balance!")
+                    return redirect(reverse('order_detail', args=[new_order.id]))
+                else:
+                    transaction.set_rollback(True)
+                    messages.error(request, "Insufficient wallet balance.")
+                    return redirect('checkout')
+
+            else:
+                transaction.set_rollback(True)
+                messages.error(request, "Invalid payment method selected.")
+                return redirect('checkout')
+
+    # --- GET Request Context (for displaying the page initially) ---
     context = {
-        "cart_items": cart_items_for_order,
-        "subtotal": subtotal,
-        "total_price": total_price,
-        "discount": discount_amount,
-        "coupon_applied": coupon_applied_code, # String code if any is applied
-        "applied_coupon_object": applied_coupon_object, # The actual Coupon object
-        "order_id": razorpay_temp_order_id,
+        "cart_items": cart_items_for_order_display,
+        "subtotal_original": total_cart_items_original_price, 
+        "discount_from_offers": offer_level_discount, 
+        "subtotal_after_offers": subtotal_after_offers, 
+        "shipping_charge": shipping_charge,
+        "is_free_shipping": is_free_shipping,
+        "coupon_discount": coupon_discount_amount, 
+        "total_price": final_total_price,
+
+        "coupon_applied": coupon_applied_code,
+        "applied_coupon_object": applied_coupon_object,
+
         "razorpay_key": settings.RAZORPAY_KEY_ID,
         "addresses": addresses,
         "selected_address_id": selected_address_id,
         "wallet_balance": wallet_balance,
-        "buy_now_active": bool(buy_now_item_data)
+        "buy_now_active": request.session.get('buy_now_active', False),
+        "user_name_for_prefill": request.user.get_full_name() or request.user.username,
+        "user_email_for_prefill": request.user.email,
+        # This line is now safe due to `selected_address = None` initialization
+        "user_contact_for_prefill": selected_address.phone if selected_address and selected_address.phone else '',
+        
+        "DEFAULT_SHIPPING_CHARGE": DEFAULT_SHIPPING_CHARGE,
+        "MIN_PURCHASE_FOR_FREE_SHIPPING": MIN_PURCHASE_FOR_FREE_SHIPPING,
+        "COD_LIMIT": getattr(settings, 'COD_LIMIT', Decimal('1000.00'))
     }
     return render(request, 'user/main/checkout.html', context)
+
 
 @user_login_required
 @transaction.atomic # Crucial: Ensure all operations are atomic for POST
@@ -871,7 +903,7 @@ def payment_success_view(request):
                 razorpay_signature=razorpay_signature,
                 status=initial_order_status # *** NOW USING THE DETERMINED INITIAL STATUS ***
             )
-            logger.info(f"[{user.username}] Order {order.id} created successfully with status '{initial_order_status}' and payment status '{final_payment_status}'.")
+            logger.info(f"[{user.username}] Order {order.custom_order_id} created successfully with status '{initial_order_status}' and payment status '{final_payment_status}'.")
 
             for item_data in cart_items_data:
                 product = item_data['product']
@@ -916,15 +948,15 @@ def payment_success_view(request):
             raise e # Re-raise to trigger transaction rollback and then error handling
 
 
-        messages.success(request, f"Order #{order.id} placed successfully!")
+        messages.success(request, f"Order #{order.custom_order_id} placed successfully!")
         
         # --- NEW: Send order confirmation email (only if order object was successfully created) ---
         if order:
             try:
                 send_order_confirmation_email.delay(order.id)
-                logger.info(f"[{user.username}] Queued order confirmation email for order {order.id}.")
+                logger.info(f"[{user.username}] Queued order confirmation email for order {order.custom_order_id}.")
             except Exception as e:
-                logger.error(f"[{user.username}] Failed to queue order confirmation email for order {order.id}: {e}", exc_info=True)
+                logger.error(f"[{user.username}] Failed to queue order confirmation email for order {order.custom_order_id}: {e}", exc_info=True)
         # --- END NEW ---
 
         # Store the order ID in the session for the subsequent GET request
@@ -955,7 +987,7 @@ def payment_success_view(request):
             try:
                 # Fetch the order using the ID stored in the session
                 order = Order.objects.get(id=last_processed_order_id, user=request.user)
-                logger.info(f"[{user.username}] Successfully fetched order {order.id} for display.")
+                logger.info(f"[{user.username}] Successfully fetched order {order.custom_order_id} for display.")
                 # Clear the session data after it's used
                 if 'last_processed_order_id' in request.session:
                     del request.session['last_processed_order_id']
@@ -1647,12 +1679,15 @@ def about_view(request):
 
 def cart_page_view(request):
     print("***************** cart_page_view IS BEING CALLED *****************")
-    cart_items_for_template = []
-    total_price = Decimal('0.00')
-    cart_count = 0
     
-    # Initialize a list to hold data specifically for JavaScript
-    cart_items_data_for_js = [] 
+    cart_items_for_display = [] 
+    original_total_price = Decimal('0.00') 
+    total_price_after_discounts = Decimal('0.00') 
+    applicable_bogo_discount = Decimal('0.00') 
+    cart_count = 0 
+
+    products_grouped_by_bogo_offer = {}
+    items_for_standard_pricing = []
 
     try:
         cart = Cart.objects.get(user=request.user)
@@ -1660,96 +1695,231 @@ def cart_page_view(request):
         with transaction.atomic():
             items_to_delete_from_cart = []
             
-            # Use list() to iterate over a copy, allowing modification of the original queryset implicitly through deletion
-            for item in list(cart.items.select_related('product')): 
+            cart_queryset = cart.items.select_related('product').prefetch_related('product__offers').all()
+            
+            for item in list(cart_queryset): 
                 product = item.product
                 
-                # IMPORTANT: Consolidate reservation status checks here for clarity
+                # Initialize these flags/values for each item
                 is_reserved_by_current_user_flag = False
-                time_left_seconds = 0
+                is_sold_flag = product.is_sold # Direct from product
+                is_reserved_by_other_flag = False # Will set if reserved by someone else
+                reservation_time_left_seconds = 0
                 
-                # Check if product is sold
-                if product.is_sold:
+                # --- Product Availability Checks ---
+                if is_sold_flag: # Use the flag
                     messages.warning(request, f"'{product.name}' is no longer available as it has been sold and has been removed from your cart.")
                     items_to_delete_from_cart.append(item.id)
-                    continue # Skip to next item
+                    continue 
 
-                # Check if product is reserved by someone else (or if current user's reservation expired)
-                if product.is_currently_reserved:
+                if product.reserved_by_user: # Check if it's reserved at all
                     if product.reserved_by_user != request.user:
-                        # Product is reserved by someone else
                         messages.warning(request, f"'{product.name}' is currently reserved by another customer and has been removed from your cart.")
                         items_to_delete_from_cart.append(item.id)
-                        continue # Skip to next item
+                        is_reserved_by_other_flag = True # Mark for display
+                        continue 
                     elif product.reserved_by_user == request.user:
-                        # Product is reserved by the current user
-                        time_left_seconds = product.get_reservation_time_left_seconds()
+                        time_left_seconds = product.get_reservation_time_left_seconds() 
                         if time_left_seconds > 0:
                             is_reserved_by_current_user_flag = True
                         else:
-                            # Current user's reservation has expired (frontend check)
                             messages.warning(request, f"Your reservation for '{product.name}' has expired and it has been removed from your cart.")
+                            product.release_reservation() 
+                            product.save()
                             items_to_delete_from_cart.append(item.id)
-                            # The Celery task will handle clearing product.reserved_by_user etc.
-                            continue # Skip to next item
+                            continue 
+                # --- End Product Availability Checks ---
                 
-                # If we reach here, the item is valid for display and processing
-                item_total = product.price * item.quantity
-                total_price += item_total
+                original_item_total = product.price * item.quantity
+                original_total_price += original_item_total
                 cart_count += item.quantity
 
-                # Populate the list for the Django template (might include CartItem objects directly)
-                cart_items_for_template.append({
-                    'product_id': product.id,
-                    'name': product.name,
-                    'price': float(product.price),
+                # Prepare common item data for both BOGO and standard lists
+                common_item_data = {
+                    'product': product,
                     'quantity': item.quantity,
-                    'total': float(item_total),
-                    'image_url': product.images.first().image.url if product.images.exists() else '',
+                    'original_item_total': original_item_total,
+                    'cart_item_id': item.id,
                     'is_reserved_by_current_user': is_reserved_by_current_user_flag,
-                    'is_sold': product.is_sold,
-                    # This flag should truly reflect if it's reserved by someone ELSE
-                    'is_reserved_by_other': (product.is_currently_reserved and not is_reserved_by_current_user_flag), 
-                    'reservation_time_left_seconds': time_left_seconds,
-                    # You might also want to include the item.id here for frontend "Remove" button form action
-                    # 'cart_item_id': item.id, 
-                })
+                    'is_sold': is_sold_flag, # Pass this too
+                    'is_reserved_by_other': is_reserved_by_other_flag, # Pass this too
+                    'reservation_time_left_seconds': reservation_time_left_seconds,
+                    'offer_tag': '', # Default, will be set by offer logic
+                    'is_bogo_free': False # Default, will be set by BOGO logic
+                }
 
-            # Delete invalid items from the database cart
+                # --- Offer Application Logic ---
+                active_product_offers = [
+                    offer for offer in product.offers.all() if offer.is_currently_active
+                ]
+
+                bogo_offer_found_for_product = False
+                for offer in active_product_offers:
+                    if offer.offer_type in ['BOGO1', 'BOGO2']: 
+                        offer_key = offer.id
+                        if offer_key not in products_grouped_by_bogo_offer:
+                            products_grouped_by_bogo_offer[offer_key] = {
+                                'offer': offer,
+                                'items': [] 
+                            }
+                        # Append the common_item_data to the BOGO group
+                        products_grouped_by_bogo_offer[offer_key]['items'].append(common_item_data)
+                        bogo_offer_found_for_product = True
+                        break 
+                
+                if not bogo_offer_found_for_product:
+                    applied_simple_offer = None
+                    for offer in active_product_offers:
+                        if offer.offer_type in ['PERCENTAGE', 'AMOUNT']:
+                            applied_simple_offer = offer
+                            break 
+                    
+                    # Update applied_offer for standard pricing items
+                    common_item_data['applied_offer'] = applied_simple_offer
+                    items_for_standard_pricing.append(common_item_data)
+
             if items_to_delete_from_cart:
                 CartItem.objects.filter(id__in=items_to_delete_from_cart).delete()
-                # The message will already be shown in the loop, maybe refine this message.
-                # messages.info(request, "Some items were removed from your cart due to availability changes.")
 
     except Cart.DoesNotExist:
-        pass # Cart doesn't exist for the user, so it's empty
+        pass 
 
-    # DEBUGGING PRINTS
-    print(f"DEBUG: Length of cart_items_for_template list: {len(cart_items_for_template)}")
-    if cart_items_for_template:
-        print("DEBUG: Content of the FIRST item in cart_items_for_template:")
-        print(cart_items_for_template[0])
-        try:
-            # THIS IS THE CRITICAL CHANGE: json.dumps for JavaScript
-            cart_items_json = json.dumps(cart_items_for_template)
-            print("DEBUG: json.dumps executed successfully.")
-            # Print the JSON string itself for verification
-            # print("DEBUG: JSON for JS: ", cart_items_json) 
-        except Exception as e:
-            print(f"ERROR: An error occurred during json.dumps for JS: {e}")
-            cart_items_json = "[]" # Fallback to empty array
-    else:
-        print("DEBUG: cart_items_for_template list is empty. No valid items were found for the cart.")
-        cart_items_json = "[]" # Always provide an empty array if no items
+    # --- Step 1: Calculate discounts from BOGO offers ---
+    for offer_key, offer_data in products_grouped_by_bogo_offer.items():
+        offer = offer_data['offer']
+        items_under_bogo = offer_data['items'] # These are already dictionaries with all common_item_data fields
+
+        total_bogo_quantity = sum(item['quantity'] for item in items_under_bogo)
+
+        buy_qty = offer.buy_quantity
+        get_qty = offer.get_quantity
+
+        if buy_qty is None or get_qty is None or buy_qty <= 0 or get_qty <= 0:
+            for item_data in items_under_bogo:
+                # Add to final display list as-is, with the BOGO offer tag, but no discount
+                item_data['offer_tag'] = offer.tag_text # Ensure tag is still applied if misconfigured
+                cart_items_for_display.append({
+                    'product_id': item_data['product'].id,
+                    'name': item_data['product'].name,
+                    'price': float(item_data['product'].price),
+                    'quantity': item_data['quantity'],
+                    'total_price': float(item_data['original_item_total']), # No discount
+                    'image_url': item_data['product'].images.first().image.url if item_data['product'].images.exists() else '',
+                    'is_reserved_by_current_user': item_data['is_reserved_by_current_user'], 
+                    'is_sold': item_data['is_sold'], 
+                    'is_reserved_by_other': item_data['is_reserved_by_other'], 
+                    'reservation_time_left_seconds': item_data['reservation_time_left_seconds'], 
+                    'offer_tag': item_data['offer_tag'], 
+                })
+            continue 
+
+        products_per_cycle = buy_qty + get_qty
+        num_cycles = total_bogo_quantity // products_per_cycle
+        num_free_products_overall = num_cycles * get_qty
+
+        sorted_bogo_items = sorted(items_under_bogo, key=lambda x: x['product'].price) 
+
+        remaining_free_products_to_distribute = num_free_products_overall
+
+        for item_data in sorted_bogo_items:
+            product = item_data['product']
+            quantity_in_cart = item_data['quantity']
+
+            if remaining_free_products_to_distribute > 0:
+                free_from_this_item = min(quantity_in_cart, remaining_free_products_to_distribute)
+                
+                # Mark as free, update tag
+                item_data['is_bogo_free'] = True 
+                item_data['offer_tag'] = offer.tag_text
+                
+                item_discount_amount = free_from_this_item * product.price
+                applicable_bogo_discount += item_discount_amount 
+
+                remaining_free_products_to_distribute -= free_from_this_item
+            
+            # Prepare for final display list
+            item_display_total = item_data['original_item_total']
+            if item_data['is_bogo_free']:
+                item_display_total = Decimal('0.00') 
+
+            cart_items_for_display.append({
+                'product_id': item_data['product'].id,
+                'name': item_data['product'].name,
+                'price': float(item_data['product'].price), 
+                'quantity': item_data['quantity'],
+                'total_price': float(item_display_total), 
+                'image_url': item_data['product'].images.first().image.url if item_data['product'].images.exists() else '',
+                'is_reserved_by_current_user': item_data['is_reserved_by_current_user'],
+                'is_sold': item_data['is_sold'],
+                'is_reserved_by_other': item_data['is_reserved_by_other'],
+                'reservation_time_left_seconds': item_data['reservation_time_left_seconds'],
+                'offer_tag': item_data['offer_tag'], 
+            })
+
+    # --- Step 2: Calculate discounts from Percentage/Amount offers and add regular items ---
+    for item_data in items_for_standard_pricing:
+        product = item_data['product']
+        quantity = item_data['quantity']
+        original_item_total = item_data['original_item_total']
+        applied_offer = item_data['applied_offer'] # This key now exists!
+
+        item_total_after_offer = original_item_total
+        offer_tag = None
+
+        if applied_offer:
+            offer_tag = applied_offer.tag_text
+            if applied_offer.offer_type == 'PERCENTAGE':
+                item_discount = original_item_total * (applied_offer.discount_percentage / Decimal(100))
+                item_total_after_offer = original_item_total - item_discount
+            elif applied_offer.offer_type == 'AMOUNT':
+                item_discount = applied_offer.discount_amount * quantity
+                item_total_after_offer = max(Decimal('0.00'), original_item_total - item_discount)
+            
+        cart_items_for_display.append({
+            'product_id': product.id,
+            'name': product.name,
+            'price': float(product.price), 
+            'quantity': quantity,
+            'total_price': float(item_total_after_offer), 
+            'image_url': product.images.first().image.url if product.images.exists() else '',
+            'is_reserved_by_current_user': item_data['is_reserved_by_current_user'],
+            'is_sold': item_data['is_sold'],
+            'is_reserved_by_other': item_data['is_reserved_by_other'],
+            'reservation_time_left_seconds': item_data['reservation_time_left_seconds'],
+            'offer_tag': offer_tag, 
+        })
+    
+    # --- Final Calculation of total_price_after_discounts ---
+    total_price_after_discounts = sum(Decimal(str(item['total_price'])) for item in cart_items_for_display)
+
+    total_price_after_discounts = max(Decimal('0.00'), total_price_after_discounts)
+
+    # --- Prepare data for JSON for frontend ---
+    cart_items_json_serializable = []
+    for item in cart_items_for_display:
+        json_item = item.copy() 
+        json_item['price'] = float(json_item['price'])
+        json_item['total_price'] = float(json_item['total_price'])
+        # Add original_item_total if it's needed in JS for any reason
+        # if 'original_item_total' in item_data: # If you need to pass it, make sure it's in the dicts
+        #    json_item['original_item_total'] = float(item_data['original_item_total'])
+        cart_items_json_serializable.append(json_item)
+
+    try:
+        cart_items_json = json.dumps(cart_items_json_serializable)
+    except Exception as e:
+        print(f"ERROR: An error occurred during json.dumps for JS: {e}")
+        cart_items_json = "[]" 
 
     context = {
-        'cart_items': cart_items_for_template, # This is for your Django template loop
-        'total_price': float(total_price),
+        'cart_items': cart_items_for_display, 
+        'total_price': float(total_price_after_discounts), 
         'cart_count': cart_count,
-        'cart_items_json': cart_items_json, # <--- NEW CONTEXT VARIABLE FOR JAVASCRIPT
+        'cart_items_json': cart_items_json, 
+        'original_subtotal': float(original_total_price), 
+        'bogo_discount_amount': float(applicable_bogo_discount), 
     }
     return render(request, 'user/main/cart.html', context)
-
 
 @require_POST
 @user_login_required

@@ -423,7 +423,7 @@ def admin_update_order_status(request, order_id):
     if new_status in dict(Order.STATUS_CHOICES):
         order.status = new_status
         order.save()
-        messages.success(request, f"Order #{order.id} status updated to {new_status}.")
+        messages.success(request, f"Order #{order.custom_order_id} status updated to {new_status}.")
     else:
         messages.error(request, "Invalid status selected.")
     return redirect('admin_order_list')  # Adjust based on your URL name
@@ -506,14 +506,14 @@ def admin_dashboard_view(request):
     total_orders = all_orders.count()
     total_pending = all_orders.filter(status='Pending').count()
     delivered_orders = all_orders.filter(status='Delivered')
-    total_sales = delivered_orders.aggregate(Sum('total_price'))['total_price__sum'] or 0
+    total_sales = delivered_orders.aggregate(Sum('total_amount'))['total_amount__sum'] or 0
     total_customers = User.objects.filter(is_superuser=False, is_active=True).count()
 
     income_data = defaultdict(Decimal)
     for order in delivered_orders:
         if order.created_at:
             month_label = order.created_at.strftime('%b %Y')
-            income_data[month_label] += order.total_price
+            income_data[month_label] += order.total_amount
 
     sorted_data = sorted(income_data.items(), key=lambda x: timezone.datetime.strptime(x[0], "%b %Y"))
     labels = [item[0] for item in sorted_data]
@@ -782,7 +782,7 @@ def admin_sales_view(request):
     if start_date and end_date:
         orders = orders.filter(created_at__date__range=[start_date, end_date])
 
-    total_sales = orders.aggregate(total=Sum('total_price'))['total'] or 0
+    total_sales = orders.aggregate(total=Sum('total_amount'))['total'] or 0
     total_orders = orders.count()
     total_products_sold = (
         OrderItem.objects
@@ -795,7 +795,7 @@ def admin_sales_view(request):
         orders
         .annotate(day=TruncDay('created_at'))
         .values('day')
-        .annotate(total=Sum('total_price'))
+        .annotate(total=Sum('total_amount'))
         .order_by('day')
     )
     daily_labels = [x['day'].strftime('%d %b') for x in daily]
@@ -806,7 +806,7 @@ def admin_sales_view(request):
         orders
         .annotate(month=TruncMonth('created_at'))
         .values('month')
-        .annotate(total=Sum('total_price'))
+        .annotate(total=Sum('total_amount'))
         .order_by('month')
     )
     monthly_labels = [x['month'].strftime('%b %Y') for x in monthly]
@@ -836,7 +836,7 @@ def admin_sales_view(request):
     payment_data_qs = (
         orders
         .values('payment_method')
-        .annotate(total=Sum('total_price'))
+        .annotate(total=Sum('total_amount'))
     )
 
     payment_labels = [p['payment_method'] or 'Unknown' for p in payment_data_qs]
@@ -888,7 +888,7 @@ def export_sales_excel_view(request):
     for order in orders:
         for item in order.items.all():
             data.append({
-                'Order ID': f"#{order.id}",
+                'Order ID': f"#{order.custom_order_id}",
                 'Customer': order.user.email,
                 'Product': item.product.name,
                 'Quantity': item.quantity,
@@ -918,7 +918,7 @@ def export_sales_pdf(request):
 
     p.setFont("Helvetica", 10)
     for order in orders:
-        p.drawString(40, y, f"Order: #{order.id}, Email: {order.user.email}, ₹{order.total_price}, {order.created_at.strftime('%Y-%m-%d')}")
+        p.drawString(40, y, f"Order: #{order.custom_order_id}, Email: {order.user.email}, ₹{order.total_amount}, {order.created_at.strftime('%Y-%m-%d')}")
         y -= 20
         if y < 40:
             p.showPage()
@@ -1094,4 +1094,4 @@ def ajax_create_email_template(request):
                 'name': template.name,
                 'html': render_to_string('admin_panel/newsletter/partials/template_card.html', {'template': template})
             })
-        return JsonResponse({'success': False, 'errors': form.errors})
+        

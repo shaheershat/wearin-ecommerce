@@ -7,6 +7,18 @@
 <div class="container mx-auto px-4 py-10 max-w-4xl">
     <h2 class="text-3xl font-bold mb-8 text-center">Your Shopping Cart</h2>
 
+    {% comment %} Display messages from views {% endcomment %}
+    {% if messages %}
+        <div class="mb-4">
+            {% for message in messages %}
+                <div class="p-3 rounded text-sm font-semibold 
+                    {% if 'error' in message.tags %}bg-red-100 text-red-700{% elif 'success' in message.tags %}bg-green-100 text-green-700{% elif 'warning' in message.tags %}bg-yellow-100 text-yellow-700{% else %}bg-blue-100 text-blue-700{% endif %}">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
     {% if cart_items %}
     <div class="space-y-6">
         {% for item in cart_items %}
@@ -17,9 +29,17 @@
 
             <div class="flex-1 md:ml-6 text-center md:text-left">
                 <h3 class="text-lg font-semibold">{{ item.name }}</h3>
-                <p class="text-green-600 font-medium">₹{{ item.price }}</p>
+                <p class="text-gray-600 font-medium">Unit Price: ₹{{ item.price|floatformat:2 }}</p>
                 <p class="text-sm text-gray-500">Quantity: {{ item.quantity }}</p>
-                <p class="text-sm text-gray-500">Total: ₹{{ item.total }}</p>
+                {# This will now correctly show 0.00 for the free BOGO item if the view logic works #}
+                <p class="text-sm text-gray-700 font-medium">Item Subtotal: ₹{{ item.total_price|floatformat:2 }}</p>
+
+                {# --- Offer Tag Display for Cart Item --- #}
+                {% if item.offer_tag %}
+                    {# This will only display if the view explicitly sets 'offer_tag' for THIS item #}
+                    <p class="text-sm text-green-600 font-semibold mt-1">Offer Applied: {{ item.offer_tag }}</p>
+                {% endif %}
+                {# --- End Offer Tag Display --- #}
 
                 {# --- Reservation Status and Timer for Cart Item --- #}
                 {% if item.is_reserved_by_current_user %}
@@ -28,17 +48,14 @@
                     </p>
                 {% elif item.is_sold %}
                     <p class="text-sm text-red-600 mt-2 font-bold">This item has been **SOLD OUT** and has been removed from your cart.</p>
-                    {# Note: The view already removes it, this message confirms it to the user. #}
                 {% elif item.is_reserved_by_other %}
                     <p class="text-sm text-red-600 mt-2 font-bold">This item is now **RESERVED** by another customer and has been removed from your cart.</p>
-                    {# Note: The view already removes it, this message confirms it to the user. #}
                 {% endif %}
                 {# --- End Reservation Status and Timer for Cart Item --- #}
             </div>
 
             <div class="flex space-x-2 mt-4 md:mt-0">
                 <form method="POST" action="{% url 'remove_from_cart' item.product_id %}">
-                    {# Use item.product_id here as that's what's passed in the context #}
                     {% csrf_token %}
                     <button type="submit" class="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600">Remove</button>
                 </form>
@@ -48,7 +65,16 @@
     </div>
 
     <div class="mt-8 p-6 bg-white shadow rounded-lg flex flex-col md:flex-row justify-between items-center">
-        <h3 class="text-xl font-bold">Cart Total: <span class="text-green-600">₹{{ total_price }}</span></h3>
+        {# --- Start: Detailed Order Summary Block --- #}
+        <div class="flex flex-col">
+            <h3 class="text-xl font-bold">Order Summary</h3>
+            <p class="text-gray-700">Original Subtotal: ₹{{ original_subtotal|floatformat:2 }}</p>
+            {% if bogo_discount_amount > 0 %}
+                <p class="text-green-600 font-semibold">Product & BOGO Discounts: -₹{{ bogo_discount_amount|floatformat:2 }}</p>
+            {% endif %}
+            <h3 class="text-xl font-bold mt-2">Cart Total: <span class="text-green-600">₹{{ total_price|floatformat:2 }}</span></h3>
+        </div>
+        {# --- End: Detailed Order Summary Block --- #}
         <a href="{% url 'checkout' %}" class="mt-4 md:mt-0 px-8 py-3 bg-black text-white rounded hover:bg-gray-900 transition">Proceed to Checkout</a>
     </div>
 
@@ -61,13 +87,10 @@
 </div>
 
 <script>
-    // JavaScript for reservation timers
     document.addEventListener('DOMContentLoaded', function() {
-        // THIS IS THE CRITICAL CHANGE: Use cart_items_json
         const cartItemsData = JSON.parse('{{ cart_items_json|safe }}'); 
 
         cartItemsData.forEach(item => {
-            // Check for reservation_time_left_seconds
             if (item.is_reserved_by_current_user && item.reservation_time_left_seconds > 0) {
                 startCartItemTimer(item.product_id, item.reservation_time_left_seconds);
             }
@@ -82,7 +105,7 @@
             const minutes = Math.floor(timer / 60);
             const seconds = timer % 60;
 
-            if (timerDisplay) { // Ensure the element exists
+            if (timerDisplay) {
                 timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
             }
 
@@ -91,10 +114,8 @@
                 if (timerDisplay) {
                     timerDisplay.textContent = "Expired!";
                 }
-                // When a reservation expires in the cart, it's best to reload the page
-                // so the backend can re-evaluate and clean up the cart item.
-                console.log(`Reservation for product ${productId} expired. Reloading page.`); // Add console log
-                setTimeout(() => window.location.reload(), 1000);
+                console.log(`Reservation for product ${productId} expired. Reloading page.`);
+                setTimeout(() => window.location.reload(), 1000); 
             }
         }, 1000);
     }

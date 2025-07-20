@@ -8,49 +8,99 @@
 <div class="container mx-auto px-4 py-12 max-w-4xl">
     <h2 class="text-3xl font-bold mb-8 text-center">Checkout</h2>
 
+    {% comment %} Display messages from views {% endcomment %}
+    {% if messages %}
+        <div class="mb-4">
+            {% for message in messages %}
+                <div class="p-3 rounded text-sm font-semibold 
+                    {% if 'error' in message.tags %}bg-red-100 text-red-700{% elif 'success' in message.tags %}bg-green-100 text-green-700{% elif 'warning' in message.tags %}bg-yellow-100 text-yellow-700{% else %}bg-blue-100 text-blue-700{% endif %}">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    {% if buy_now_active %}
+        <div class="alert alert-info text-center bg-blue-100 text-blue-700 p-3 rounded mb-6">
+            <p class="font-semibold">You are checking out a "Buy Now" item.</p>
+            <p class="text-sm">This checkout is for a single item initiated via the Buy Now button.</p>
+        </div>
+    {% endif %}
+
     <div class="bg-white shadow rounded-lg p-6 mb-6">
         <h3 class="text-xl font-semibold mb-4">Order Summary</h3>
         <div class="space-y-3">
             {% for item in cart_items %}
-            <div class="flex justify-between text-sm">
-                <div>{{ item.product.name }} &times; {{ item.quantity }}</div>
-                <div>₹{{ item.total_price|floatformat:2 }}</div>
+            <div class="flex justify-between items-start text-sm pb-2 border-b border-gray-100 last:border-b-0">
+                <div class="flex-1 pr-2">
+                    <div class="font-medium">{{ item.product.name }} &times; {{ item.quantity }}</div>
+                    {% if item.offer_tag %}
+                        <span class="text-green-600 text-xs font-semibold">{{ item.offer_tag }} Applied</span>
+                    {% endif %}
+                </div>
+                <div class="text-right">
+                    {% if item.discount_applied > 0 %}
+                        <div class="text-muted line-through">₹{{ item.original_item_total|floatformat:2 }}</div>
+                        <div class="font-bold">₹{{ item.total_price|floatformat:2 }}</div>
+                        <div class="text-green-600 text-xs">Saved ₹{{ item.discount_applied|floatformat:2 }}</div>
+                    {% else %}
+                        <div>₹{{ item.total_price|floatformat:2 }}</div>
+                    {% endif %}
+                </div>
             </div>
             {% endfor %}
         </div>
 
         <hr class="my-4">
 
-        <div class="flex justify-between font-medium text-base">
-            <span>Subtotal:</span>
-            <span>₹{{ subtotal|floatformat:2 }}</span>
-        </div>
-        {% if discount %}
-        <div class="flex justify-between text-sm text-green-600">
-            <span>Discount ({{ applied_coupon_object.code }}):</span> {# Show coupon code #}
-            <span>-₹{{ discount|floatformat:2 }}</span>
-        </div>
-        {% endif %}
-        <div class="flex justify-between text-sm text-gray-500">
-            <span>Shipping:</span>
-            <span>Free</span>
-        </div>
-        <div class="flex justify-between text-xl font-bold mt-2">
-            <span>Total:</span>
-            <span>₹{{ total_price|floatformat:2 }}</span>
+        <div class="space-y-2">
+            <div class="flex justify-between font-medium text-base">
+                <span>Original Subtotal:</span>
+                <span>₹{{ subtotal_original|floatformat:2 }}</span>
+            </div>
+            {% if discount_from_offers > 0 %}
+            <div class="flex justify-between text-sm text-green-600">
+                <span>Product & BOGO Discounts:</span>
+                <span>-₹{{ discount_from_offers|floatformat:2 }}</span>
+            </div>
+            {% endif %}
+            <div class="flex justify-between font-medium text-base">
+                <span>Subtotal (after Offers):</span>
+                <span>₹{{ subtotal_after_offers|floatformat:2 }}</span>
+            </div>
+            <div class="flex justify-between text-sm {% if is_free_shipping %}text-green-600{% else %}text-gray-500{% endif %}">
+                <span>Shipping:</span>
+                <span>
+                    {% if is_free_shipping %}
+                        <del class="text-muted">₹{{ DEFAULT_SHIPPING_CHARGE|floatformat:2 }}</del> Free
+                    {% else %}
+                        ₹{{ shipping_charge|floatformat:2 }}
+                    {% endif %}
+                </span>
+            </div>
+            {% if coupon_discount > 0 %}
+            <div class="flex justify-between text-sm text-green-600">
+                <span>Coupon Discount ({{ coupon_applied }}):</span>
+                <span>-₹{{ coupon_discount|floatformat:2 }}</span>
+            </div>
+            {% endif %}
+            <div class="flex justify-between text-xl font-bold mt-2 pt-2 border-t border-gray-200">
+                <span>Total Payable:</span>
+                <span>₹{{ total_price|floatformat:2 }}</span>
+            </div>
         </div>
     </div>
 
     <div class="bg-white shadow rounded-lg p-6 mb-6">
         <h3 class="text-xl font-semibold mb-4">Apply Coupon</h3>
-        {% if applied_coupon_object %} {# If a coupon is applied, hide input #}
+        {% if coupon_applied %} {# If a coupon is applied, hide input #}
             <div class="flex justify-between items-center bg-green-50 p-3 rounded border border-green-200">
                 <p class="text-green-800 font-semibold">
-                    Coupon <span class="font-bold">"{{ applied_coupon_object.code }}"</span> applied.
-                    Saved ₹{{ discount|floatformat:2 }}.
+                    Coupon <span class="font-bold">"{{ coupon_applied }}"</span> applied.
+                    Saved ₹{{ coupon_discount|floatformat:2 }}.
                 </p>
-                <form action="{% url 'remove_applied_coupon' %}" method="post">
-                    {% csrf_token %}
+                <form action="{% url 'checkout' %}" method="get"> {# Changed to GET to clear coupon from session #}
+                    <input type="hidden" name="coupon" value=""> {# Empty value to clear it #}
                     <button type="submit" class="text-red-600 hover:text-red-800 text-sm font-semibold underline">Remove</button>
                 </form>
             </div>
@@ -61,14 +111,6 @@
                 <button type="submit"
                     class="px-6 py-2 bg-black text-white rounded hover:bg-gray-800 transition">Apply</button>
             </form>
-            {# Display messages from views, if any after coupon attempt #}
-            {% if messages %}
-                <ul class="messages list-none p-0 mt-2">
-                    {% for message in messages %}
-                        <li{% if message.tags %} class="{{ message.tags }} text-sm font-semibold p-1 rounded {% if 'error' in message.tags %}text-red-600{% elif 'success' in message.tags %}text-green-600{% elif 'warning' in message.tags %}text-yellow-600{% else %}text-gray-600{% endif %}"{% endif %}>{{ message }}</li>
-                    {% endfor %}
-                </ul>
-            {% endif %}
         {% endif %}
 
         <div class="mt-4 text-center">
@@ -79,8 +121,8 @@
     <div class="bg-white shadow rounded-lg p-6 mb-6">
         <h3 class="text-xl font-semibold mb-4">Shipping Address</h3>
         {% if addresses %}
-        <form id="address-select-form" method="post">
-            {% csrf_token %}
+        {# We no longer need a separate form for address selection. The main payment form will handle it. #}
+        {# Retaining structure for display and selection #}
             <div class="space-y-4">
                 {% for address in addresses %}
                 <label class="block p-4 border rounded hover:border-black transition cursor-pointer">
@@ -88,14 +130,14 @@
                         {% if address.id == selected_address_id %}checked{% endif %} class="mr-2">
                     <div class="text-sm text-gray-800 leading-6">
                         <strong>{{ address.full_name|default_if_none:"Not provided" }}</strong><br>
-                        {{ address.house_name|default_if_none:"" }}, {{ address.street|default_if_none:"" }}, {{ address.city|default_if_none:"" }},
-                        {{ address.state|default_if_none:"" }} , {{ address.postal_code|default_if_none:"" }}, {{ address.country|default_if_none:"" }},
+                        {{ address.house_name|default_if_none:"" }}{% if address.house_name and address.street %}, {% endif %}{{ address.street|default_if_none:"" }}<br>
+                        {{ address.city|default_if_none:"" }}{% if address.city and address.state %}, {% endif %}{{ address.state|default_if_none:"" }} , {{ address.postal_code|default_if_none:"" }}<br>
+                        {{ address.country|default_if_none:"" }}<br>
                         Phone: {{ address.phone|default_if_none:"" }}
                     </div>
                 </label>
                 {% endfor %}
             </div>
-        </form>
         {% else %}
         <p class="text-sm text-gray-600">No saved addresses.
             <a href="{% url 'add_address_form' %}" class="text-blue-600 underline">Add a new address</a>.
@@ -106,7 +148,8 @@
     <div class="bg-white shadow rounded-lg p-6 mb-10">
         <h3 class="text-xl font-semibold mb-4">Payment Method</h3>
 
-        <form id="payment-form" action="{% url 'payment_success' %}" method="POST">
+        {# The main form for submitting payment details #}
+        <form id="payment-form" action="{% url 'checkout' %}" method="POST"> {# Action points to checkout view for POST #}
             {% csrf_token %}
 
             <label class="block p-4 border rounded mb-3 cursor-pointer {% if wallet_balance < total_price %}opacity-50{% endif %}">
@@ -131,10 +174,13 @@
                     <p class="text-sm text-red-500 ml-6">COD not available for orders above ₹1000</p>
                 {% endif %}
             </label>
+            
+            {# Hidden input for selected address, will be populated by JS before submission #}
+            <input type="hidden" id="selected_address_hidden_input" name="selected_address" value="">
 
-            <button id="rzp-button" type="button"
+            <button type="submit"
                 class="bg-black text-white px-8 py-3 rounded hover:bg-gray-900 transition w-full mt-6">
-                Pay Now
+                Place Order & Pay
             </button>
         </form>
     </div>
@@ -142,91 +188,110 @@
 
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <script>
-    // Moved Razorpay logic to a function for better organization
-    function handleRazorpayPayment() {
-        const form = document.getElementById('payment-form');
-        const selectedAddress = document.querySelector('input[name="selected_address"]:checked');
-        if (!selectedAddress) {
-            alert("Please select a shipping address.");
-            return;
-        }
+    document.addEventListener('DOMContentLoaded', function() {
+        const paymentForm = document.getElementById('payment-form');
+        const selectedAddressHiddenInput = document.getElementById('selected_address_hidden_input');
 
-        const addressInput = document.createElement('input');
-        addressInput.type = 'hidden';
-        addressInput.name = 'address_id';
-        addressInput.value = selectedAddress.value;
-        form.appendChild(addressInput);
+        paymentForm.addEventListener('submit', function(event) {
+            event.preventDefault(); // Prevent default form submission
 
-        const rzp = new Razorpay({
-            "key": "{{ razorpay_key }}",
-            "amount": Math.round({{ total_price|floatformat:'0' }}) * 100, // Ensure amount is integer cents
-            "currency": "INR",
-            "name": "WEARIN",
-            "description": "Order Payment",
-            "order_id": "{{ order_id }}",
-            "handler": function (response) {
-                // Add Razorpay payment details to the form
-                const rzpPaymentIdInput = document.createElement('input');
-                rzpPaymentIdInput.type = 'hidden';
-                rzpPaymentIdInput.name = 'razorpay_payment_id';
-                rzpPaymentIdInput.value = response.razorpay_payment_id;
-                form.appendChild(rzpPaymentIdInput);
+            const selectedPaymentMethod = document.querySelector('input[name="payment_method"]:checked');
+            const selectedAddressRadio = document.querySelector('input[name="selected_address"]:checked');
 
-                const rzpSignatureInput = document.createElement('input');
-                rzpSignatureInput.type = 'hidden';
-                rzpSignatureInput.name = 'razorpay_signature';
-                rzpSignatureInput.value = response.razorpay_signature;
-                form.appendChild(rzpSignatureInput);
+            if (!selectedAddressRadio) {
+                alert("Please select a shipping address.");
+                return; // Stop submission
+            }
+            if (!selectedPaymentMethod) {
+                alert("Please select a payment method.");
+                return; // Stop submission
+            }
 
-                const rzpOrderIdInput = document.createElement('input');
-                rzpOrderIdInput.type = 'hidden';
-                rzpOrderIdInput.name = 'razorpay_order_id';
-                rzpOrderIdInput.value = "{{ order_id }}"; // Use the order_id from context
-                form.appendChild(rzpOrderIdInput);
+            // Populate the hidden address input with the selected address ID
+            selectedAddressHiddenInput.value = selectedAddressRadio.value;
 
-                form.submit();
-            },
-            "theme": { "color": "#000000" }
+            // Create a FormData object from the form
+            const formData = new FormData(paymentForm);
+
+            // Append the selected payment method to the FormData manually
+            // This is safer than relying on radio button to be part of the form submitting
+            formData.append('payment_method', selectedPaymentMethod.value);
+
+            // Determine action based on payment method
+            if (selectedPaymentMethod.value === 'razorpay') {
+                // Send AJAX request for Razorpay payment
+                fetch(paymentForm.action, { // Use the form's action URL (which is {% url 'checkout' %})
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-CSRFToken': '{{ csrf_token }}' // Ensure CSRF token is sent
+                    }
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        // If HTTP status is not 2xx, it's an error from the backend
+                        return response.json().then(errorData => {
+                            throw new Error(errorData.message || 'Server error occurred.');
+                        });
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.status === 'success' && data.razorpay_order_id) {
+                        var options = {
+                            "key": data.key, // Your Razorpay Key ID from backend
+                            "amount": data.amount, // Amount in paisa from backend
+                            "currency": data.currency,
+                            "name": data.name,
+                            "description": data.description,
+                            "image": data.image,
+                            "order_id": data.razorpay_order_id, // This is the order ID generated by Razorpay API on your backend
+                            "handler": function (response) {
+                                // On successful payment from Razorpay popup, redirect to payment_success view
+                                // Pass all Razorpay response details and your internal order_id
+                                window.location.href = data.callback_url +
+                                    '?razorpay_payment_id=' + response.razorpay_payment_id +
+                                    '&razorpay_order_id=' + response.razorpay_order_id +
+                                    '&razorpay_signature=' + response.razorpay_signature +
+                                    '&order_id=' + data.notes.order_id; // Your internal order_id
+                            },
+                            "prefill": {
+                                "name": data.prefill.name,
+                                "email": data.prefill.email,
+                                "contact": data.prefill.contact
+                            },
+                            "notes": data.notes,
+                            "theme": data.theme
+                        };
+                        var rzp1 = new Razorpay(options);
+                        rzp1.on('payment.failed', function (response){
+                            // Handle payment failure from Razorpay popup
+                            alert('Payment failed: ' + response.error.description);
+                            console.error('Razorpay Payment Failed:', response.error);
+                            // Redirect to a payment failed page with error message
+                            window.location.href = '{% url "payment_failed" %}?message=' + encodeURIComponent(response.error.description);
+                        });
+                        rzp1.open(); // Open the Razorpay popup
+                    } else {
+                        // If backend returned success: false or missing order_id
+                        alert('Error initiating payment: ' + (data.message || 'Unknown error.'));
+                        console.error('Backend Response Error:', data);
+                        // Optionally reload the page to show Django messages
+                        window.location.reload(); 
+                    }
+                })
+                .catch(error => {
+                    console.error('AJAX/Fetch Error:', error);
+                    alert('An error occurred while preparing your payment. Please try again. ' + error.message);
+                    // Optionally reload the page to show Django messages that might have been set
+                    window.location.reload();
+                });
+            } else {
+                // For COD or Wallet, submit the form normally.
+                // The backend will handle saving the order and redirecting.
+                paymentForm.submit();
+            }
         });
-        rzp.open();
-    }
-
-
-    document.getElementById('rzp-button').onclick = function (e) {
-        const selectedPayment = document.querySelector('input[name="payment_method"]:checked');
-        const selectedAddress = document.querySelector('input[name="selected_address"]:checked');
-        if (!selectedAddress) {
-            alert("Please select a shipping address.");
-            e.preventDefault(); // Prevent form submission
-            return;
-        }
-        if (!selectedPayment) {
-            alert("Please select a payment method.");
-            e.preventDefault(); // Prevent form submission
-            return;
-        }
-
-        const form = document.getElementById('payment-form');
-        const addressInput = document.createElement('input');
-        addressInput.type = 'hidden';
-        addressInput.name = 'address_id';
-        addressInput.value = selectedAddress.value;
-        form.appendChild(addressInput);
-
-        if (selectedPayment.value === 'razorpay') {
-            handleRazorpayPayment(); // Call the function for Razorpay
-        } else {
-            // For Wallet or COD, explicitly set the method value on the form before submission
-            const paymentMethodInput = document.createElement('input');
-            paymentMethodInput.type = 'hidden';
-            paymentMethodInput.name = 'payment_method';
-            paymentMethodInput.value = selectedPayment.value;
-            form.appendChild(paymentMethodInput);
-
-            form.submit();
-        }
-
-        e.preventDefault();
-    };
+    });
 </script>
 {% endblock %}

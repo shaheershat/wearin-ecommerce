@@ -71,8 +71,10 @@
                 <tr>
                     <th>Product</th>
                     <th>Qty</th>
-                    <th>Unit Price</th>
-                    <th>Total</th>
+                    <th>Unit Price (After Discount)</th>
+                    <th>Original Total (Line Item)</th>
+                    <th>Discount Applied (Line Item)</th>
+                    <th>Total (Line Item)</th>
                 </tr>
             </thead>
             <tbody>
@@ -81,6 +83,8 @@
                     <td>{{ item.product.name }}</td>
                     <td>{{ item.quantity }}</td>
                     <td>₹{{ item.price_at_purchase }}</td>
+                    <td>₹{{ item.original_total_price }}</td>
+                    <td>₹{{ item.discount_amount }}</td>
                     <td>₹{{ item.quantity|multiply:item.price_at_purchase }}</td>
                 </tr>
                 {% endfor %}
@@ -89,9 +93,12 @@
     </div>
 
     <div class="section right">
-        <p><span class="bold">Subtotal:</span> ₹{{ order.total_price }}</p>
-        <p><span class="bold">Shipping:</span> ₹0.00</p>
-        <p class="bold">Total Paid: ₹{{ order.total_price }}</p>
+        <p><span class="bold">Subtotal (Items after offers):</span> ₹{{ order.total_amount|subtract:order.shipping_charge }}</p>
+        {% if order.coupon_discount and order.coupon_discount > 0 %}
+            <p><span class="bold">Coupon Discount:</span> -₹{{ order.coupon_discount }}</p>
+        {% endif %}
+        <p><span class="bold">Shipping:</span> ₹{{ order.shipping_charge }}</p>
+        <p class="bold">Total Paid: ₹{{ order.total_amount }}</p>
     </div>
 </body>
 </html>

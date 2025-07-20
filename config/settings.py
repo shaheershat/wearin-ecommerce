@@ -1,5 +1,5 @@
 # settings.py
-print("Loading settings.py...") 
+print("Loading settings.py...")
 from pathlib import Path
 import os
 import cloudinary
@@ -13,8 +13,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-=7w#3h#riq8x=oe2u&e)y_^)ebj4xx%8d8_18eops^bjn0*%a+'
 
 # SECURITY WARNING: don't run with debug true in production!
-DEBUG = True
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
+DEBUG = False # You have this set to False, which is good for production
+ALLOWED_HOSTS = ['3.85.137.86', 'localhost', '127.0.0.1'] # Ensure this includes your production domain
 
 
 # Installed apps
@@ -106,6 +106,7 @@ USE_TZ = True # Use timezone-aware datetimes
 
 # Static and Media files
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles' # <-- ADDED THIS LINE
 STATICFILES_DIRS = [BASE_DIR / "core/static"]
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'

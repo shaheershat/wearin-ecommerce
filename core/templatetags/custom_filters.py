@@ -2,7 +2,6 @@
 from django import template
 from core.models import Cart, Wishlist # Import your Cart and Wishlist models
 from decimal import Decimal # Import Decimal for more accurate currency handling
-
 register = template.Library()
 
 @register.simple_tag(takes_context=True)
@@ -58,3 +57,21 @@ def get_category_name(categories, id):
         return next(c.name for c in categories if str(c.id) == str(id))
     except StopIteration:
         return ""
+    
+
+
+@register.filter
+def multiply(value, arg):
+    try:
+        return Decimal(value) * Decimal(arg)
+    except (ValueError, TypeError):
+        # Handle cases where conversion fails, return empty string or 0
+        return '' 
+
+@register.filter
+def subtract(value, arg):
+    try:
+        return Decimal(value) - Decimal(arg)
+    except (ValueError, TypeError):
+        # Handle cases where conversion fails, return empty string or 0
+        return ''

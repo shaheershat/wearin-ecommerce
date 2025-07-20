@@ -6,11 +6,15 @@ from django.template import Template, Context
 from django.conf import settings
 from django.db import transaction
 import logging
+from django.utils.html import strip_tags
 
+# Local imports from your core.models, keep them here
 from core.models import (
     Product, CartItem, NewsletterCampaign,
     NewsletterSubscriber, User
 )
+
+# Assuming these are other tasks you import/use in this file
 from core.emails import (
     send_reservation_expired_email,
     send_product_available_email
@@ -205,26 +209,82 @@ def _run_scheduled_campaigns():
             campaign.status = 'failed'
             campaign.save()
 
+def _send_email(subject, template_name, context, recipient_list):
+    """Helper function to send HTML emails with enhanced logging."""
+    if not recipient_list:
+        logger.info(f"No recipients specified for email '{subject}'. Skipping.")
+        return False # Indicate failure due to no recipients
 
+    html_message = render_to_string(template_name, context)
+    plain_message = strip_tags(html_message)
 
+    try:
+        # Using EmailMultiAlternatives is generally better than send_mail directly for HTML
+        msg = EmailMultiAlternatives(subject, plain_message, settings.DEFAULT_FROM_EMAIL, recipient_list)
+        msg.attach_alternative(html_message, "text/html") # Attach HTML version
+        msg.send()
+        logger.info(f"Email '{subject}' sent successfully to {', '.join(recipient_list)}")
+        return True # Indicate success
+    except Exception as e:
+        logger.error(f"Error sending email '{subject}' to {', '.join(recipient_list)}: {e}", exc_info=True)
+        return False # Indicate failure
+
+# The CORRECTED version of send_return_processed_email task that you should be using
 @shared_task
-def send_return_processed_email(order_id, returned_item_ids):
-    from core.models import Order, OrderItem  # Lazy import to avoid circular import
+def send_return_processed_email(return_request_id, status):
+    """
+    Sends an email to the user when their return request has been processed (approved/rejected).
+    """
+    logger.info(f"Attempting to send return processed email for Return Request ID: {return_request_id} with status: {status}.")
+    print(f"DEBUGGING: Task received return_request_id={return_request_id}, status='{status}'") # <--- DEBUG PRINT
+    try:
+        # Local import to avoid circular dependency
+        # Ensure core.models.Order is imported here
+        from core.models import ReturnRequest, Order, OrderItem, Wallet, WalletTransaction # Assuming Wallet and WalletTransaction are also in core.models and might be used in a larger context
 
-    order = Order.objects.get(id=order_id)
-    returned_items = OrderItem.objects.filter(id__in=returned_item_ids)
+        return_request = ReturnRequest.objects.get(id=return_request_id)
+        return_request.refresh_from_db() # Ensure freshest data
 
-    subject = f"Return Processed for Order #{order.id}"
-    message = render_to_string("emails/return_processed.html", {
-        "order": order,
-        "user": order.user,
-        "returned_items": returned_items,
-    })
-    send_mail(subject, "", settings.DEFAULT_FROM_EMAIL, [order.user.email], html_message=message)
+        order = return_request.order # This is the line that *should* be causing the error (line 190 in your file)
+
+        # --- ENSURE THIS CHECK IS PRESENT ---
+        if not order:
+            logger.error(f"Order for ReturnRequest ID {return_request_id} (associated Order ID: {return_request.order_id if hasattr(return_request, 'order_id') else 'N/A'}) does not exist. Skipping email.")
+            print(f"DEBUGGING: SKIPPING EMAIL: Order for ReturnRequest ID {return_request_id} not found.") # <--- DEBUG PRINT
+            return # Exit the task gracefully if the order is missing
+        # --- END ENSURE CHECK ---
+
+        user = return_request.user
+
+        if not user.email:
+            logger.warning(f"User {user.username} (ID: {user.id}) has no email. Skipping return processed email for request {return_request_id}.")
+            return
+
+        context = {
+            'return_request': return_request,
+            'order': order,
+            'user': user,
+            'returned_items': return_request.requested_items.all(),
+            'status': status,
+            'site_name': settings.SITE_NAME,
+        }
+
+        subject = f"Your Return Request #{return_request.id} for Order #{order.custom_order_id} has been {status} - {settings.SITE_NAME}"
+        template_name = 'emails/return_processed.html'
+
+        if _send_email(subject, template_name, context, [user.email]):
+            logger.info(f"Successfully queued return processed email for request {return_request.id} to {user.email}.")
+        else:
+            logger.error(f"Failed to queue return processed email for request {return_request.id} to {user.email}.")
+
+    except ReturnRequest.DoesNotExist:
+        logger.error(f"ReturnRequest with ID {return_request_id} not found for sending processed email. Skipping.")
+    except Exception as e:
+        logger.error(f"Unexpected error in send_return_processed_email for request {return_request_id}: {e}", exc_info=True)
 
 @shared_task
 def send_order_cancelled_email(order_id):
-    from core.models import Order
+    from core.models import Order # Ensure Order is imported here
 
     order = Order.objects.get(id=order_id)
     subject = f"Order Cancelled - #{order.id}"
@@ -233,4 +293,3 @@ def send_order_cancelled_email(order_id):
         "user": order.user,
     })
     send_mail(subject, "", settings.DEFAULT_FROM_EMAIL, [order.user.email], html_message=message)
-

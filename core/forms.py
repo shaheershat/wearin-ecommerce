@@ -266,26 +266,33 @@ class OfferForm(forms.ModelForm):
     class Meta:
         model = Offer
         fields = [
-            'name', 'tag_text', 'discount_percentage', 'discount_amount',
+            'name', 'offer_type', 'tag_text', 'discount_percentage', 'discount_amount',
+            'buy_quantity', 'get_quantity', # Add new fields
             'start_date', 'end_date', 'is_active',
             'background_color', 'text_color'
         ]
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g., Summer Sale'}),
-            'tag_text': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g., SALE, 20% OFF'}),
+            'offer_type': forms.Select(attrs={'class': 'form-select'}), # New widget
+            'tag_text': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g., SALE, B1G1, FREE SHIP'}),
             'discount_percentage': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0', 'max': '100', 'placeholder': 'e.g., 15.00'}),
             'discount_amount': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0', 'placeholder': 'e.g., 10.00'}),
+            'buy_quantity': forms.NumberInput(attrs={'class': 'form-control', 'min': '1', 'placeholder': 'e.g., 1'}), # New widget
+            'get_quantity': forms.NumberInput(attrs={'class': 'form-control', 'min': '1', 'placeholder': 'e.g., 1'}), # New widget
             'start_date': forms.DateTimeInput(attrs={'type': 'datetime-local', 'class': 'form-control'}),
             'end_date': forms.DateTimeInput(attrs={'type': 'datetime-local', 'class': 'form-control'}),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-            'background_color': forms.TextInput(attrs={'type': 'color', 'class': 'form-control form-control-color'}), # Keep type="color"
-            'text_color': forms.TextInput(attrs={'type': 'color', 'class': 'form-control form-control-color'}),     # Keep type="color"
+            'background_color': forms.TextInput(attrs={'type': 'color', 'class': 'form-control form-control-color'}),
+            'text_color': forms.TextInput(attrs={'type': 'color', 'class': 'form-control form-control-color'}),
         }
         labels = {
             'name': 'Offer Name',
+            'offer_type': 'Offer Type', # New label
             'tag_text': 'Product Tag Text',
             'discount_percentage': 'Discount Percentage (%)',
             'discount_amount': 'Discount Amount ($)',
+            'buy_quantity': 'Buy Quantity (for BOGO)', # New label
+            'get_quantity': 'Get Quantity (for BOGO)', # New label
             'start_date': 'Start Date & Time',
             'end_date': 'End Date & Time',
             'is_active': 'Offer Active',
@@ -293,25 +300,59 @@ class OfferForm(forms.ModelForm):
             'text_color': 'Tag Text Color',
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Add JavaScript for conditional display in the admin if possible,
+        # or rely on model's clean method for validation.
+        # For a full JS solution, you'd add this to your admin.py's Media class.
+
     def clean(self):
         cleaned_data = super().clean()
+        offer_type = cleaned_data.get('offer_type')
         discount_percentage = cleaned_data.get('discount_percentage')
         discount_amount = cleaned_data.get('discount_amount')
+        buy_quantity = cleaned_data.get('buy_quantity')
+        get_quantity = cleaned_data.get('get_quantity')
         start_date = cleaned_data.get('start_date')
         end_date = cleaned_data.get('end_date')
 
-        if discount_percentage is not None and discount_amount is not None:
-            raise forms.ValidationError("An offer cannot have both a percentage and a fixed amount discount. Choose one.")
-        if discount_percentage is None and discount_amount is None:
-            raise forms.ValidationError("An offer must have either a percentage or a fixed amount discount.")
-        
+        # Combined validation logic:
+        # 1. Discount type exclusivity (percentage vs amount)
+        if offer_type in ['PERCENTAGE', 'AMOUNT']:
+            if discount_percentage is not None and discount_amount is not None:
+                raise forms.ValidationError("An offer cannot have both a percentage and a fixed amount discount. Choose one.")
+            if discount_percentage is None and discount_amount is None:
+                raise forms.ValidationError("An offer must have either a percentage or a fixed amount discount for this type.")
+        else: # If not PERCENTAGE or AMOUNT, clear these fields to avoid saving junk data
+            cleaned_data['discount_percentage'] = None
+            cleaned_data['discount_amount'] = None
+
+        # 2. Discount value range checks
         if discount_percentage is not None and (discount_percentage < 0 or discount_percentage > 100):
             raise forms.ValidationError("Discount percentage must be between 0 and 100.")
         if discount_amount is not None and discount_amount < 0:
             raise forms.ValidationError("Discount amount cannot be negative.")
 
+        # 3. Date validation
         if start_date and end_date and start_date >= end_date:
             raise forms.ValidationError("End date must be after start date.")
+
+        # 4. BOGO specific validation
+        if offer_type in ['BOGO1', 'BOGO2']:
+            if not buy_quantity or not get_quantity:
+                raise forms.ValidationError("For 'Buy X Get Y Free' offers, 'Buy Quantity' and 'Get Quantity' must be specified.")
+            if buy_quantity <= 0 or get_quantity <= 0:
+                raise forms.ValidationError("Buy quantity and Get quantity must be positive for BOGO offers.")
+            # Set specific values for B1G1, B2G1 for internal consistency if desired
+            if offer_type == 'BOGO1' and (buy_quantity != 1 or get_quantity != 1):
+                # Optionally warn or auto-correct, for now just allow for flexibility
+                pass
+            if offer_type == 'BOGO2' and (buy_quantity != 2 or get_quantity != 1):
+                # Optionally warn or auto-correct
+                pass
+        else: # If not BOGO, clear these fields
+            cleaned_data['buy_quantity'] = None
+            cleaned_data['get_quantity'] = None
 
         return cleaned_data
     

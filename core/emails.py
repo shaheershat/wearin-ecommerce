@@ -182,13 +182,13 @@ def send_order_confirmation_email(order_id):
             'invoice_download_url': invoice_absolute_url,
         }
 
-        subject = f"Your Order #{order.id} Confirmation from {settings.SITE_NAME}"
+        subject = f"Your Order #{order.custom_order_id} Confirmation from {settings.SITE_NAME}"
         template_name = 'emails/order_confirmation.html'
 
         if _send_email(subject, template_name, context, [user.email]):
-            logger.info(f"Successfully queued order confirmation email for order {order.id} to {user.email}.")
+            logger.info(f"Successfully queued order confirmation email for order {order.custom_order_id} to {user.email}.")
         else:
-            logger.error(f"Failed to queue order confirmation email for order {order.id} to {user.email}.")
+            logger.error(f"Failed to queue order confirmation email for order {order.custom_order_id} to {user.email}.")
 
     except Order.DoesNotExist:
         logger.error(f"Order with ID {order_id} not found for sending confirmation email. Skipping.")
@@ -217,13 +217,13 @@ def send_order_cancelled_email(order_id):
             'site_name': settings.SITE_NAME,
         }
 
-        subject = f"Your Order #{order.id} has been Cancelled - {settings.SITE_NAME}"
+        subject = f"Your Order #{order.custom_order_id} has been Cancelled - {settings.SITE_NAME}"
         template_name = 'emails/order_cancelled.html'
 
         if _send_email(subject, template_name, context, [user.email]):
-            logger.info(f"Successfully queued order cancellation email for order {order.id} to {user.email}.")
+            logger.info(f"Successfully queued order cancellation email for order {order.custom_order_id} to {user.email}.")
         else:
-            logger.error(f"Failed to queue order cancellation email for order {order.id} to {user.email}.")
+            logger.error(f"Failed to queue order cancellation email for order {order.custom_order_id} to {user.email}.")
 
     except Order.DoesNotExist:
         logger.error(f"Order with ID {order_id} not found for sending cancellation email. Skipping.")
@@ -232,7 +232,7 @@ def send_order_cancelled_email(order_id):
 
 
 @shared_task
-def send_return_processed_email(return_request_id, status):
+def send_return_processed_email(return_request_id, status): # <--- Note argument names
     """
     Sends an email to the user when their return request has been processed (approved/rejected).
     """
@@ -240,7 +240,7 @@ def send_return_processed_email(return_request_id, status):
     try:
         from core.models import ReturnRequest # Local import to avoid circular dependency
         return_request = ReturnRequest.objects.get(id=return_request_id)
-        return_request.refresh_from_db() # ADDED THIS LINE
+        return_request.refresh_from_db()
         order = return_request.order
         user = return_request.user
 
@@ -252,7 +252,7 @@ def send_return_processed_email(return_request_id, status):
             'return_request': return_request,
             'order': order,
             'user': user,
-            'returned_items': return_request.requested_items.all(), # Pass returned items
+            'returned_items': return_request.requested_items.all(), # <--- This is the correct way
             'status': status,
             'site_name': settings.SITE_NAME,
         }
