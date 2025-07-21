@@ -313,8 +313,34 @@
         </a>
     </div>
     {% endif %}
+    {% if messages %}
+    <div class="fixed top-4 right-4 z-50 space-y-3 w-[300px]">
+        {% for message in messages %}
+        <div class="flash-message relative flex items-start justify-between gap-2 px-4 py-3 rounded-lg shadow-lg text-white animate-slide-in
+                    {% if message.tags == 'success' %} bg-green-500
+                    {% elif message.tags == 'error' %} bg-red-500
+                    {% elif message.tags == 'warning' %} bg-yellow-400 text-black
+                    {% else %} bg-gray-800 {% endif %}">
 
+            <span class="text-sm font-medium">{{ message }}</span>
+
+            <!-- Dismiss Button -->
+            <button onclick="this.closest('.flash-message').remove()"
+                    class="ml-4 text-white text-lg font-bold hover:text-gray-200 leading-none">
+            &times;
+            </button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
     <script>
+        setTimeout(() => {
+            document.querySelectorAll('.flash-message').forEach(el => {
+            el.style.opacity = '0';
+            setTimeout(() => el.remove(), 500); // wait for fade out
+            });
+        }, 3000);
+
         function toggleMobileMenu() {
             const mobileMenu = document.getElementById('mobileMenu');
             const mobileSearchOverlay = document.getElementById('mobileSearchOverlay');

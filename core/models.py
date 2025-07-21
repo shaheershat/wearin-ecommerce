@@ -694,7 +694,7 @@ class OfferBanner(models.Model):
     Designed to be a singleton (only one active instance at a time).
     """
     text_content = models.CharField(
-        max_length=255,
+        max_length=600,
         help_text="The text that will scroll on the banner."
     )
     text_color = models.CharField(
