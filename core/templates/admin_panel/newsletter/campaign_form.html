@@ -123,7 +123,6 @@
         border: 2px solid #2563eb;
         background-color: #f0f9ff;
     }
-    /* Removed the previous CSS for input visibility as it's now handled by forms.py */
 </style>
 
 <script>
@@ -136,9 +135,7 @@
         }
 
         typeSelect.addEventListener('change', toggleCustomField);
-        toggleCustomField(); // on load
-
-        // Template selection
+        toggleCustomField(); 
         const templateCards = document.querySelectorAll('.template-card');
         const selectedInput = document.getElementById('selected_template_id');
 
@@ -150,24 +147,22 @@
             });
         });
 
-        // Listen for postMessage from iframe
         window.addEventListener("message", function(event) {
             if (event.data === "template_created") {
                 closeTemplateModal();
-                location.reload(); // Reload to show the new template in the list
+                location.reload(); 
             }
         });
     });
 
     function openTemplateModal() {
-        // Append modal=true to the URL to tell the view it's being accessed via modal
         document.getElementById('templateModalIframe').src = "{% url 'admin_email_template_create' %}?modal=true";
         document.getElementById('templateModal').classList.remove('hidden');
     }
 
     function closeTemplateModal() {
         document.getElementById('templateModal').classList.add('hidden');
-        document.getElementById('templateModalIframe').src = ""; // Clear iframe src to stop any media/scripts
+        document.getElementById('templateModalIframe').src = ""; 
     }
 </script>
 {% endblock %}

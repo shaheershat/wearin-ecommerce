@@ -1,10 +1,9 @@
 from django.contrib import admin
-from django.urls import path, include, re_path # Import re_path
+from django.urls import path, include, re_path 
 from django.conf import settings
 from django.conf.urls.static import static
-from django.views.static import serve # Import serve for DEBUG=False static/media serving
+from django.views.static import serve 
 
-# Import views from core.views.user_views and admin_views
 from core.views import user_views, admin_views
 from core.views.user_views import (
     register_view, request_register_otp_view, verify_register_otp_view,
@@ -17,7 +16,6 @@ from core.views.user_views import (
     subscribe_newsletter,
     add_address_form_view,
     notify_me_view,
-    # NEW: Import the new return views
     get_order_items_for_return, create_return_request,
 )
 
@@ -48,11 +46,11 @@ urlpatterns = [
     path('dashboard/sales/export-pdf/', admin_views.export_sales_pdf, name='export_sales_pdf'),
     path('admin-offers/', admin_views.offer_management_view, name='admin_offer_management'),
 
-    # UPDATED/NEW: Admin Return Request API Endpoints
+    # Admin Return Request API Endpoints
     path('api/admin/returns/<int:request_id>/details/', admin_views.get_return_request_for_admin_modal, name='admin_get_return_request_details'),
     path('api/admin/returns/<int:request_id>/process/', admin_views.process_admin_return_request, name='admin_process_return_request'),
 
-    # NEW: Offer Edit/Delete Endpoints
+    # Offer Edit/Delete Endpoints
     path('admin-offers/<int:offer_id>/edit/', admin_views.edit_offer_view, name='admin_edit_offer'),
     path('admin-offers/<int:offer_id>/delete/', admin_views.delete_offer_view, name='admin_delete_offer'),
 
@@ -113,10 +111,9 @@ urlpatterns = [
     path('checkout/coupons/', user_views.user_coupon_list_view, name='coupon_list'),
     path('checkout/remove-coupon/', user_views.remove_applied_coupon, name='remove_applied_coupon'),
 
-    # UPDATED/NEW: User Return Request API Endpoints
+    # User Return Request API Endpoints
     path('api/orders/<int:order_id>/return-items/', get_order_items_for_return, name='get_order_items_for_return_api'),
     path('api/returns/create/', create_return_request, name='create_return_request_api'),
-
 
     path('profile/address/add/', add_address_form_view, name='add_address_form'),
     path('api/profile/address/add/', add_address, name='add_address_api'),
@@ -148,11 +145,10 @@ urlpatterns = [
 ]
 
 
-# Serve static and media files in development (DEBUG=True)
+# Serve static and media files in development
 if settings.DEBUG:
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-# Serve static and media files for local testing when DEBUG=False (NOT FOR PRODUCTION)
 else:
     urlpatterns += [
         re_path(r'^media/(?P<path>.*)$', serve, {

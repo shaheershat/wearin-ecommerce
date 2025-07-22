@@ -279,7 +279,7 @@
     }
 
     // --- JavaScript for Product Page Reservation Timer ---
-    let productPageCountdownInterval; // Global variable to store interval ID for this page
+    let productPageCountdownInterval; 
 
     function startReservationTimer(duration) {
         const timerDisplay = document.getElementById('reservation-timer');
@@ -288,14 +288,12 @@
             return;
         }
 
-        // Clear any existing timer to prevent multiple timers running
         if (productPageCountdownInterval) {
             clearInterval(productPageCountdownInterval);
         }
 
-        let timer = duration; // Use the passed duration
+        let timer = duration; 
 
-        // Immediately update once to show initial time without 1-sec delay
         const updateTimerDisplay = () => {
             const minutes = Math.floor(timer / 60);
             const seconds = timer % 60;
@@ -306,12 +304,11 @@
                 clearInterval(productPageCountdownInterval);
                 timerDisplay.textContent = "Reservation expired!";
                 console.log("Product page reservation expired, reloading...");
-                // Reload the page to reflect expired status (buttons, etc.)
                 setTimeout(() => window.location.reload(), 1000); 
             }
         };
 
-        updateTimerDisplay(); // Call immediately
+        updateTimerDisplay(); 
         productPageCountdownInterval = setInterval(updateTimerDisplay, 1000);
     }
 
@@ -319,24 +316,24 @@
     document.getElementById('notify-me-button')?.addEventListener('click', function() {
         const productId = this.dataset.productId;
         const messageDiv = document.getElementById('notify-me-message');
-        messageDiv.textContent = ''; // Clear previous messages
+        messageDiv.textContent = ''; 
         messageDiv.classList.remove('text-green-600', 'text-red-600');
 
-        fetch(`{% url 'notify_me' 0 %}`.replace('0', productId), { // Dynamic URL creation
+        fetch(`{% url 'notify_me' 0 %}`.replace('0', productId), { 
             method: 'POST',
             headers: {
                 'X-CSRFToken': getCookie('csrftoken'),
                 'X-Requested-With': 'XMLHttpRequest',
-                'Content-Type': 'application/json', // Sending JSON body
+                'Content-Type': 'application/json', 
             },
-            body: JSON.stringify({ product_id: productId }) // Send product_id as JSON
+            body: JSON.stringify({ product_id: productId }) 
         })
         .then(response => response.json().then(data => ({ status: response.status, body: data })))
         .then(({ status, body }) => {
             if (status === 200 && body.success) {
                 messageDiv.textContent = body.message;
                 messageDiv.classList.add('text-green-600');
-                document.getElementById('notify-me-button').disabled = true; // Disable button
+                document.getElementById('notify-me-button').disabled = true; 
             } else {
                 messageDiv.textContent = body.message || 'Error subscribing.';
                 messageDiv.classList.add('text-red-600');
@@ -350,11 +347,8 @@
 
     // --- DOMContentLoaded for main page initialization and AJAX form handling ---
     document.addEventListener('DOMContentLoaded', function() {
-        // Initial setup for thumbnails
         if (thumbs.length > 0) thumbs[0].classList.add('active-thumb');
 
-        // Check if reservation timer should start on initial page load
-        // This is crucial for the product page timer.
         const initialReservationExpiresInSeconds = parseInt("{{ reservation_expires_in_seconds|default:0 }}");
         const initialIsReservedByCurrentUser = "{{ is_reserved_by_current_user }}" === "True";
         
@@ -367,33 +361,27 @@
 
         addToCartForms.forEach(form => {
             form.addEventListener('submit', function(event) {
-                event.preventDefault(); // <--- THIS IS THE KEY TO PREVENT RAW JSON DISPLAY
+                event.preventDefault();
 
-                const url = this.action; // e.g., /add-to-cart/94/
-
-                // Show loading indicator if desired
-                // this.querySelector('button[type="submit"]').textContent = 'Adding...'; 
-                // this.querySelector('button[type="submit"]').disabled = true;
+                const url = this.action; 
 
                 fetch(url, {
                     method: 'POST',
                     headers: {
                         'X-CSRFToken': getCookie('csrftoken'),
-                        'X-Requested-With': 'XMLHttpRequest', // Identifies as AJAX request to Django
+                        'X-Requested-With': 'XMLHttpRequest', 
                     },
-                    body: new FormData(this) // Sends form data, including CSRF token
+                    body: new FormData(this) 
                 })
                 .then(response => {
-                    // Check for network errors or non-JSON responses
                     if (!response.ok) {
-                        // Attempt to parse JSON error message, fallback to generic
                         return response.json().then(errorData => {
                             throw new Error(errorData.message || `HTTP error! Status: ${response.status}`);
                         }).catch(() => {
                             throw new Error(`HTTP error! Status: ${response.status} - ${response.statusText}`);
                         });
                     }
-                    return response.json(); // Parse JSON for 2xx responses
+                    return response.json(); 
                 })
                 .then(data => {
                     if (data.success) {
@@ -403,23 +391,19 @@
                         productPageMessageContainer.textContent = data.message;
                         productPageMessageContainer.className = 'mt-4 p-3 bg-green-100 text-green-700 rounded text-center';
                         productPageMessageContainer.style.display = 'block';
-                        setTimeout(() => productPageMessageContainer.style.display = 'none', 3000); // Hide after 3 seconds
+                        setTimeout(() => productPageMessageContainer.style.display = 'none', 3000); 
 
-                        // Update mini-cart UI if the function exists (e.g., in base.html)
                         if (typeof updateMiniCartUI === 'function') {
                             updateMiniCartUI(data.cart_count, data.cart_items_data, data.cart_total_price);
                         } else {
                             console.warn("updateMiniCartUI function not found. Mini-cart may not be updated.");
                         }
 
-                        // Critically, reload the page to update the product status,
-                        // buttons (e.g., from Add to Cart to Update/Checkout), and start/update the timer.
                         console.log("Add/Update Cart successful, reloading product detail page to reflect changes...");
-                        setTimeout(() => window.location.reload(), 500); // Small delay for message to be seen
+                        setTimeout(() => window.location.reload(), 500); 
 
                     } else {
                         console.error('Add to cart failed:', data.message);
-                        // Display error message
                         productPageMessageContainer.textContent = data.message;
                         productPageMessageContainer.className = 'mt-4 p-3 bg-red-100 text-red-700 rounded text-center';
                         productPageMessageContainer.style.display = 'block';
@@ -428,7 +412,6 @@
                 })
                 .catch(error => {
                     console.error('Network or server error during add to cart:', error);
-                    // Display generic error message
                     productPageMessageContainer.textContent = `Error: ${error.message || 'An unexpected error occurred.'}`;
                     productPageMessageContainer.className = 'mt-4 p-3 bg-red-100 text-red-700 rounded text-center';
                     productPageMessageContainer.style.display = 'block';

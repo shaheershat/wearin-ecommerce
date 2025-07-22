@@ -71,13 +71,12 @@
                     elementToRemove.remove();
                 }
 
-                // Check if the product grid is now empty
                 const productGrid = document.getElementById('product-grid');
                 if (productGrid && productGrid.children.length === 0) {
-                    productGrid.classList.add('hidden'); // Hide the grid
+                    productGrid.classList.add('hidden'); 
                     const emptyMessage = document.getElementById('empty-wishlist-message');
                     if (emptyMessage) {
-                        emptyMessage.classList.remove('hidden'); // Show the empty message
+                        emptyMessage.classList.remove('hidden'); 
                     }
                 }
             } else {

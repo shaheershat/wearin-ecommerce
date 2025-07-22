@@ -5,84 +5,74 @@
 
 {% block extra_head %}
     <style>
-        /* CSS for the Product Offer Tag */
         .product-offer-tag {
             position: absolute;
-            top: 10px;    /* Distance from the top of the container */
-            left: 10px;   /* Distance from the left of the container */
-            padding: 6px 10px; /* Adjust padding for desired size */
-            border-radius: 5px; /* Rounded corners for the tag */
-            font-size: 0.8em; /* Font size of the tag text */
+            top: 10px;   
+            left: 10px; 
+            padding: 6px 10px;
+            border-radius: 5px; 
+            font-size: 0.8em;
             font-weight: bold;
-            color: #FFFFFF; /* Default text color (white) */
-            background-color: #FF0000; /* Default background color (red) */
-            z-index: 40; /* Ensure it's above the image and other overlays like wishlist button */
-            text-transform: uppercase; /* Make text uppercase, e.g., "SALE" */
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2); /* Subtle shadow for depth */
-            line-height: 1; /* Adjust line height to prevent extra space around text */
-            white-space: nowrap; /* Prevents text from wrapping if tag_text is long */
-            display: block; /* Ensure it behaves as a block element for positioning */
+            color: #FFFFFF; 
+            background-color: #FF0000; 
+            z-index: 40; 
+            text-transform: uppercase;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2); 
+            line-height: 1; 
+            white-space: nowrap; 
+            display: block; 
         }
 
-        /* Ensure the product card and its inner image container are positioned correctly */
         .product-card {
-            position: relative; /* Crucial: This makes it a positioning context for absolute children within the whole card */
-            border-radius: 0.75rem; /* Tailwind's rounded-xl */
-            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06); /* Tailwind's shadow-sm */
-            overflow: hidden; /* Ensures anything outside the card is clipped, useful for rounded corners */
-            background-color: #fff; /* Tailwind's bg-white */
+            position: relative; 
+            border-radius: 0.75rem;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06); 
+            overflow: hidden; 
+            background-color: #fff; 
         }
 
-        /* The div directly containing the image and other absolutely positioned elements */
         .product-card > .relative.overflow-hidden {
-            position: relative; /* This div also needs to be relative to contain its absolute children */
-            overflow: hidden; /* Keeps image overflow contained, useful for hover effects */
-            height: 18rem; /* Equivalent to Tailwind's h-72 (72 * 4px = 288px). This fixes the container's height. */
-            width: 100%; /* Ensure it takes full width */
+            position: relative; 
+            overflow: hidden; 
+            height: 18rem;
+            width: 100%;
         }
 
-        /* Ensure wishlist button has a z-index lower than the offer tag but higher than the image */
         .product-card button.absolute {
-            z-index: 30; /* Should be lower than offer tag (40) but higher than image (default 1) */
+            z-index: 30; 
         }
 
-        /* The overlay for "View Product" */
         .product-card .absolute.inset-0 {
-            z-index: 20; /* Lower than tag and wishlist, higher than image */
+            z-index: 20; 
         }
 
-        /* Styling for the Image itself - IMPORTANT CHANGES HERE */
         .product-card .relative.overflow-hidden img {
-            position: absolute; /* Make the image absolute to ensure it fills the parent div without pushing other content */
+            position: absolute; 
             top: 0;
             left: 0;
             width: 100%;
-            height: 100%; /* Make it fill the parent container's defined height */
+            height: 100%; 
             object-fit: cover;
-            /* Initial state for the transform, the group-hover will apply the scale */
             transform: scale(1); 
             transition: transform 0.3s ease-in-out;
         }
 
-        /* Apply the hover scale directly */
-        .product-card .relative.overflow-hidden .group:hover & img { /* This might need adjustment if group-hover is on parent of 'relative.overflow-hidden' */
+        .product-card .relative.overflow-hidden .group:hover & img { 
             transform: scale(1.05);
         }
 
-        /* Corrected hover for img scale */
         .group:hover .relative.overflow-hidden img {
             transform: scale(1.05);
         }
 
-        /* Placeholder for no image */
         .product-card .relative.overflow-hidden .no-image-placeholder {
             width: 100%;
             height: 100%;
             display: flex;
             align-items: center;
             justify-content: center;
-            background-color: #E2E8F0; /* Tailwind's bg-gray-200 */
-            color: #A0AEC0; /* Tailwind's text-gray-400 */
+            background-color: #E2E8F0; ]
+            color: #A0AEC0; 
         }
     </style>
 {% endblock %}
@@ -284,7 +274,6 @@
         return cookieValue;
     }
 
-    // Event listeners for both filter forms using their IDs
     document.getElementById('mobileFilterForm')?.addEventListener('submit', applyFilters);
     document.getElementById('desktopFilterForm')?.addEventListener('submit', applyFilters);
 
@@ -307,7 +296,6 @@
             const newGrid = doc.querySelector('#productGrid');
             if (newGrid) {
                 document.getElementById('productGrid').innerHTML = newGrid.innerHTML;
-                // Re-initialize wishlist toggles for newly loaded products
                 document.getElementById('productGrid').querySelectorAll('.wishlist-btn').forEach(btn => {
                     btn.onclick = function() {
                         toggleWishlist(this, this.dataset.productId);

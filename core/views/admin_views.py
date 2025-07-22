@@ -68,7 +68,7 @@ def offer_management_view(request):
 
 
     # --- Product Offer Management ---
-    offer_form = OfferForm() # Form for creating new offers in the modal
+    offer_form = OfferForm() 
     product_filter_form = ProductFilterForm(request.GET)
 
     products_queryset = Product.objects.all().order_by('-created_at')
@@ -93,7 +93,7 @@ def offer_management_view(request):
         if sort_by:
             products_queryset = products_queryset.order_by(sort_by)
 
-    # Handle product offer actions (Apply Existing Offer, Remove Offer, Create New Offer via AJAX)
+    # Handle product offer actions
     if request.method == 'POST':
         # --- Handle Create New Offer Modal Submission (AJAX) ---
         if 'create_new_offer_modal' in request.POST:
@@ -105,7 +105,7 @@ def offer_management_view(request):
                     'message': f"Offer '{offer.name}' created successfully!",
                     'offer': {
                         'id': offer.id,
-                        'name': offer.name, # Use 'name' for display in dropdown
+                        'name': offer.name, 
                     }
                 })
             else:
@@ -116,7 +116,6 @@ def offer_management_view(request):
                     'errors': errors
                 }, status=400)
 
-        # For the following actions, products must be selected
         selected_product_ids = request.POST.getlist('selected_products')
         if not selected_product_ids:
             messages.warning(request, "Please select at least one product.")

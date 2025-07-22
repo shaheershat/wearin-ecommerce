@@ -19,22 +19,19 @@
 </div>
 
 <style>
-    /* Ensure crispy form field containers are block-level and have margin */
     .form-group, .form-field, .control-group, .field {
         display: block !important;
         margin-bottom: 1.5rem !important;
     }
 
-    /* Ensure labels are visible and correctly styled */
     label {
         display: block !important;
         font-weight: bold !important;
         margin-bottom: 0.5rem !important;
-        color: #374151 !important; /* Tailwind's gray-700 */
-        font-size: 0.875rem !important; /* text-sm */
+        color: #374151 !important;
+        font-size: 0.875rem !important; 
     }
 
-    /* Target ALL inputs, textareas, and selects (except specific types handled below) for full width */
     input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="color"]),
     textarea,
     select {
@@ -49,28 +46,25 @@
         -webkit-appearance: none !important;
         -moz-appearance: none !important;
         appearance: none !important;
-        box-sizing: border-box !important; /* Important for width calculations */
+        box-sizing: border-box !important; 
     }
 
-    /* Specific styles for color inputs */
     input[type="color"].form-control-color {
-        /* Reset any browser defaults that might make it too small or too large */
         -webkit-appearance: none !important;
         -moz-appearance: none !important;
         appearance: none !important;
-        border: 1px solid #D1D5DB !important; /* Keep the border from previous step */
-        padding: 0 !important; /* Remove default padding within the color swatch */
-        width: 50px !important; /* Adjust width as desired, e.g., 50px */
-        min-width: 50px !important; /* Ensure it doesn't get smaller */
-        height: 40px !important; /* Adjust height as desired, e.g., 40px */
-        min-height: 40px !important; /* Ensure it doesn't get smaller */
+        border: 1px solid #D1D5DB !important; 
+        padding: 0 !important; 
+        width: 50px !important; 
+        min-width: 50px !important; 
+        height: 40px !important; 
+        min-height: 40px !important;
         border-radius: 0.375rem !important;
-        background-color: transparent !important; /* Make sure background is transparent */
-        cursor: pointer !important; /* Indicate it's clickable */
-        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important; /* Keep the shadow */
+        background-color: transparent !important; 
+        cursor: pointer !important; 
+        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important; 
     }
 
-    /* Keep DateTimeInput styles, which are fine at 100% width */
     input[type="datetime-local"].form-control {
         display: block !important;
         width: 100% !important;
@@ -78,7 +72,6 @@
         box-sizing: border-box !important;
     }
 
-    /* Checkbox specific styles */
     input[type="checkbox"] {
         display: inline-block !important;
         width: auto !important;
@@ -90,7 +83,6 @@
         border-radius: 0.25rem !important;
     }
 
-    /* Help text and error messages */
     .helptext, .errorlist {
         font-size: 0.875rem !important;
         color: #6B7280 !important;

@@ -303,7 +303,7 @@
 </div>
 
 <script>
-  // Function to show/hide tabs (existing)
+  // Function to show/hide tabs
   function showTab(tabId) {
     document.querySelectorAll('.tab-content').forEach(div => div.classList.add('hidden'));
     document.getElementById(tabId).classList.remove('hidden');
@@ -406,7 +406,7 @@
   }
 
 
-  // Modal functions for EDIT ADDRESS (existing)
+  // Modal functions for EDIT ADDRESS 
   function openEditAddressModal(addressId) {
     const modal = document.getElementById('editAddressModal');
     const form = document.getElementById('editAddressForm');
@@ -737,16 +737,14 @@
 
   function closeReturnModal() {
       returnRequestModal.classList.add('hidden');
-      returnRequestForm.reset(); // Reset the form fields
-      // Optional: reload the orders tab to reflect any changes
+      returnRequestForm.reset(); 
       showTab('orders'); 
   }
 
   function populateReturnItems(items) {
-      returnItemsContainer.innerHTML = ''; // Clear loading message
+      returnItemsContainer.innerHTML = ''; 
       if (items.length === 0) {
           returnItemsContainer.innerHTML = '<p class="text-gray-500">No items eligible for return in this order.</p>';
-          // Disable submit button if no items
           returnRequestForm.querySelector('button[type="submit"]').disabled = true;
           return;
       } else {
@@ -774,7 +772,6 @@
           `;
           returnItemsContainer.appendChild(itemDiv);
 
-          // Auto-select if only one item available and quantity is 1
           if (items.length === 1 && item.max_return_quantity === 1) {
               document.getElementById(`item-${item.id}`).checked = true;
           }
@@ -782,7 +779,7 @@
   }
 
   function populateReturnReasons(reasons) {
-      returnReasonSelect.innerHTML = '<option value="">Select a reason</option>'; // Always have default
+      returnReasonSelect.innerHTML = '<option value="">Select a reason</option>'; 
       reasons.forEach(reason => {
           const option = document.createElement('option');
           option.value = reason.id;
@@ -800,15 +797,14 @@
           customReasonContainer.classList.remove('hidden');
       } else {
           customReasonContainer.classList.add('hidden');
-          customReasonInput.value = ''; // Clear custom reason if not needed
-          customReasonError.classList.add('hidden'); // Hide error if was visible
+          customReasonInput.value = '';
+          customReasonError.classList.add('hidden'); 
       }
   });
 
   returnRequestForm.addEventListener('submit', function(event) {
       event.preventDefault();
 
-      // Reset errors
       itemSelectionError.classList.add('hidden');
       reasonError.classList.add('hidden');
       customReasonError.classList.add('hidden');
@@ -895,7 +891,6 @@
       });
   });
 
-  // Event listener to update quantity inputs when checkboxes are toggled
   document.addEventListener('change', function(event) {
     if (event.target.matches('#returnItemsContainer input[type="checkbox"]')) {
       const checkbox = event.target;
@@ -904,14 +899,13 @@
       
       if (qtyInput) {
         if (checkbox.checked) {
-          // If checked, ensure quantity is at least 1, default to max if not set
           if (parseInt(qtyInput.value) === 0 || isNaN(parseInt(qtyInput.value))) {
              qtyInput.value = qtyInput.dataset.maxQty;
           }
-          qtyInput.readOnly = false; // Allow editing if checked
+          qtyInput.readOnly = false; 
         } else {
-          qtyInput.value = 0; // Set quantity to 0 if unchecked
-          qtyInput.readOnly = true; // Make it read-only
+          qtyInput.value = 0; 
+          qtyInput.readOnly = true; 
         }
       }
     }

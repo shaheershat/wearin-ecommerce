@@ -19,32 +19,30 @@
 
 <script>
     document.getElementById('addAddressForm').addEventListener('submit', function(event) {
-        event.preventDefault(); // Prevent default form submission
-
+        event.preventDefault(); 
         const form = event.target;
         const formData = new FormData(form);
         const formErrorsDiv = document.getElementById('form-errors');
-        formErrorsDiv.innerHTML = ''; // Clear previous errors
+        formErrorsDiv.innerHTML = ''; 
 
         fetch(form.action, {
             method: 'POST',
             headers: {
                 'X-CSRFToken': getCookie('csrftoken'),
-                'X-Requested-With': 'XMLHttpRequest' // Important for Django's is_ajax() check
+                'X-Requested-With': 'XMLHttpRequest' 
             },
             body: formData
         })
         .then(response => response.json().then(data => ({ status: response.status, body: data })))
         .then(({ status, body }) => {
             if (status === 200 && body.success) {
-                alert(body.message); // Show success message
+                alert(body.message); 
                 if (body.redirect_url) {
-                    window.location.href = body.redirect_url; // Redirect to checkout
+                    window.location.href = body.redirect_url; 
                 } else {
-                    window.location.href = "{% url 'my_profile' %}"; // Fallback redirect
+                    window.location.href = "{% url 'my_profile' %}"; 
                 }
             } else {
-                // Handle errors
                 let errorMessage = body.message || 'An unknown error occurred.';
                 if (body.errors) {
                     for (const field in body.errors) {

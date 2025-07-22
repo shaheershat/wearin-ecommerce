@@ -34,15 +34,14 @@
             overflow-y: auto;
             transform: translateX(100%);
             transition: transform 0.3s ease-out;
-            top: 0; /* Stick to the very top of the viewport */
-            padding-top: var(--header-height, 80px); /* Will be set by JS or a fixed value */
-            z-index: 1001; /* Ensure higher than header's z-index */
+            top: 0; 
+            padding-top: var(--header-height, 80px); 
+            z-index: 1001; 
         }
         #mobileMenu.open {
             transform: translateX(0);
         }
 
-        /* Hide the scrollbar but allow scrolling */
         #mobileMenu::-webkit-scrollbar {
             display: none;
         }
@@ -51,7 +50,6 @@
             scrollbar-width: none;
         }
 
-        /* CSS for mobile search overlay */
         .mobile-search-overlay {
             position: absolute;
             top: 0;
@@ -73,7 +71,6 @@
             transform: translateX(0);
             display: flex;
         }
-        /* Hide specific elements when search overlay is open */
         .header-content-mobile.search-open {
             opacity: 0;
             pointer-events: none;
@@ -81,14 +78,12 @@
             transition: transform 0.3s ease-out, opacity 0.3s ease-out;
         }
 
-        /* Ensure desktop search bar is hidden on mobile */
         @media (max-width: 767px) {
             .desktop-search-form {
                 display: none !important;
             }
         }
 
-        /* Styles for the offer banner within the consolidated header */
         @keyframes marquee {
             0% { transform: translateX(100%); }
             100% { transform: translateX(-100%); }
@@ -337,7 +332,7 @@
         setTimeout(() => {
             document.querySelectorAll('.flash-message').forEach(el => {
             el.style.opacity = '0';
-            setTimeout(() => el.remove(), 500); // wait for fade out
+            setTimeout(() => el.remove(), 500); 
             });
         }, 3000);
 

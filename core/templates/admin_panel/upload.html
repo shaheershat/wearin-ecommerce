@@ -87,25 +87,23 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
 
 <script>
-    // --- Global Variables (Unified & Segregated) ---
+    // --- Global Variables ---
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
-    const previewContent = document.getElementById('preview-content'); // Bulk preview content
-    const uploadForm = document.getElementById('upload-form'); // Bulk upload form
-    const uploadButton = document.getElementById('upload-button'); // Bulk upload button
+    const previewContent = document.getElementById('preview-content'); 
+    const uploadForm = document.getElementById('upload-form'); 
+    const uploadButton = document.getElementById('upload-button'); 
     const dropZoneText = document.getElementById('drop-zone-text');
 
-    let imagesArray = []; // Original bulk images array
-    let textFile = null;  // Original bulk text file
-    let productDetails = []; // Original bulk product details
+    let imagesArray = []; 
+    let textFile = null;  
+    let productDetails = []; 
 
-    let manualImagesArray = []; // NEW: Stores images for manual upload
+    let manualImagesArray = []; 
 
     let cropper = null;
-    let currentCropContext = null; // 'bulk' or 'manual' - NEW
-    let currentCropIndex = null; // Index within the relevant array (imagesArray or manualImagesArray) - MODIFIED
-
-    // --- Utility Functions (Common for both) ---
+    let currentCropContext = null; 
+    let currentCropIndex = null; 
     function showAlert(message, isSuccess = true) {
         const alertBox = document.getElementById('upload-alert');
         alertBox.textContent = message;
@@ -121,10 +119,10 @@
         setTimeout(() => alertBox.classList.add('hidden'), 5000);
     }
 
-    // --- Cropping Functions (Unified Logic) ---
-    function openCropModal(index, context = 'bulk') { // context parameter added, 'bulk' is default for existing calls
+    // --- Cropping Functions ---
+    function openCropModal(index, context = 'bulk') { 
         currentCropIndex = index;
-        currentCropContext = context; // Store the context ('bulk' or 'manual')
+        currentCropContext = context; 
         let fileToCrop;
 
         if (context === 'bulk') {
@@ -143,7 +141,6 @@
 
             document.getElementById("crop-modal").classList.remove("hidden");
 
-            // Destroy existing cropper instance if present
             if (cropper) {
                 cropper.destroy();
             }
@@ -176,10 +173,10 @@
 
             if (currentCropContext === 'bulk') {
                 imagesArray[currentCropIndex] = newFile;
-                updatePreview(); // Update bulk preview
+                updatePreview();
             } else if (currentCropContext === 'manual') {
                 manualImagesArray[currentCropIndex] = newFile;
-                updateManualImagePreview(); // Update manual preview
+                updateManualImagePreview(); 
             }
             closeCropModal();
             showAlert("Image cropped successfully!", true);
@@ -187,7 +184,7 @@
     }
 
 
-    // --- Bulk Upload Logic (ORIGINAL, NO CHANGES EXCEPT for openCropModal call) ---
+    // --- Bulk Upload Logic ---
     dropZone.addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
     dropZone.addEventListener('dragover', (e) => {
@@ -235,7 +232,7 @@
             const container = document.createElement('div');
             container.classList.add("border", "rounded", "p-2", "bg-gray-50");
             const icon = document.createElement('img');
-            icon.src = "https://cdn-icons-png.flaticon.com/512/3022/3022253.png"; // Placeholder for text file icon
+            icon.src = "https://cdn-icons-png.flaticon.com/512/3022/3022253.png"; 
             icon.classList.add("w-16", "h-16", "mx-auto");
             const name = document.createElement('p');
             name.textContent = textFile.name;
@@ -269,7 +266,6 @@
                 container.dataset.index = j;
 
                 reader.onload = function (e) {
-                    // Call openCropModal with 'bulk' context
                     container.innerHTML = `
                         <img src="${e.target.result}" onclick="openCropModal(${j}, 'bulk')" class="w-full h-32 object-cover rounded cursor-pointer hover:opacity-90 transition" title="Click to crop">
                         <button class="absolute top-1 right-1 bg-red-600 text-white text-xs px-2 py-1 rounded" onclick="removeImageFromPreview(${j})">X</button>
@@ -331,10 +327,6 @@
     function removeImageFromPreview(index) {
         imagesArray.splice(index, 1);
         updatePreview();
-        // This line `handleFiles([])` seems to re-trigger file handling.
-        // If it's meant to update the dropZoneText, it's fine, but if it affects imagesArray
-        // it might conflict. Removing it for now as splicing already removed the image.
-        // handleFiles([]);
         const numImages = imagesArray.length;
         const txtFileStatus = textFile ? `1 text file` : `0 text files`;
         dropZoneText.textContent = `${numImages} image(s) and ${txtFileStatus} selected.`;
@@ -361,7 +353,7 @@
         dropZoneText.textContent = 'Drag & drop files here or click to upload';
     }
 
-    // Original Bulk Upload Form Submission
+    // Bulk Upload Form Submission
     uploadForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         uploadButton.disabled = true;
@@ -414,7 +406,7 @@
         }
     });
 
-    // --- Manual Product Entry Logic (NEW) ---
+    // --- Manual Product Entry Logic ---
     const manualImageInput = document.getElementById('manual-image-input');
     const manualImagePreview = document.getElementById('manual-image-preview');
     const manualCategorySelect = document.getElementById('manual-category');
@@ -422,17 +414,16 @@
 
     async function openManualEntryModal() {
         document.getElementById("manual-entry-modal").classList.remove("hidden");
-        // Clear previous manual entry data
         document.getElementById('manual-name').value = '';
         document.getElementById('manual-price').value = '';
         document.getElementById('manual-size').value = '';
         document.getElementById('manual-description').value = '';
-        manualImagesArray = []; // Clear manual images
-        updateManualImagePreview(); // Update preview to show empty
-        newCategoryInput.value = ''; // Clear new category input
-        newCategoryInput.classList.add('hidden'); // Hide new category input
-        manualCategorySelect.value = ''; // Reset select to default
-        await loadCategories(); // Load categories when modal opens
+        manualImagesArray = []; 
+        updateManualImagePreview(); 
+        newCategoryInput.value = ''; 
+        newCategoryInput.classList.add('hidden'); 
+        manualCategorySelect.value = ''; 
+        await loadCategories(); 
     }
 
     function closeManualEntryModal() {
@@ -458,7 +449,6 @@
             container.classList.add("border", "rounded", "p-1", "bg-white", "relative");
 
             reader.onload = function (e) {
-                // Call openCropModal with 'manual' context
                 container.innerHTML = `
                     <img src="${e.target.result}" onclick="openCropModal(${index}, 'manual')" class="w-full h-24 object-cover rounded cursor-pointer hover:opacity-90 transition" title="Click to crop">
                     <button class="absolute top-1 right-1 bg-red-600 text-white text-xs px-2 py-1 rounded" onclick="removeManualImage(${index})">X</button>
@@ -480,15 +470,15 @@
             newCategoryInput.focus();
         } else {
             newCategoryInput.classList.add('hidden');
-            newCategoryInput.value = ''; // Clear if not adding new
+            newCategoryInput.value = ''; 
         }
     }
 
     async function loadCategories() {
         try {
-            const response = await fetch("{% url 'get_categories' %}"); // Ensure this URL is correctly defined in Django
+            const response = await fetch("{% url 'get_categories' %}"); 
             const data = await response.json();
-            manualCategorySelect.innerHTML = '<option value="">Select Category</option>'; // Reset
+            manualCategorySelect.innerHTML = '<option value="">Select Category</option>';
             if (data.categories) {
                 data.categories.forEach(category => {
                     const option = document.createElement('option');
@@ -497,7 +487,6 @@
                     manualCategorySelect.appendChild(option);
                 });
             }
-            // Add the "Add New Category" option back after loading existing ones
             const newOption = document.createElement('option');
             newOption.value = 'new_category';
             newOption.textContent = '-- Add New Category --';
@@ -517,9 +506,8 @@
         const description = document.getElementById('manual-description').value.trim();
 
         const manualUploadButton = document.querySelector('#manual-entry-modal button[onclick="uploadManualProduct()"]');
-        const originalButtonText = manualUploadButton.textContent; // Store original text
+        const originalButtonText = manualUploadButton.textContent; 
 
-        // Handle new category creation
         if (categoryId === 'new_category') {
             const newCategoryName = newCategoryInput.value.trim();
             if (!newCategoryName) {
@@ -527,11 +515,11 @@
                 return;
             }
 
-            manualUploadButton.disabled = true; // Disable button during category creation
+            manualUploadButton.disabled = true; 
             manualUploadButton.textContent = 'Creating Category...';
 
             try {
-                const response = await fetch("{% url 'create_category' %}", { // Ensure this URL is correctly defined in Django
+                const response = await fetch("{% url 'create_category' %}", { 
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -544,34 +532,30 @@
 
                 if (response.ok && data.status === 'success') {
                     showAlert('New category created!', true);
-                    categoryId = data.category_id; // Get the ID of the newly created category
-                    await loadCategories(); // Reload categories to include the new one
-                    manualCategorySelect.value = categoryId; // Select the new category
-                    newCategoryInput.classList.add('hidden'); // Hide the input
-                    newCategoryInput.value = ''; // Clear the input
+                    categoryId = data.category_id; 
+                    await loadCategories(); 
+                    manualCategorySelect.value = categoryId; 
+                    newCategoryInput.classList.add('hidden');
+                    newCategoryInput.value = ''; 
                 } else {
                     showAlert(data.message || 'Failed to create new category.', false);
                     manualUploadButton.disabled = false;
-                    manualUploadButton.textContent = originalButtonText; // Restore button text
-                    return; // Stop the product upload if category creation failed
+                    manualUploadButton.textContent = originalButtonText; 
+                    return; 
                 }
             } catch (error) {
                 console.error('Failed to create new category:', error);
                 showAlert('Network error while creating category. Please try again.', false);
                 manualUploadButton.disabled = false;
-                manualUploadButton.textContent = originalButtonText; // Restore button text
-                return; // Stop the product upload if category creation failed
+                manualUploadButton.textContent = originalButtonText; 
+                return; 
             } finally {
-                // Button state will be handled by the product upload logic if category creation succeeded
-                // Or restored here if it failed.
             }
         }
 
-
-        // Validation for product fields after category is handled
         if (!name || !categoryId || !price) {
             showAlert('Product Name, Category, and Price are required.', false);
-            manualUploadButton.disabled = false; // Ensure button is re-enabled if validation fails
+            manualUploadButton.disabled = false; 
             manualUploadButton.textContent = originalButtonText;
             return;
         }
@@ -586,7 +570,7 @@
         const formData = new FormData();
         formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
         formData.append('name', name);
-        formData.append('category', categoryId); // Send category ID
+        formData.append('category', categoryId); 
         formData.append('price', price);
         formData.append('size', size);
         formData.append('description', description);
@@ -595,12 +579,11 @@
             formData.append('images', img);
         });
 
-        // Set loading state for product upload
         manualUploadButton.disabled = true;
         manualUploadButton.textContent = 'Uploading Product...';
 
         try {
-            const response = await fetch("{% url 'create_manual_product' %}", { // Ensure this URL is correctly defined in Django
+            const response = await fetch("{% url 'create_manual_product' %}", { 
                 method: 'POST',
                 body: formData,
             });
@@ -610,7 +593,6 @@
             if (response.ok && data.status === 'success') {
                 showAlert(data.message, true);
                 closeManualEntryModal();
-                // Form fields will be cleared when the modal re-opens via openManualEntryModal()
             } else {
                 showAlert(data.message || 'An unknown error occurred during manual upload.', false);
             }
@@ -620,13 +602,9 @@
             showAlert('A network error occurred during manual product upload. Please try again.', false);
         } finally {
             manualUploadButton.disabled = false;
-            manualUploadButton.textContent = originalButtonText; // Restore button text
+            manualUploadButton.textContent = originalButtonText; 
         }
     }
-
-    // Initial load for categories when the page loads (optional, can be done when modal opens as well)
-    // document.addEventListener('DOMContentLoaded', loadCategories);
-
 </script>
 
 {% endblock %}

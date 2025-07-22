@@ -112,7 +112,7 @@
       select.classList.add("bg-red-100", "text-red-800");
     }else if (value === "Out of delivery") {
       select.classList.add("bg-orange-100", "text-orange-800");
-    } else if (value === "Returned") { // NEW: Add color for Returned status
+    } else if (value === "Returned") { 
       select.classList.add("bg-purple-100", "text-purple-800");
     }
   }
@@ -149,7 +149,7 @@
   function closeAdminReturnModal() {
       adminReturnRequestModal.classList.add('hidden');
       adminReturnModalContent.innerHTML = '';
-      location.reload(); // Reload the page to reflect status changes and button visibility
+      location.reload(); 
   }
 
   function processReturn(returnRequestId, action) {

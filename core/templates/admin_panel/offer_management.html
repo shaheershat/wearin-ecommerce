@@ -263,7 +263,6 @@
             border-radius: 0.375rem;
         }
 
-        /* Aggressive CSS to ensure crispy form fields are visible */
         .form-group, .form-field, .control-group {
             display: block !important;
             margin-bottom: 1rem !important;
@@ -349,7 +348,6 @@
                 });
             }
 
-            // --- Create Offer Modal JavaScript ---
             const createOfferModal = document.getElementById('createOfferModal');
             const openCreateOfferModalBtn = document.getElementById('openCreateOfferModalBtn');
             const closeCreateOfferModalBtn = document.getElementById('closeCreateOfferModalBtn');
@@ -431,7 +429,6 @@
                 }
             });
 
-            // If create offer form has errors on page load (non-AJAX submission)
             {% if offer_form.errors and request.POST.create_new_offer_modal %}
                 createOfferModal.classList.remove('hidden');
                 document.body.style.overflow = 'hidden';
@@ -441,7 +438,6 @@
                 }
             {% endif %}
 
-            // Banner Toggle Logic
             const bannerToggleHeader = document.getElementById('bannerToggleHeader');
             const bannerToggleButton = document.getElementById('bannerToggleButton');
             const bannerContent = document.getElementById('bannerContent');
@@ -459,7 +455,6 @@
                 }
             });
 
-            // If there are banner form errors on page load, expand the section
             {% if banner_form.errors and request.POST.banner_submit %}
                 bannerContent.classList.remove('max-h-0');
                 bannerContent.classList.add('max-h-[1000px]');

@@ -239,7 +239,6 @@
         centeredSlides: true,
     });
 
-    // Wishlist toggle function
     function toggleWishlist(buttonElement, productId) {
         const svgElement = buttonElement.querySelector('svg');
         const isCurrentlyWishlisted = svgElement.classList.contains('text-red-500');
@@ -248,7 +247,7 @@
             method: 'POST',
             headers: {
                 'X-CSRFToken': getCookie('csrftoken'),
-                'X-Requested-With': 'XMLHttpRequest', // Important for Django's is_ajax() check
+                'X-Requested-With': 'XMLHttpRequest', 
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({ product_id: productId }),
@@ -263,20 +262,18 @@
             if (data.status === 'added') {
                 svgElement.classList.remove('text-gray-400');
                 svgElement.classList.add('text-red-500');
-                svgElement.setAttribute('fill', 'currentColor'); // Fill the heart
+                svgElement.setAttribute('fill', 'currentColor'); 
                 console.log(data.message);
             } else if (data.status === 'removed') {
                 svgElement.classList.remove('text-red-500');
                 svgElement.classList.add('text-gray-400');
-                svgElement.setAttribute('fill', 'none'); // Outline the heart
+                svgElement.setAttribute('fill', 'none');
                 console.log(data.message);
             }
-            // You can add a small temporary message display here if needed
         })
         .catch(error => {
             console.error('Error toggling wishlist:', error);
             alert('Error updating wishlist: ' + error.message);
-            // Revert UI state if there was an error and it's not a success status
             if (isCurrentlyWishlisted) {
                 svgElement.classList.remove('text-gray-400');
                 svgElement.classList.add('text-red-500');
@@ -289,14 +286,12 @@
         });
     }
 
-    // Helper function to get CSRF token (needed for Django AJAX POST requests)
     function getCookie(name) {
         let cookieValue = null;
         if (document.cookie && document.cookie !== '') {
             const cookies = document.cookie.split(';');
             for (let i = 0; i < cookies.length; i++) {
                 const cookie = cookies[i].trim();
-                // Does this cookie string begin with the name we want?
                 if (cookie.substring(0, name.length + 1) === (name + '=')) {
                     cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
                     break;
@@ -306,13 +301,12 @@
         return cookieValue;
     }
 
-    // NEW: Newsletter subscription function
+    // Newsletter subscription function
     function subscribeNewsletter() {
         const emailInput = document.getElementById('newsletter-email');
         const messageDiv = document.getElementById('newsletter-message');
         const email = emailInput.value;
 
-        // Clear previous messages
         messageDiv.textContent = '';
         messageDiv.classList.remove('text-green-600', 'text-red-600');
 
@@ -327,7 +321,7 @@
             headers: {
                 'X-CSRFToken': getCookie('csrftoken'),
                 'X-Requested-With': 'XMLHttpRequest',
-                'Content-Type': 'application/x-www-form-urlencoded', // Use this for simple form data
+                'Content-Type': 'application/x-www-form-urlencoded', 
             },
             body: `email=${encodeURIComponent(email)}`,
         })
@@ -336,7 +330,7 @@
             if (status === 200 && body.success) {
                 messageDiv.textContent = body.message;
                 messageDiv.classList.add('text-green-600');
-                emailInput.value = ''; // Clear the input field on success
+                emailInput.value = ''; 
             } else {
                 messageDiv.textContent = body.message || 'An error occurred during subscription.';
                 messageDiv.classList.add('text-red-600');
