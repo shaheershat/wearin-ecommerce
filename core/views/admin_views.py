@@ -265,15 +265,14 @@ def process_admin_return_request(request, request_id):
     """
     try:
         data = json.loads(request.body)
-        action = data.get('action') # 'approve' or 'reject'
+        action = data.get('action') 
         admin_notes = data.get('admin_notes', '').strip()
 
         if action not in ['approve', 'reject']:
             return JsonResponse({'status': 'error', 'message': 'Invalid action.'}, status=400)
 
         return_request = get_object_or_404(ReturnRequest, id=request_id)
-        order = return_request.order # Get the associated Order
-
+        order = return_request.order 
         if return_request.status not in ['Requested', 'Processing Refund']:
             return JsonResponse({'status': 'error', 'message': f'Return request is already {return_request.status}.'}, status=400)
 
@@ -287,11 +286,8 @@ def process_admin_return_request(request, request_id):
                 for ri in return_request.requested_items.all().select_related('order_item__product'):
                     order_item = ri.order_item
                     if order_item and order_item.product:
-                        # Increment product stock
                         order_item.product.stock_quantity += ri.quantity
-                        # Un-tick 'is_sold' checkbox
                         order_item.product.is_sold = False
-                        # Save the product changes
                         order_item.product.save()
                         logger.info(f"Product '{order_item.product.name}' (ID: {order_item.product.id}) stock updated to {order_item.product.stock_quantity}, is_sold set to False due to return approval.")
                         total_refund_amount += ri.quantity * order_item.price_at_purchase
@@ -309,37 +305,30 @@ def process_admin_return_request(request, request_id):
                         amount=total_refund_amount,
                         reason=f"Refund for Return Request #{return_request.id} (Order #{order.custom_order_id})"
                     )
-                    return_request.status = 'Refunded' # Final status after refund
+                    return_request.status = 'Refunded' 
                 else:
-                    return_request.status = 'Approved' # If no items or amount to refund, just approve
-
-                # Set the main Order status to 'Returned'
+                    return_request.status = 'Approved'
                 order.status = 'Returned'
                 order.save()
 
                 messages.success(request, f'Return Request #{return_request.id} approved and wallet refunded. Order status set to Returned.')
                 logger.info(f"Admin approved return request {return_request.id}. Scheduling return processed email.")
-                # FIX: Call with .delay() and pass return_request.id and status
-                send_return_processed_email.delay(return_request.id, action) # 'action' will be 'approve' or 'reject'
+                send_return_processed_email.delay(return_request.id, action)
 
             elif action == 'reject':
                 return_request.status = 'Rejected'
-                
-                # Set the main Order status back to 'Delivered' if it was 'Returned' or 'Pending' return
-                # This logic might need refinement based on your exact desired flow for rejected returns.
-                # For now, assuming it goes back to 'Delivered' if it was marked returned for processing.
-                if order.status == 'Returned': # Only revert if it was marked returned for processing
+
+                if order.status == 'Returned': 
                     order.status = 'Delivered'
                     order.save()
-                elif order.status == 'Pending': # If it was pending, it should remain delivered
-                    order.status = 'Delivered' # Or whatever default state is after processing
+                elif order.status == 'Pending': 
+                    order.status = 'Delivered' 
                     order.save()
 
 
                 messages.warning(request, f'Return Request #{return_request.id} rejected. Order status set to Delivered.')
                 logger.info(f"Admin rejected return request {return_request.id}. Scheduling return processed email.")
-                # FIX: Call with .delay() and pass return_request.id and status
-                send_return_processed_email.delay(return_request.id, action) # 'action' will be 'approve' or 'reject'
+                send_return_processed_email.delay(return_request.id, action)
 
             return_request.save()
 
@@ -361,7 +350,6 @@ def create_category(request):
         if not category_name:
             return JsonResponse({'status': 'error', 'message': 'Category name cannot be empty.'}, status=400)
 
-        # Check if category already exists (case-insensitive)
         if Category.objects.filter(name__iexact=category_name).exists():
             return JsonResponse({'status': 'error', 'message': 'Category with this name already exists.'}, status=409) # 409 Conflict
 
@@ -383,8 +371,8 @@ def create_manual_product(request):
         name = request.POST.get('name')
         category_id = request.POST.get('category')
         price = request.POST.get('price')
-        size = request.POST.get('size', '') # Optional
-        description = request.POST.get('description', '') # Optional
+        size = request.POST.get('size', '') 
+        description = request.POST.get('description', '') 
         images = request.FILES.getlist('images')
 
         if not all([name, category_id, price]):
@@ -395,16 +383,14 @@ def create_manual_product(request):
         except Category.DoesNotExist:
             return JsonResponse({'status': 'error', 'message': 'Invalid category selected.'}, status=400)
 
-        # Create the product
         product = Product.objects.create(
             name=name,
             category=category,
-            price=float(price), # Ensure price is converted to appropriate type
+            price=float(price), 
             size=size,
             description=description
         )
 
-        # Save images for the product
         for img_file in images:
             ProductImage.objects.create(product=product, image=img_file)
 
@@ -425,14 +411,13 @@ def admin_update_order_status(request, order_id):
         messages.success(request, f"Order #{order.custom_order_id} status updated to {new_status}.")
     else:
         messages.error(request, "Invalid status selected.")
-    return redirect('admin_order_list')  # Adjust based on your URL name
+    return redirect('admin_order_list')  
 
-def is_superuser(user): # This function seems unused, consider removing if not needed.
+def is_superuser(user):
     return user.is_authenticated and user.is_superuser
 
-
 def admin_login_view(request):
-    list(messages.get_messages(request))  # Clear previous messages
+    list(messages.get_messages(request)) 
 
     if request.user.is_authenticated and request.user.is_superuser:
         messages.info(request, "You are already logged in as an administrator.")
@@ -444,31 +429,14 @@ def admin_login_view(request):
         user = authenticate(request, username=username, password=password)
 
         if user and user.is_superuser:
-            login(request, user) # This handles setting the session cookie automatically
-
-            # Set admin session flag and save session (these are for your custom logic, keep them)
+            login(request, user) 
             request.session['_auth_admin_id'] = user.pk
             request.session.save()
 
-            request._is_admin_session = True  # for middleware tracking
-
-            # --- REMOVE THE ENTIRE response.set_cookie BLOCK BELOW ---
-            # You do NOT need to manually set the session cookie here.
-            # Django's login() function and SessionMiddleware handle it.
-            # response = redirect('admin_dashboard') # This line also becomes redundant here.
-            # response.set_cookie(
-            #     settings.ADMIN_SESSION_COOKIE_NAME,  # This setting no longer exists
-            #     request.session.session_key,
-            #     max_age=settings.SESSION_COOKIE_AGE,
-            #     httponly=True,
-            #     secure=settings.SESSION_COOKIE_SECURE,
-            #     samesite=getattr(settings, 'SESSION_COOKIE_SAMESITE', 'Lax'),
-            # )
-            # --- END REMOVE BLOCK ---
+            request._is_admin_session = True 
 
             messages.success(request, f"Successfully signed in as administrator: {user.username}.")
-            return redirect('admin_dashboard') # Directly redirect after login
-
+            return redirect('admin_dashboard')
         else:
             messages.error(request, "Invalid credentials or not an administrator.")
 
@@ -477,13 +445,9 @@ def admin_login_view(request):
 
 @admin_login_required
 def admin_logout_view(request):
-    # CRITICAL: This logout is ONLY for the admin side.
-    # We are explicitly removing our custom admin session key.
     if '_auth_admin_id' in request.session:
         del request.session['_auth_admin_id']
 
-    # Then, flush the entire session data for the current (admin) session.
-    # This ensures the 'admin_sessionid' cookie's data is cleared from the database.
     request.session.flush()
 
     messages.info(request, "You have been logged out from the administrator panel.")
@@ -623,21 +587,21 @@ def admin_order_detail_view(request, order_id):
 @admin_login_required
 def admin_products_view(request):
     products = Product.objects.all().prefetch_related('images')
-    categories = Category.objects.all()  # ✅ For dropdown filter
+    categories = Category.objects.all()  # For dropdown filter
 
-    # ✅ Get filters
+    # Get filters
     status = request.GET.get('status')
     date_filter = request.GET.get('date')
     search_query = request.GET.get('q')
     category_id = request.GET.get('category')
 
-    # ✅ Filter by availability
+    # Filter by availability
     if status == 'available':
         products = products.filter(is_sold=False)
     elif status == 'sold':
         products = products.filter(is_sold=True)
 
-    # ✅ Filter by date
+    # Filter by date
     if date_filter in ['new', 'old']:
         cutoff = timezone.now() - timedelta(days=15)
         if date_filter == 'new':
@@ -645,18 +609,18 @@ def admin_products_view(request):
         elif date_filter == 'old':
             products = products.filter(created_at__lt=cutoff)
 
-    # ✅ Search by product name
+    # Search by product name
     if search_query:
         products = products.filter(name__icontains=search_query)
 
-    # ✅ Filter by category
+    # Filter by category
     if category_id:
         products = products.filter(category_id=category_id)
 
     products = products.order_by('-id')
     return render(request, 'admin_panel/product_list.html', {
         'products': products,
-        'categories': categories  # ✅ Send categories to template
+        'categories': categories  
     })
 
 @admin_login_required
@@ -798,7 +762,7 @@ def admin_sales_view(request):
         .order_by('day')
     )
     daily_labels = [x['day'].strftime('%d %b') for x in daily]
-    daily_data = [float(x['total']) for x in daily]  #  Convert Decimal to float
+    daily_data = [float(x['total']) for x in daily] 
 
     # Monthly Sales Chart
     monthly = (
@@ -809,7 +773,7 @@ def admin_sales_view(request):
         .order_by('month')
     )
     monthly_labels = [x['month'].strftime('%b %Y') for x in monthly]
-    monthly_data = [float(x['total']) for x in monthly]  #  Convert Decimal to float
+    monthly_data = [float(x['total']) for x in monthly]  
 
     # Top Products
     top_products = (
@@ -828,10 +792,7 @@ def admin_sales_view(request):
         .annotate(total=Sum('price_at_purchase'))
     )
     category_labels = [c['product__category__name'] for c in category_sales]
-    category_data = [float(c['total']) for c in category_sales]  #  Decimal to float
-
-    # Payment Breakdown (COD, Razorpay)
-    # Assuming you store method in payment_status or elsewhere — update this field
+    category_data = [float(c['total']) for c in category_sales] 
     payment_data_qs = (
         orders
         .values('payment_method')
@@ -941,66 +902,32 @@ class EmailTemplateCreateView(CreateView):
     model = EmailTemplate
     form_class = EmailTemplateForm
     template_name = 'admin_panel/newsletter/template_form.html'
-    success_url = reverse_lazy('admin_email_template_list') # This will now only be used for non-modal submits
-
+    success_url = reverse_lazy('admin_email_template_list') 
     def form_valid(self, form):
         form.instance.created_by = self.request.user
-        email_template = form.save() # Save the form and get the instance
+        email_template = form.save() 
 
-        # Check if this request came from the modal context.
-        # We can detect this by checking if 'modal=true' is in the GET parameters
-        # of the request that initially loaded this form, and assume the POST
-        # submission follows the same context.
-        # Alternatively, you could pass a hidden input field 'is_modal_submit' in the form.
         is_modal_request = 'modal' in self.request.GET
 
         if is_modal_request:
-            # If it's a modal submission, we do NOT want to redirect the iframe.
-            # Instead, send a signal back to the parent.
-            # Your template already has: window.parent.postMessage("template_created", "*");
-            # We just need to make sure the view finishes successfully without redirecting
-            # the iframe to an invalid URL.
-            
-            # Option 1: Return a simple HttpResponse (preferred for iframes)
-            # This HTML will be rendered inside the iframe, but it's very minimal.
-            # The JS will execute and send the message, and then this small page just sits there.
-            # It's crucial for the JS to run AFTER the form is valid.
             return HttpResponse(
                 "<script>window.parent.postMessage('template_created', '*'); window.location.href = '';</script>",
-                status=200 # Indicate success
+                status=200 
             )
-            
-            # Option 2: Redirect to the *edit* view of the newly created template within the modal
-            # This keeps the modal open but shows the saved template ready for further edits.
-            # Ensure your JS for postMessage also handles this redirect for closing if needed.
-            # return redirect(reverse('newsletter:create_email_template') + f'?modal=true&pk={email_template.pk}')
-
-
-        # If it's not a modal (e.g., direct access to this form view),
-        # then proceed with the default CreateView behavior (redirect to success_url).
-        return super().form_valid(form) # This will trigger the redirect to success_url
+        return super().form_valid(form) 
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        # Pass a 'modal' flag to the template if it's detected in the GET parameters
         if 'modal' in self.request.GET:
             context['modal'] = True
-            # If editing existing template within modal (optional, but good practice)
             pk = self.request.GET.get('pk')
             if pk:
                 try:
                     email_template = self.model.objects.get(pk=pk)
                     context['form'] = self.form_class(instance=email_template)
                 except self.model.DoesNotExist:
-                    pass # Handle error or just show empty form
+                    pass
         return context
-
-    # If you also want to handle editing existing templates with this same view in the modal:
-    # def get_object(self, queryset=None):
-    #     pk = self.request.GET.get('pk')
-    #     if pk:
-    #         return self.model.objects.get(pk=pk)
-    #     return super().get_object(queryset)
 
 @method_decorator(admin_login_required, name='dispatch')
 class EmailTemplateUpdateView(UpdateView):
@@ -1043,7 +970,7 @@ class NewsletterCampaignCreateView(CreateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        from core.models import EmailTemplate  # or wherever your model is
+        from core.models import EmailTemplate  
         context['templates'] = EmailTemplate.objects.all()
         return context
     
@@ -1072,7 +999,7 @@ def send_newsletter_campaign_view(request, pk):
     campaign = get_object_or_404(NewsletterCampaign, pk=pk)
 
     try:
-        send_newsletter_to_subscribers(campaign)  # you need this logic in core/utils.py
+        send_newsletter_to_subscribers(campaign)  
         campaign.is_sent = True
         campaign.save()
         messages.success(request, "Newsletter sent successfully.")

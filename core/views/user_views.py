@@ -68,7 +68,6 @@ def refund_to_wallet(user, amount):
 def download_invoice_view(request, order_id):
     order = get_object_or_404(Order, id=order_id, user=request.user)
 
-    # Construct full absolute URL to the logo
     logo_url = request.build_absolute_uri('/static/images/logo.jpeg')
 
     template_path = 'user/main/invoice_pdf.html'
@@ -110,7 +109,7 @@ def cancel_order_view(request, order_id):
             order.status = 'Cancelled'
             order.save()
 
-            # Get or create wallet (ensure it exists before crediting)
+            # Get or create wallet
             wallet, created = Wallet.objects.get_or_create(user=request.user)
             
             # Refund amount to wallet
@@ -124,21 +123,17 @@ def cancel_order_view(request, order_id):
                 reason=f"Refund for cancelled order #{order.custom_order_id or order.id}"
             )
 
-            # --- NEW/UPDATED LOGIC FOR STOCK UPDATION AND IS_SOLD FLAG ---
+            # --- LOGIC FOR STOCK UPDATION AND IS_SOLD FLAG ---
             for item in order.items.all():
                 if item.product:
-                    # Increment stock quantity
                     item.product.stock_quantity += item.quantity
-                    # Un-tick 'is_sold' checkbox
                     item.product.is_sold = False
                     item.product.save()
                     logger.info(f"Product '{item.product.name}' (ID: {item.product.id}) stock updated to {item.product.stock_quantity}, is_sold set to False due to order cancellation.")
                 else:
                     logger.warning(f"Product for OrderItem {item.id} in Order {order.custom_order_id} not found during cancellation stock update.")
-            # --- END NEW/UPDATED LOGIC ---
 
             logger.info(f"User cancelled order {order.custom_order_id}. Scheduling cancellation email.")
-            # FIX: Call with .delay() and pass order.id
             send_order_cancelled_email.delay(order.id) 
 
             messages.success(request, f"Order has been cancelled and ₹{order.total_amount} has been refunded to your wallet.")
@@ -149,9 +144,6 @@ def cancel_order_view(request, order_id):
         messages.error(request, 'An unexpected error occurred while cancelling the order.')
         return redirect('my_profile')
 
-# In core/views/admin_views.py (or wherever process_admin_return_request is)
-# Ensure this import is correct and points to your tasks file (e.g., core.emails or core.tasks)
-
 @user_login_required
 @require_GET
 def get_order_items_for_return(request, order_id):
@@ -160,21 +152,13 @@ def get_order_items_for_return(request, order_id):
     """
     try:
         order = get_object_or_404(Order, id=order_id, user=request.user)
-        
-        # Only allow returns for delivered orders that haven't been fully returned/cancelled
         if order.status != 'Delivered':
             return JsonResponse({'status': 'error', 'message': 'Only delivered orders can be returned.'}, status=400)
-
-        # Fetch OrderItems that are not already fully returned
-        # An item is eligible if its total requested return quantity across all ReturnRequests
-        # associated with it is less than its original quantity.
         eligible_items = []
         for item in order.items.all().select_related('product'):
-            # Calculate total quantity already requested for return for this specific OrderItem
             total_requested_qty = ReturnItem.objects.filter(order_item=item, 
                 return_request__status__in=['Requested', 'Approved', 'Processing Refund']).aggregate(Sum('quantity'))['quantity__sum'] or 0
             
-            # If the item's original quantity is greater than what's already requested
             if item.quantity > total_requested_qty:
                 eligible_items.append({
                     'id': item.id,
@@ -182,13 +166,12 @@ def get_order_items_for_return(request, order_id):
                     'image_url': item.product.images.first().image.url if item.product and item.product.images.first() else '',
                     'price_at_purchase': str(item.price_at_purchase),
                     'quantity': item.quantity,
-                    'max_return_quantity': item.quantity - total_requested_qty, # Quantity still available for return
+                    'max_return_quantity': item.quantity - total_requested_qty, 
                 })
         
         if not eligible_items:
              return JsonResponse({'status': 'error', 'message': 'No eligible items for return in this order.'}, status=400)
 
-        # Fetch pre-defined return reasons
         reasons = list(ReturnReason.objects.values('id', 'reason_text', 'requires_custom_input'))
 
         return JsonResponse({
@@ -215,7 +198,7 @@ def create_return_request(request):
     try:
         data = json.loads(request.body)
         order_id = data.get('order_id')
-        selected_items_data = data.get('selected_items') # [{'item_id': X, 'quantity': Y}, ...]
+        selected_items_data = data.get('selected_items') 
         reason_id = data.get('reason_id')
         custom_reason_text = data.get('custom_reason', '').strip()
 
@@ -237,7 +220,6 @@ def create_return_request(request):
             return JsonResponse({'status': 'error', 'message': 'Please provide a custom reason.'}, status=400)
         
         if not return_reason.requires_custom_input and custom_reason_text:
-            # If a custom reason is provided but not required for the chosen reason, ignore it
             custom_reason_text = ''
 
         with transaction.atomic():
@@ -251,35 +233,23 @@ def create_return_request(request):
 
             for item_data in selected_items_data:
                 item_id = item_data.get('item_id')
-                return_qty = int(item_data.get('quantity', 1)) # Default to 1 if not specified
+                return_qty = int(item_data.get('quantity', 1)) 
 
                 order_item = get_object_or_404(OrderItem, id=item_id, order=order)
 
-                # Calculate current returned quantity for this order item across all ReturnRequests
-                # that have been 'Requested', 'Approved', or 'Processing Refund'
                 current_returned_qty = ReturnItem.objects.filter(
                     order_item=order_item,
                     return_request__status__in=['Requested', 'Approved', 'Processing Refund']
                 ).aggregate(Sum('quantity'))['quantity__sum'] or 0
 
-                # Ensure requested return quantity does not exceed available quantity
                 if return_qty <= 0 or (current_returned_qty + return_qty) > order_item.quantity:
                     raise ValueError(f"Invalid return quantity {return_qty} for item {order_item.product.name}. Max available for return: {order_item.quantity - current_returned_qty}.")
                 
-                # Create ReturnItem entry
                 ReturnItem.objects.create(
                     return_request=new_return_request,
                     order_item=order_item,
                     quantity=return_qty
                 )
-            
-            # Optional: Update Order status to 'Returned' if all items are covered by return requests.
-            # This logic can be more complex, considering partial returns.
-            # For simplicity, we'll let admin manage overall order status
-            # unless ALL items are requested for return.
-            # However, you already had a 'return_status' field on Order, so if you still want
-            # to signal something on the Order itself, you could update it here.
-            # Since Order doesn't have return_status anymore, we just create the ReturnRequest.
             
             messages.success(request, "Return request submitted successfully!")
             return JsonResponse({'status': 'success', 'message': 'Return request submitted successfully.'})
@@ -343,15 +313,14 @@ def user_coupon_list_view(request):
     now = timezone.now()
     all_coupons = Coupon.objects.filter(
         is_active=True,
-        valid_from__lte=now, # Corrected field name
-        valid_to__gte=now    # Corrected field name
+        valid_from__lte=now, 
+        valid_to__gte=now   
     ).order_by('-created_at')
 
     coupons_with_applicability = []
 
-    # Get current cart data for applicability checks
     cart = None
-    cart_items_queryset = CartItem.objects.none() # Initialize as empty queryset
+    cart_items_queryset = CartItem.objects.none() 
     cart_total_price = Decimal('0.00')
     cart_unique_products_count = 0
     cart_total_quantity = 0
@@ -364,17 +333,15 @@ def user_coupon_list_view(request):
                 product__is_sold=False,
                 product__stock_quantity__gt=0
             )
-            # Calculate cart_total_price from the filtered queryset
+           
             for item in cart_items_queryset:
-                # Assuming CartItem has a 'total_price' attribute or calculate it from product price and quantity
                 cart_total_price += item.product.price * item.quantity 
             cart_unique_products_count = cart_items_queryset.values('product').distinct().count()
             cart_total_quantity = cart_items_queryset.aggregate(Sum('quantity'))['quantity__sum'] or 0
         except Cart.DoesNotExist:
-            pass # cart_items_queryset remains an empty queryset
+            pass
 
     for coupon in all_coupons:
-        # Use the coupon's is_valid method to determine applicability and reason
         can_apply, reason = coupon.is_valid(
             cart_total_price,
             user=request.user,
@@ -388,7 +355,7 @@ def user_coupon_list_view(request):
         })
 
     context = {
-        'coupons': coupons_with_applicability, # Pass the list of dicts
+        'coupons': coupons_with_applicability,
     }
     return render(request, 'user/main/coupon_list.html', context)
 
@@ -399,8 +366,7 @@ def checkout_view(request):
     Applies custom offers (BOGO, Free Shipping, Fixed/Percentage per product) and coupons.
     Integrates Razorpay order creation for online payments.
     """
-    
-    # --- Always calculate cart data within a transaction for select_for_update ---
+   
     with transaction.atomic():
         cart_data = get_cart_items_data(request)
     
@@ -460,7 +426,7 @@ def checkout_view(request):
 
     addresses = Address.objects.filter(user=request.user).order_by('-is_default')
     selected_address_id = None
-    selected_address = None # <--- ADDED THIS LINE HERE
+    selected_address = None 
 
     if addresses.exists():
         default_address = addresses.filter(is_default=True).first()
@@ -471,8 +437,6 @@ def checkout_view(request):
             selected_address = addresses.first()
             selected_address_id = addresses.first().id
 
-
-    # --- POST Request Handling for Order Submission and Payment ---
     if request.method == 'POST':
         selected_address_id = request.POST.get('selected_address')
         payment_method = request.POST.get('payment_method')
@@ -482,7 +446,6 @@ def checkout_view(request):
             return redirect('checkout')
         
         try:
-            # Re-fetch selected_address for POST request to ensure it's the correct instance
             selected_address = Address.objects.get(id=selected_address_id, user=request.user)
         except Address.DoesNotExist:
             messages.error(request, "Selected address is invalid or does not belong to your account.")
@@ -638,7 +601,6 @@ def checkout_view(request):
                 messages.error(request, "Invalid payment method selected.")
                 return redirect('checkout')
 
-    # --- GET Request Context (for displaying the page initially) ---
     context = {
         "cart_items": cart_items_for_order_display,
         "subtotal_original": total_cart_items_original_price, 
@@ -659,7 +621,6 @@ def checkout_view(request):
         "buy_now_active": request.session.get('buy_now_active', False),
         "user_name_for_prefill": request.user.get_full_name() or request.user.username,
         "user_email_for_prefill": request.user.email,
-        # This line is now safe due to `selected_address = None` initialization
         "user_contact_for_prefill": selected_address.phone if selected_address and selected_address.phone else '',
         
         "DEFAULT_SHIPPING_CHARGE": DEFAULT_SHIPPING_CHARGE,
@@ -670,8 +631,8 @@ def checkout_view(request):
 
 
 @user_login_required
-@transaction.atomic # Crucial: Ensure all operations are atomic for POST
-@csrf_exempt # Keep this if Razorpay is directly POSTing to this URL without CSRF token
+@transaction.atomic 
+@csrf_exempt 
 def payment_success_view(request):
     user = request.user
     logger.debug(f"[{user.username if user.is_authenticated else 'Anonymous'}] payment_success_view called. Method: {request.method}")
@@ -687,7 +648,6 @@ def payment_success_view(request):
         logger.debug(f"[{user.username}] Razorpay details - RZ_Payment_ID: {razorpay_payment_id}, RZ_Order_ID: {razorpay_order_id}, RZ_Signature: {razorpay_signature}")
 
 
-        # Basic validation for required POST data
         if not selected_address_id or not payment_method:
             messages.error(request, "Missing address or payment method selection.")
             logger.warning(f"[{user.username}] Missing address or payment method in POST data.")
@@ -704,15 +664,12 @@ def payment_success_view(request):
         cart_items_data = []
         total_order_price = Decimal('0.00')
 
-        # --- Start Processing Items for Order (Buy Now OR Cart) ---
         buy_now_item_session_data = request.session.get('buy_now_item')
         logger.debug(f"[{user.username}] buy_now_item_session_data: {buy_now_item_session_data}")
 
 
         if buy_now_item_session_data:
             try:
-                # Ensure the product exists and is available
-                # Use select_for_update() to lock the product row during transaction
                 product = Product.objects.select_for_update().get(id=buy_now_item_session_data['id'])
                 quantity = buy_now_item_session_data['quantity']
 
@@ -721,23 +678,20 @@ def payment_success_view(request):
                 if product.is_sold:
                     messages.error(request, f"'{product.name}' was sold before your payment could be processed.")
                     logger.warning(f"[{user.username}] Buy-now product {product.id} already sold.")
-                    # Do NOT delete from session here; it will be handled after potential order creation.
-                    return redirect('shop') # Redirect to shop as item is gone
+                    return redirect('shop')
                 
-                # Handling existing reservation for the buy-now product
                 if product.is_currently_reserved:
                     if product.reserved_by_user != request.user:
                         messages.warning(request, f"'{product.name}' is currently reserved by another customer.")
                         logger.warning(f"[{user.username}] Buy-now product {product.id} reserved by another user.")
                         return redirect('product_detail', id=product.id)
-                    # If reserved by current user, but reservation expired (should be handled in checkout, but double-check)
                     elif product.reservation_expires_at and timezone.now() > product.reservation_expires_at:
                         messages.warning(request, f"Your reservation for '{product.name}' has expired. It is now available for others.")
-                        product.release_reservation() # Release the expired reservation
+                        product.release_reservation() 
                         logger.warning(f"[{user.username}] Buy-now product {product.id} reservation expired.")
                         return redirect('product_detail', id=product.id)
                 
-                price_at_purchase = product.price # Capture current price
+                price_at_purchase = product.price
                 item_total = price_at_purchase * quantity
                 
                 cart_items_data.append({
@@ -749,15 +703,13 @@ def payment_success_view(request):
                 total_order_price += item_total
                 logger.debug(f"[{user.username}] Added buy-now product {product.id} to cart_items_data. Current length: {len(cart_items_data)}. Item total: {item_total}")
 
-                # buy_now_item_session_data will be cleared AFTER successful order creation.
 
             except Product.DoesNotExist:
                 messages.error(request, "The product you tried to buy is no longer available.")
                 logger.error(f"[{user.username}] Buy-now product {buy_now_item_session_data['id']} does not exist.")
-                # Do NOT delete from session here.
                 return redirect('shop')
 
-        else: # Process items from the DB cart
+        else: 
             try:
                 user_cart = Cart.objects.get(user=user)
                 logger.debug(f"[{user.username}] Processing DB cart with {user_cart.items.count()} items.")
@@ -772,23 +724,21 @@ def payment_success_view(request):
                         messages.error(request, f"'{product.name}' was sold before your payment could be processed and removed from your cart.")
                         cart_items_to_delete_ids.append(item.id)
                         logger.warning(f"[{user.username}] Cart product {product.id} already sold.")
-                        continue # Skip this item
+                        continue 
                     
                     if product.is_currently_reserved:
                         if product.reserved_by_user != user:
                             messages.warning(request, f"'{product.name}' is now reserved by another user and has been removed from your cart.")
                             cart_items_to_delete_ids.append(item.id)
                             logger.warning(f"[{user.username}] Cart product {product.id} reserved by another user.")
-                            continue # Skip this item
-                        # Corrected: If reserved by current user and reservation expired
+                            continue 
                         elif product.reservation_expires_at and timezone.now() > product.reservation_expires_at:
                             messages.warning(request, f"Your reservation for '{product.name}' has expired and it was removed from your cart.")
-                            product.release_reservation() # Release the expired reservation
+                            product.release_reservation() 
                             cart_items_to_delete_ids.append(item.id)
                             logger.warning(f"[{user.username}] Cart product {product.id} reservation expired.")
-                            continue # Skip this item
+                            continue 
                     else:
-                        # If not reserved, reserve it immediately for this order transaction
                         product.reserved_by_user = user
                         product.reservation_expires_at = timezone.now() + timedelta(minutes=CART_RESERVATION_TIME_MINUTES) # Re-reserve for checkout duration
                         product.is_reserved = True
@@ -799,7 +749,7 @@ def payment_success_view(request):
                     cart_items_data.append({
                         'product': product,
                         'quantity': item.quantity,
-                        'price_at_purchase': product.price, # Capture current price
+                        'price_at_purchase': product.price, 
                         'item_total': item_total
                     })
                     total_order_price += item_total
@@ -826,15 +776,14 @@ def payment_success_view(request):
         if total_order_price <= 0 or not cart_items_data:
             messages.error(request, "Cannot place an order with zero total price or no valid items.")
             logger.error(f"[{user.username}] Order failed: total_order_price={total_order_price}, cart_items_data empty={not bool(cart_items_data)}")
-            # If buy-now item was set, it's safer to clear it here if the order truly cannot be placed.
             if buy_now_item_session_data and 'buy_now_item' in request.session:
                 del request.session['buy_now_item']
                 request.session.modified = True
-            return redirect('shop') # Changed redirect to 'shop' as the order cannot proceed.
+            return redirect('shop') 
 
         # --- Payment Verification / Debit ---
-        final_payment_status = 'Pending' # Default payment status for transaction
-        initial_order_status = 'Pending' # Default order status
+        final_payment_status = 'Pending' 
+        initial_order_status = 'Pending'
 
         if payment_method == 'razorpay':
             if not razorpay_payment_id or not razorpay_order_id or not razorpay_signature:
@@ -847,15 +796,15 @@ def payment_success_view(request):
                     'razorpay_payment_id': razorpay_payment_id,
                     'razorpay_signature': razorpay_signature
                 }
-                # Verify the payment signature with Razorpay client
+                
                 razorpay_client.utility.verify_payment_signature(params_dict)
                 final_payment_status = 'Success'
-                initial_order_status = 'Processing' # For successful online payments, move to 'Processing'
+                initial_order_status = 'Processing' 
                 logger.info(f"[{user.username}] Razorpay payment {razorpay_payment_id} verified successfully.")
             except Exception as e:
                 messages.error(request, "Razorpay payment verification failed. Please try again or contact support.")
                 logger.error(f"[{user.username}] Razorpay verification error for RZ_order_id {razorpay_order_id}: {e}", exc_info=True)
-                raise e # Re-raise to trigger transaction rollback and then error handling for payment failure
+                raise e 
 
         elif payment_method == 'wallet':
             wallet, created = Wallet.objects.get_or_create(user=user)
@@ -863,7 +812,7 @@ def payment_success_view(request):
             if wallet.balance >= total_order_price:
                 if wallet.debit(total_order_price):
                     final_payment_status = 'Success'
-                    initial_order_status = 'Processing' # For successful online payments
+                    initial_order_status = 'Processing' 
                     logger.info(f"[{user.username}] Wallet payment successful. New balance: {wallet.balance}")
                 else:
                     messages.error(request, "Failed to debit from wallet due to an unknown error.")
@@ -875,13 +824,12 @@ def payment_success_view(request):
                 return redirect('checkout')
 
         elif payment_method == 'cod':
-            # Add a check for COD max limit if necessary (already there)
-            if total_order_price > 1000: # Example limit for COD
+            if total_order_price > 1000: 
                  messages.error(request, "Cash on Delivery (COD) not available for orders above ₹1000.")
                  logger.warning(f"[{user.username}] COD rejected for order total {total_order_price}.")
                  return redirect('checkout')
-            final_payment_status = 'Pending' # COD payment status is always pending initially
-            initial_order_status = 'Pending' # Order status for COD is also pending
+            final_payment_status = 'Pending' 
+            initial_order_status = 'Pending' 
             logger.info(f"[{user.username}] COD payment method selected. Order will be Pending.")
 
         else:
@@ -890,7 +838,7 @@ def payment_success_view(request):
             return redirect('checkout')
 
         # --- Create the Order and OrderItems ---
-        order = None # Initialize order to None
+        order = None
         try:
             order = Order.objects.create(
                 user=user,
@@ -901,7 +849,7 @@ def payment_success_view(request):
                 razorpay_order_id=razorpay_order_id,
                 razorpay_payment_id=razorpay_payment_id,
                 razorpay_signature=razorpay_signature,
-                status=initial_order_status # *** NOW USING THE DETERMINED INITIAL STATUS ***
+                status=initial_order_status
             )
             logger.info(f"[{user.username}] Order {order.custom_order_id} created successfully with status '{initial_order_status}' and payment status '{final_payment_status}'.")
 
@@ -915,24 +863,19 @@ def payment_success_view(request):
                 )
                 logger.debug(f"[{user.username}] OrderItem created for Product {product.id} (Qty: {item_data['quantity']}).")
                 
-                # Update Product Status (mark as sold and clear reservation)
                 product.is_sold = True
                 product.reserved_by_user = None
                 product.reservation_expires_at = None
-                product.is_reserved = False # Explicitly set is_reserved to False
+                product.is_reserved = False
                 product.save()
                 logger.debug(f"[{user.username}] Product {product.id} marked as sold and reservation cleared.")
 
-                # Send product sold email (ensure send_product_sold_email is available)
-                # from .tasks import send_product_sold_email
-                # send_product_sold_email.delay(product.name, product.id, user.email)
                 
-            # Clear items from cart/session ONLY after successful order and order items creation
-            if not buy_now_item_session_data: # If it was a regular cart purchase
-                if 'user_cart' in locals() and user_cart: # Check if user_cart was successfully fetched
-                    CartItem.objects.filter(cart=user_cart).delete() # Delete all items from this cart
+            if not buy_now_item_session_data: 
+                if 'user_cart' in locals() and user_cart: 
+                    CartItem.objects.filter(cart=user_cart).delete() 
                     logger.debug(f"[{user.username}] All items cleared from user's cart.")
-            else: # If it was a 'buy now' item
+            else: 
                 if 'buy_now_item' in request.session:
                     del request.session['buy_now_item']
                     request.session.modified = True
@@ -941,39 +884,33 @@ def payment_success_view(request):
         except IntegrityError as e:
             logger.error(f"[{user.username}] IntegrityError during order creation for user {user.id}: {e}", exc_info=True)
             messages.error(request, "An error occurred while finalizing your order (database integrity). Please try again.")
-            raise e # Re-raise to trigger transaction rollback and then error handling
+            raise e 
         except Exception as e:
             logger.error(f"[{user.username}] Unhandled exception during order finalization for user {user.id}: {e}", exc_info=True)
             messages.error(request, "An unexpected error occurred during order finalization. Please contact support.")
-            raise e # Re-raise to trigger transaction rollback and then error handling
+            raise e 
 
 
         messages.success(request, f"Order #{order.custom_order_id} placed successfully!")
         
-        # --- NEW: Send order confirmation email (only if order object was successfully created) ---
+        # Send order confirmation email 
         if order:
             try:
                 send_order_confirmation_email.delay(order.id)
                 logger.info(f"[{user.username}] Queued order confirmation email for order {order.custom_order_id}.")
             except Exception as e:
                 logger.error(f"[{user.username}] Failed to queue order confirmation email for order {order.custom_order_id}: {e}", exc_info=True)
-        # --- END NEW ---
 
-        # Store the order ID in the session for the subsequent GET request
-        request.session['last_processed_order_id'] = order.id if order else None # Store ID only if order was created
+        request.session['last_processed_order_id'] = order.id if order else None 
         request.session.modified = True
         logger.debug(f"[{user.username}] Stored order ID {order.id if order else 'None'} in session for redirect.")
 
-        # Redirect to the SAME URL for the GET request
-        return redirect('payment_success') # <--- Redirects to the same URL, which will then be a GET request
+        return redirect('payment_success')
 
     elif request.method == 'GET':
-        # This block executes when the browser makes the GET request after the redirect
         logger.debug(f"[{user.username}] payment_success_view GET started.")
         order = None
-        # Retrieve messages that were set during the POST request
         success_message = None
-        # Use list(messages.get_messages(request)) to consume messages once
         current_messages = list(messages.get_messages(request))
         for message in current_messages:
             if message.level == messages.SUCCESS:
@@ -985,10 +922,8 @@ def payment_success_view(request):
 
         if last_processed_order_id and request.user.is_authenticated:
             try:
-                # Fetch the order using the ID stored in the session
                 order = Order.objects.get(id=last_processed_order_id, user=request.user)
                 logger.info(f"[{user.username}] Successfully fetched order {order.custom_order_id} for display.")
-                # Clear the session data after it's used
                 if 'last_processed_order_id' in request.session:
                     del request.session['last_processed_order_id']
                     request.session.modified = True
@@ -1002,18 +937,16 @@ def payment_success_view(request):
         elif not request.user.is_authenticated:
             messages.error(request, "You need to be logged in to view payment success details.")
             logger.warning(f"[{user.username}] Anonymous user tried to access payment success page via GET.")
-            return redirect('login') # Or 'shop', based on your preference
+            return redirect('login')
 
         context = {
             'order': order,
             'message': success_message if success_message else "Your payment was successful!",
-            'show_invoice_button': True if order else False, # Only show if an order object is available
+            'show_invoice_button': True if order else False,
         }
-        # Ensure your template path is correct
         return render(request, 'user/main/payment_success.html', context)
 
     else:
-        # For any other HTTP methods not explicitly handled
         logger.warning(f"[{user.username}] payment_success_view received unsupported method: {request.method}")
         return HttpResponseBadRequest("Invalid request method.")
 
@@ -1023,7 +956,7 @@ def payment_failed_view(request):
 
 User = get_user_model()
 
-# ------------------- OTP Registration Views (No change needed) -------------------
+# ------------------- OTP Registration Views -------------------
 def request_register_otp_view(request):
     if request.method == "POST":
         email = request.POST.get("email")
@@ -1054,13 +987,11 @@ def verify_register_otp_view(request):
                 messages.error(request, "Session expired. Please register again.")
                 return redirect('register')
 
-            # Create user now
             form = UserRegistrationForm(user_data)
             if form.is_valid():
                 user = form.save()
                 login(request, user, backend='django.contrib.auth.backends.ModelBackend')
 
-                # Clean session
                 request.session.pop('pending_user_data', None)
                 request.session.pop('otp_email', None)
 
@@ -1077,7 +1008,7 @@ def verify_register_otp_view(request):
 
 
 
-# ------------------- OTP Forgot Password Views (No change needed) -------------------
+# ------------------- OTP Forgot Password Views -------------------
 def request_reset_otp_view(request):
     if request.method == "POST":
         email = request.POST.get("email")
@@ -1148,11 +1079,9 @@ def my_profile(request):
     add_address_form = AddressForm()
     orders = Order.objects.filter(user=request.user).order_by('-created_at').prefetch_related('items')
 
-    # Ensure Wallet exists for the user
     wallet, _ = Wallet.objects.get_or_create(user=request.user)
     wallet_balance = wallet.balance
 
-    # Optional: Show last 10 transactions in wallet tab
     wallet_transactions = WalletTransaction.objects.filter(wallet=wallet).order_by('-created_at')[:10]
 
     return render(request, 'user/main/profile.html', {
@@ -1167,10 +1096,6 @@ def my_profile(request):
 @user_login_required
 @require_POST
 def update_profile(request):
-    # Ensure userprofile exists, create if not (common pattern)
-    # The current form `ProfileForm` is based on `User` model, not `UserProfile`.
-    # If UserProfile has fields tied to profile form, you'd load it.
-    # For now, `instance=request.user` is correct if updating User fields directly.
     profile_form = ProfileForm(request.POST, instance=request.user)
 
     if profile_form.is_valid():
@@ -1189,11 +1114,9 @@ def add_address_form_view(request):
     form = AddressForm()
     return render(request, 'user/main/add_address_form.html', {'form': form})
 
-# Your existing add_address view (for AJAX POST submissions)
 @user_login_required
 @require_POST
 def add_address(request):
-    # This view will be called via AJAX from add_address_form.html or other places
     if request.user.addresses.count() >= 3:
         return JsonResponse({'success': False, 'message': 'You can add a maximum of 3 addresses.'}, status=400)
 
@@ -1203,7 +1126,6 @@ def add_address(request):
             address = form.save(commit=False)
             address.user = request.user
 
-            # Logic to set default address
             if address.is_default or not request.user.addresses.exists():
                 request.user.addresses.update(is_default=False)
                 address.is_default = True
@@ -1304,46 +1226,29 @@ def delete_address(request, address_id):
 # --- NEW VIEW FOR NEWSLETTER SUBSCRIPTION ---
 @require_POST
 def subscribe_newsletter(request):
-    # Check if it's an AJAX request (optional, but good practice if this URL is only for AJAX)
     if request.headers.get('x-requested-with') == 'XMLHttpRequest':
-        form = NewsletterForm(request.POST) # Use the form for validation
+        form = NewsletterForm(request.POST) 
         if form.is_valid():
             try:
-                form.save() # Saves the email to the NewsletterSubscriber model
+                form.save() 
                 return JsonResponse({'success': True, 'message': 'Thank you for subscribing!'})
             except IntegrityError:
-                # This catches if the email is already in the database (due to unique=True)
+               
                 return JsonResponse({'success': False, 'message': 'This email is already subscribed.'}, status=409) # 409 Conflict
             except Exception as e:
-                # Log other unexpected errors
-                # print(f"Error subscribing: {e}") # Uncomment for debugging
                 return JsonResponse({'success': False, 'message': 'An unexpected error occurred. Please try again later.'}, status=500)
         else:
-            # Form is not valid, return validation errors
             errors = form.errors.as_dict()
-            # Extract the first error message from the dictionary
             first_error_message = next(iter(errors.values()))[0] if errors else "Invalid email provided."
             return JsonResponse({'success': False, 'message': first_error_message, 'errors': errors}, status=400)
-    # If not an AJAX request, return a generic error or redirect
     return JsonResponse({'success': False, 'message': 'Invalid request.'}, status=400)
 
 
-# @user_login_required
-# def my_orders(request):
-#     orders = request.user.order_set.all()
+User = get_user_model() 
 
-#     return render(request, 'user/profile/my_orders.html', {'orders': orders,})
-
-
-# --- Auth Views (No changes to these sections for address functionality directly) ---
-User = get_user_model() # Get the custom user model if you have one
-
-# Your login_view
 def login_view(request):
-    # Check if the user is ALREADY authenticated using Django's built-in check
     if request.user.is_authenticated:
         messages.info(request, "You are already logged in.")
-        # Redirect to the 'next' URL if provided, otherwise to LOGIN_REDIRECT_URL (set in settings)
         next_url = request.GET.get('next', 'user_dashboard')
         return redirect(next_url)
 
@@ -1352,11 +1257,7 @@ def login_view(request):
         if form.is_valid():
             user = form.get_user()
             if user:
-                # *** FIX APPLIED HERE: Specify the backend explicitly ***
                 login(request, user, backend='django.contrib.auth.backends.ModelBackend')
-                # No need for manual request.session.save() or response.set_cookie() here
-
-                # Merge DB cart into session cart (this logic is fine, keep it)
                 try:
                     db_cart = Cart.objects.get(user=user)
                     session_cart = request.session.get('cart', {})
@@ -1379,20 +1280,17 @@ def login_view(request):
                     pass
 
                 messages.success(request, f"Welcome, {user.username}!")
-                next_url = request.GET.get('next', 'user_dashboard') # Get 'next' if present, otherwise default
+                next_url = request.GET.get('next', 'user_dashboard') 
                 return redirect(next_url)
             else:
                 messages.error(request, 'Invalid credentials.')
         else:
-            # Form errors will be handled by the template if you display them
-            messages.error(request, 'Invalid username or password.') # Generic message for invalid form
+            messages.error(request, 'Invalid username or password.')
     else:
         form = UserLoginForm()
 
     return render(request, 'user/auth/login.html', {'form': form})
 
-
-# Your register_view
 def register_view(request):
     if request.user.is_authenticated:
         return redirect('user_dashboard')
@@ -1434,7 +1332,6 @@ def forgot_password_view(request):
     if request.method == 'POST':
         email = request.POST.get('email')
         if User.objects.filter(email=email).exists():
-            # Assume generate_otp() is defined elsewhere or use random.randint
             otp = str(random.randint(100000, 999999))
             EmailOTP.objects.update_or_create(
                 email=email,
@@ -1442,7 +1339,7 @@ def forgot_password_view(request):
             )
             send_otp_email(email, otp)
             request.session['reset_email'] = email
-            return redirect('verify_reset_otp') # Assuming verify_reset_otp exists and is correctly named.
+            return redirect('verify_reset_otp') 
         else:
             messages.error(request, "Email not found.")
     return render(request, 'user/auth/request_reset_otp.html')
@@ -1460,7 +1357,7 @@ def logout_view(request):
     return redirect('home')
 
 
-# --- Main Pages (No changes needed, but ensure cart_count is consistent) ---
+# --- Main Pages ---
 
 def home_view(request):
     print("🔍 AUTH USER:", get_user(request))
@@ -1517,25 +1414,20 @@ def shop_view(request):
                 user = None
                 messages.error(request, "Your session expired. Please log in again.")
 
-    products_queryset = Product.objects.filter(is_sold=False) # Start with only non-sold products
+    products_queryset = Product.objects.filter(is_sold=False) 
 
     categories = Category.objects.all()
-    all_sizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL'] # Define your available sizes
-
-    # Filters - Ensure to get both POST (AJAX) and GET (initial load/direct link)
+    all_sizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL'] 
     selected_categories = request.POST.getlist('category') or request.GET.getlist('category')
-    selected_sizes = request.POST.getlist('size[]') or request.GET.getlist('size[]') # Correct name for size checkboxes
-    selected_max_price = request.POST.get('max_price') or request.GET.get('max_price') or '10000' # Consistent variable name
+    selected_sizes = request.POST.getlist('size[]') or request.GET.getlist('size[]') 
+    selected_max_price = request.POST.get('max_price') or request.GET.get('max_price') or '10000' 
 
-    # --- DEBUGGING STEP: Print the raw GET/POST parameters and the search_query ---
     print(f"Request METHOD: {request.method}")
     print(f"Request POST parameters: {request.POST}")
     print(f"Request GET parameters: {request.GET}")
-    search_query = request.GET.get('query') # Search query always comes via GET if it's in the URL
+    search_query = request.GET.get('query')
     print(f"Search Query obtained: '{search_query}'")
-    # --- END DEBUGGING STEP ---
 
-    # Initialize an empty Q object for combined filters
     q_filters = Q()
     
     if selected_categories:
@@ -1543,31 +1435,24 @@ def shop_view(request):
         print(f"Applied category filter: {selected_categories}")
 
     try:
-        if selected_max_price: # Check if it's not empty
+        if selected_max_price: 
             decimal_max_price = Decimal(selected_max_price)
             q_filters &= Q(price__lte=decimal_max_price)
             print(f"Applied max_price filter: {selected_max_price}")
-        else: # If max_price is empty, revert to default or handle as no max limit
-            selected_max_price = '10000' # Ensure the value for context is correct
+        else: 
+            selected_max_price = '10000' 
     except (TypeError, ValueError):
         print(f"Invalid max_price value provided: '{selected_max_price}'. Ignoring filter.")
-        selected_max_price = '10000' # Default if conversion fails
+        selected_max_price = '10000' 
         pass
 
-    # --- CORRECTED SIZE FILTERING LOGIC for size (CharField) ---
     if selected_sizes:
         size_q_objects = Q()
-        for s in selected_sizes: # 's' for single selected size
-            # Use __icontains to check if the 'size' CharField contains the selected size.
-            # This is robust for single sizes ('S') or comma-separated ('S,M,L').
-            # It will match if product.size is 'S' and 'S' is selected.
-            # It will also match if product.size is 'S,M' and 'S' is selected.
+        for s in selected_sizes: 
             size_q_objects |= Q(size__icontains=s)
         q_filters &= size_q_objects
         print(f"Applied size filter for 'size' field (CharField __icontains): {selected_sizes}")
-    # --- END CORRECTED SIZE FILTERING LOGIC ---
 
-    # Apply Search Query Filter
     if search_query:
         print(f"Applying search filter for query: '{search_query}'")
         q_filters &= (Q(name__icontains=search_query) |
@@ -1575,7 +1460,6 @@ def shop_view(request):
     else:
         print("No search query provided.")
 
-    # Apply all accumulated filters to the initial queryset, then randomize
     products = products_queryset.filter(q_filters).order_by('?')
 
     print(f"Total products after all filters: {products.count()}")
@@ -1595,7 +1479,7 @@ def shop_view(request):
     context = {
         'products': products,
         'categories': categories,
-        'sizes': all_sizes, # Use 'all_sizes' here for the filter UI
+        'sizes': all_sizes, 
         'wishlisted_product_ids': list(wishlisted_product_ids),
         'selected_categories': selected_categories,
         'selected_sizes': selected_sizes,
@@ -1604,7 +1488,6 @@ def shop_view(request):
         'now': timezone.now(),
     }
 
-    # Ensure your partial template filename matches this.
     if request.headers.get('x-requested-with') == 'XMLHttpRequest':
         return render(request, 'user/main/product_grid_partial.html', context)
     else:
@@ -1617,46 +1500,35 @@ def product_detail_view(request, id=None):
     is_reserved_by_current_user = False
     has_subscribed_for_notification = False
 
-    # Check if the product has an active reservation by *anyone*
     if product.is_currently_reserved:
-        # If it's reserved, calculate time left regardless of who reserved it,
-        # but only pass to template if current user.
         if product.reservation_expires_at:
             time_left = product.reservation_expires_at - timezone.now()
-            # Ensure seconds are not negative
             reservation_expires_in_seconds = max(0, int(time_left.total_seconds()))
-
-        # Determine if the active reservation is by the current logged-in user
         if request.user.is_authenticated and product.reserved_by_user == request.user:
             is_reserved_by_current_user = True
         
-    # If the user is authenticated, check if they have an active notification subscription
     if request.user.is_authenticated:
         has_subscribed_for_notification = NotificationSubscription.objects.filter(
             user=request.user,
             product=product,
             event_type='available',
-            # You might want to filter out subscriptions that have already been notified
-            # e.g., notified_at__isnull=True if you track notification delivery
         ).exists()
 
-    # --- NEW: Fetch Similar Products ---
+    # --- Fetch Similar Products ---
     similar_products = Product.objects.filter(
-        category=product.category # Same category
+        category=product.category 
     ).exclude(
-        id=product.id             # Exclude the current product
-    ).order_by('?')               # Optional: order randomly
+        id=product.id             
+    ).order_by('?')               
     
-    # Limit the number of similar products to display (e.g., 6)
     similar_products = similar_products[:6]
-    # --- END NEW ---
 
     context = {
         'product': product,
         'reservation_expires_in_seconds': reservation_expires_in_seconds,
         'is_reserved_by_current_user': is_reserved_by_current_user,
         'has_subscribed_for_notification': has_subscribed_for_notification,
-        'similar_products': similar_products, # Add similar products to context
+        'similar_products': similar_products, 
     }
     return render(request, 'user/main/product_detail.html', context)
 
@@ -1674,8 +1546,6 @@ def contact_view(request):
 def about_view(request):
     return render(request, 'user/main/static_pages/about.html',{
     })
-
-# core/views/user_views.py (or wherever cart_page_view is defined)
 
 def cart_page_view(request):
     print("***************** cart_page_view IS BEING CALLED *****************")
@@ -1700,23 +1570,22 @@ def cart_page_view(request):
             for item in list(cart_queryset): 
                 product = item.product
                 
-                # Initialize these flags/values for each item
                 is_reserved_by_current_user_flag = False
-                is_sold_flag = product.is_sold # Direct from product
-                is_reserved_by_other_flag = False # Will set if reserved by someone else
+                is_sold_flag = product.is_sold 
+                is_reserved_by_other_flag = False 
                 reservation_time_left_seconds = 0
                 
                 # --- Product Availability Checks ---
-                if is_sold_flag: # Use the flag
+                if is_sold_flag: 
                     messages.warning(request, f"'{product.name}' is no longer available as it has been sold and has been removed from your cart.")
                     items_to_delete_from_cart.append(item.id)
                     continue 
 
-                if product.reserved_by_user: # Check if it's reserved at all
+                if product.reserved_by_user: 
                     if product.reserved_by_user != request.user:
                         messages.warning(request, f"'{product.name}' is currently reserved by another customer and has been removed from your cart.")
                         items_to_delete_from_cart.append(item.id)
-                        is_reserved_by_other_flag = True # Mark for display
+                        is_reserved_by_other_flag = True 
                         continue 
                     elif product.reserved_by_user == request.user:
                         time_left_seconds = product.get_reservation_time_left_seconds() 
@@ -1728,27 +1597,25 @@ def cart_page_view(request):
                             product.save()
                             items_to_delete_from_cart.append(item.id)
                             continue 
-                # --- End Product Availability Checks ---
                 
                 original_item_total = product.price * item.quantity
                 original_total_price += original_item_total
                 cart_count += item.quantity
 
-                # Prepare common item data for both BOGO and standard lists
                 common_item_data = {
                     'product': product,
                     'quantity': item.quantity,
                     'original_item_total': original_item_total,
                     'cart_item_id': item.id,
                     'is_reserved_by_current_user': is_reserved_by_current_user_flag,
-                    'is_sold': is_sold_flag, # Pass this too
-                    'is_reserved_by_other': is_reserved_by_other_flag, # Pass this too
+                    'is_sold': is_sold_flag, 
+                    'is_reserved_by_other': is_reserved_by_other_flag, 
                     'reservation_time_left_seconds': reservation_time_left_seconds,
-                    'offer_tag': '', # Default, will be set by offer logic
-                    'is_bogo_free': False # Default, will be set by BOGO logic
+                    'offer_tag': '', 
+                    'is_bogo_free': False 
                 }
 
-                # --- Offer Application Logic ---
+                # --- Offer Application ---
                 active_product_offers = [
                     offer for offer in product.offers.all() if offer.is_currently_active
                 ]
@@ -1762,7 +1629,6 @@ def cart_page_view(request):
                                 'offer': offer,
                                 'items': [] 
                             }
-                        # Append the common_item_data to the BOGO group
                         products_grouped_by_bogo_offer[offer_key]['items'].append(common_item_data)
                         bogo_offer_found_for_product = True
                         break 
@@ -1774,7 +1640,6 @@ def cart_page_view(request):
                             applied_simple_offer = offer
                             break 
                     
-                    # Update applied_offer for standard pricing items
                     common_item_data['applied_offer'] = applied_simple_offer
                     items_for_standard_pricing.append(common_item_data)
 
@@ -1784,10 +1649,10 @@ def cart_page_view(request):
     except Cart.DoesNotExist:
         pass 
 
-    # --- Step 1: Calculate discounts from BOGO offers ---
+    # --- Calculate discounts from BOGO offers ---
     for offer_key, offer_data in products_grouped_by_bogo_offer.items():
         offer = offer_data['offer']
-        items_under_bogo = offer_data['items'] # These are already dictionaries with all common_item_data fields
+        items_under_bogo = offer_data['items'] 
 
         total_bogo_quantity = sum(item['quantity'] for item in items_under_bogo)
 
@@ -1796,14 +1661,13 @@ def cart_page_view(request):
 
         if buy_qty is None or get_qty is None or buy_qty <= 0 or get_qty <= 0:
             for item_data in items_under_bogo:
-                # Add to final display list as-is, with the BOGO offer tag, but no discount
-                item_data['offer_tag'] = offer.tag_text # Ensure tag is still applied if misconfigured
+                item_data['offer_tag'] = offer.tag_text 
                 cart_items_for_display.append({
                     'product_id': item_data['product'].id,
                     'name': item_data['product'].name,
                     'price': float(item_data['product'].price),
                     'quantity': item_data['quantity'],
-                    'total_price': float(item_data['original_item_total']), # No discount
+                    'total_price': float(item_data['original_item_total']), 
                     'image_url': item_data['product'].images.first().image.url if item_data['product'].images.exists() else '',
                     'is_reserved_by_current_user': item_data['is_reserved_by_current_user'], 
                     'is_sold': item_data['is_sold'], 
@@ -1828,7 +1692,6 @@ def cart_page_view(request):
             if remaining_free_products_to_distribute > 0:
                 free_from_this_item = min(quantity_in_cart, remaining_free_products_to_distribute)
                 
-                # Mark as free, update tag
                 item_data['is_bogo_free'] = True 
                 item_data['offer_tag'] = offer.tag_text
                 
@@ -1837,7 +1700,6 @@ def cart_page_view(request):
 
                 remaining_free_products_to_distribute -= free_from_this_item
             
-            # Prepare for final display list
             item_display_total = item_data['original_item_total']
             if item_data['is_bogo_free']:
                 item_display_total = Decimal('0.00') 
@@ -1856,12 +1718,12 @@ def cart_page_view(request):
                 'offer_tag': item_data['offer_tag'], 
             })
 
-    # --- Step 2: Calculate discounts from Percentage/Amount offers and add regular items ---
+    # --- Calculate discounts from Percentage/Amount offers and add regular items ---
     for item_data in items_for_standard_pricing:
         product = item_data['product']
         quantity = item_data['quantity']
         original_item_total = item_data['original_item_total']
-        applied_offer = item_data['applied_offer'] # This key now exists!
+        applied_offer = item_data['applied_offer'] 
 
         item_total_after_offer = original_item_total
         offer_tag = None
@@ -1894,15 +1756,11 @@ def cart_page_view(request):
 
     total_price_after_discounts = max(Decimal('0.00'), total_price_after_discounts)
 
-    # --- Prepare data for JSON for frontend ---
     cart_items_json_serializable = []
     for item in cart_items_for_display:
         json_item = item.copy() 
         json_item['price'] = float(json_item['price'])
         json_item['total_price'] = float(json_item['total_price'])
-        # Add original_item_total if it's needed in JS for any reason
-        # if 'original_item_total' in item_data: # If you need to pass it, make sure it's in the dicts
-        #    json_item['original_item_total'] = float(item_data['original_item_total'])
         cart_items_json_serializable.append(json_item)
 
     try:
@@ -1926,8 +1784,6 @@ def cart_page_view(request):
 @transaction.atomic
 def add_to_cart_view(request, product_id):
     try:
-        # Use select_for_update to lock the product row during the transaction
-        # This prevents race conditions where multiple users try to reserve the same unique product.
         product = Product.objects.select_for_update().get(id=product_id)
     except Product.DoesNotExist:
         message = "Product not found."
@@ -1942,34 +1798,26 @@ def add_to_cart_view(request, product_id):
         messages.error(request, message)
         return JsonResponse({'success': False, 'message': message}, status=400)
 
-    # Get or create the user's cart
     user_cart, _ = Cart.objects.get_or_create(user=request.user)
 
-    # Define the reservation expiry time
     new_reservation_expires_at = timezone.now() + timedelta(minutes=CART_RESERVATION_TIME_MINUTES)
 
-    # Get or create the CartItem for this product in the user's cart.
-    # For a single-item reservation, quantity will typically be 1.
-    # Set default reservation status on creation.
     cart_item, created_cart_item = CartItem.objects.get_or_create(
         cart=user_cart,
         product=product,
-        user=request.user,  # <--- THIS IS THE **ESSENTIAL LINE TO ADD/CHANGE**
+        user=request.user, 
         defaults={
             'quantity': 1,
-            'is_reserved': True, # Mark as reserved by default when adding
-            'reserved_until': new_reservation_expires_at # Set initial expiry
+            'is_reserved': True, 
+            'reserved_until': new_reservation_expires_at 
         }
     )
 
     # --- Reservation Logic ---
     if product.is_currently_reserved:
         if product.reserved_by_user == request.user:
-            # Case 1: Product is already reserved by the current user.
-            # Extend the reservation time for both Product and CartItem.
             product.reservation_expires_at = new_reservation_expires_at
             cart_item.reserved_until = new_reservation_expires_at
-            # Ensure is_reserved is True on cart_item if it somehow became False
             cart_item.is_reserved = True
 
             product.save(update_fields=['reservation_expires_at'])
@@ -1979,21 +1827,16 @@ def add_to_cart_view(request, product_id):
             logger.info(f"User {request.user.username} extended reservation for product {product.name} (ID: {product.id}).")
             messages.info(request, message)
         else:
-            # Case 2: Product is reserved by another user.
             message = f"'{product.name}' is currently reserved by another customer. Please try again later."
             logger.warning(f"User {request.user.username} tried to add product {product.name} (ID: {product.id}) reserved by another user ({product.reserved_by_user.username}).")
             messages.warning(request, message)
             return JsonResponse({'success': False, 'message': message}, status=409)
     else:
-        # Case 3: Product is NOT sold and NOT actively reserved by anyone.
-        # Reserve it for the current user.
         product.reserved_by_user = request.user
         product.reservation_expires_at = new_reservation_expires_at
         product.save(update_fields=['reserved_by_user', 'reservation_expires_at'])
 
-        # If cart_item was just created, its defaults already set is_reserved and reserved_until.
-        # If it already existed but was not reserved (e.g., old expired item), update it here.
-        if not created_cart_item: # If item already existed
+        if not created_cart_item: 
             cart_item.is_reserved = True
             cart_item.reserved_until = new_reservation_expires_at
             cart_item.save(update_fields=['is_reserved', 'reserved_until'])
@@ -2002,24 +1845,15 @@ def add_to_cart_view(request, product_id):
         logger.info(f"User {request.user.username} reserved product {product.name} (ID: {product.id}).")
         messages.success(request, message)
 
-    # --- Prepare data for JSON response (Mini-Cart Update) ---
-    # Recalculate total quantity of items in the cart (including non-reserved items)
     updated_cart_count = user_cart.items.aggregate(total_quantity=Sum('quantity'))['total_quantity'] or 0
 
-    # Recalculate total price of the entire cart and get data for all items
     cart_total_price = Decimal('0.00')
-    current_cart_items_data = [] # This will hold data for all items currently in the user's cart
+    current_cart_items_data = [] 
 
-    # Iterate through all items in the user's cart to prepare data for the mini-cart
-    # Use select_related('product', 'product__images') if images are directly related
-    # or ensure Product.images.exists() is performant.
     for item in user_cart.items.select_related('product').all():
-        # Only include items that are not sold and, if reserved, are reserved by the current user.
-        # Items reserved by others or expired should not be shown in the current user's active cart.
         if not item.product.is_sold and (not item.product.is_currently_reserved or item.product.reserved_by_user == request.user):
             cart_total_price += item.product.price * item.quantity
 
-            # Determine reservation time left for *this specific item* in the mini-cart
             time_left_seconds = 0
             is_reserved_by_current_user = False
             if item.product.is_currently_reserved and item.product.reserved_by_user == request.user:
@@ -2037,68 +1871,44 @@ def add_to_cart_view(request, product_id):
             }
             current_cart_items_data.append(item_data)
         else:
-            # OPTIONAL: If an item in the cart is now sold or reserved by others, you might want
-            # to automatically remove it from the cart here for a very clean UX.
-            # E.g., item.delete()
-            pass # Or handle expired/sold items in the cart if your system allows
+            pass 
 
     return JsonResponse({
         'success': True,
-        'message': message, # Message to show the user (e.g., "Added to cart!")
+        'message': message, 
         'cart_count': updated_cart_count,
-        'cart_items_data': current_cart_items_data, # Data for all valid items in cart to populate mini-cart
+        'cart_items_data': current_cart_items_data, 
         'cart_total_price': float(cart_total_price),
     })
 
 @require_POST
 @user_login_required
 def remove_from_cart_view(request, product_id):
-    product_id_str = str(product_id) # Convert to string for session cart lookup
+    product_id_str = str(product_id) 
 
     product = get_object_or_404(Product, id=product_id)
     
-    # Check if the product is reserved by the current user
     if product.reserved_by_user == request.user:
-        # Release the reservation
         product.reserved_by_user = None
         product.reservation_expires_at = None
-        # product.is_reserved = False # This flag might be managed by Product properties
-                                    # If you have an @property for is_reserved, no need to set here.
-                                    # If not, ensure it's updated.
         product.save()
 
-        # IMPORTANT: Remove or comment out the problematic line:
-        # send_product_removed_from_cart_email.delay(product.id) # Async task
-        # Notification to other users about availability is handled by Celery's
-        # `release_expired_reservations_task` which sends `send_product_available_email`.
-
-    # Remove from DB cart for authenticated users
-    # This block executes even if the reservation wasn't released (e.g., product wasn't reserved by current user)
     if request.user.is_authenticated:
         try:
             user_cart = Cart.objects.get(user=request.user)
-            # Find the specific CartItem for this product and delete it
-            # Using filter().delete() is more robust than .get().delete() if item might not exist.
             deleted_count, _ = CartItem.objects.filter(cart=user_cart, product=product).delete()
             if deleted_count > 0:
                 messages.info(request, f"{product.name} removed from your cart.")
             else:
                 messages.warning(request, f"{product.name} was not found in your cart.")
         except Cart.DoesNotExist:
-            messages.warning(request, "Your cart does not exist.") # Should ideally not happen if user has items
-    
-    # --- Session Cart removal (Keep this if you still use session cart for display before login) ---
-    # This part should ideally be phased out if you primarily rely on DB cart for authenticated users.
-    # It's primarily for anonymous users or initial state.
+            messages.warning(request, "Your cart does not exist.") 
     cart = request.session.get('cart', {})
     if product_id_str in cart:
         product_name = cart[product_id_str]['name']
         del cart[product_id_str]
         request.session['cart'] = cart
         request.session.modified = True
-        # messages.info(request, f"{product_name} removed from your session cart.") # Message might be redundant with DB cart message
-    # ---------------------------------------------------------------------------------------------------
-
     return redirect('cart_page')
 
 @require_POST
@@ -2114,10 +1924,8 @@ def buy_now_checkout_view(request, product_id):
         logger.warning(f"[{user.username}] Product {product.id} already sold during buy-now attempt.")
         return redirect('product_detail', id=product.id)
     
-    # Check if the product is reserved by anyone, and if so, by whom
-    if product.is_currently_reserved: # Use the property here
+    if product.is_currently_reserved: 
         if product.reserved_by_user == user:
-            # User already reserved it via buy now or cart, extend reservation
             product.reservation_expires_at = timezone.now() + timedelta(minutes=CART_RESERVATION_TIME_MINUTES)
             product.save()
             messages.info(request, f"{product.name} is already reserved by you, reservation extended for {CART_RESERVATION_TIME_MINUTES} minutes.")
@@ -2127,21 +1935,18 @@ def buy_now_checkout_view(request, product_id):
             logger.warning(f"[{user.username}] Product {product.id} reserved by another user during buy-now attempt.")
             return redirect('product_detail', id=product.id)
     else:
-        # If not reserved, reserve the product immediately for "Buy Now"
         product.reserved_by_user = user
         product.reservation_expires_at = timezone.now() + timedelta(minutes=CART_RESERVATION_TIME_MINUTES)
-        # product.is_reserved = True # This field does not exist on Product model
         product.save()
         messages.success(request, f"{product.name} has been reserved for you for {CART_RESERVATION_TIME_MINUTES} minutes.")
         logger.debug(f"[{user.username}] Product {product.id} reserved for current user via buy-now.")
 
 
-    # Save buy now item as a separate session entry
     request.session['buy_now_item'] = {
         'id': product.id,
         'name': product.name,
-        'price': float(product.price), # Ensure price is convertible and can be stored
-        'quantity': 1, # Always 1 for single product
+        'price': float(product.price), 
+        'quantity': 1, 
         'image_url': product.images.first().image.url if product.images.exists() else '',
     }
     request.session.modified = True
@@ -2152,37 +1957,30 @@ def buy_now_checkout_view(request, product_id):
     return redirect('checkout')
 
 
-@user_login_required # This decorator already ensures the user is authenticated
+@user_login_required 
 @require_POST
-@transaction.atomic # Ensure atomic operation for subscription
+@transaction.atomic 
 def notify_me_view(request, product_id):
     try:
         product = get_object_or_404(Product, id=product_id)
     except Product.DoesNotExist:
         return JsonResponse({'success': False, 'message': 'Product not found.'}, status=404)
 
-    # Use the product's properties for clearer logic
-    # User can only subscribe if the product is NOT available for purchase by anyone
-    # (i.e., it's sold OR actively reserved by another user).
     if product.is_available_for_purchase:
-        # If it's available, no need to notify.
         return JsonResponse({'success': False, 'message': 'This item is currently available for purchase. You can add it to your cart directly.'}, status=400)
     
-    # Check if the product is reserved by the current user
     if product.reserved_by_user == request.user:
         return JsonResponse({'success': False, 'message': 'You have already reserved this item. No need for notification.'}, status=400)
 
     try:
-        # Try to create the subscription. unique_together will prevent duplicates.
         NotificationSubscription.objects.create(
             user=request.user,
             product=product,
-            event_type='available' # Assuming 'available' is the primary notification type
+            event_type='available' 
         )
         logger.info(f"User {request.user.username} subscribed to notifications for product {product.name} (ID: {product.id}).")
         return JsonResponse({'success': True, 'message': f'You will be notified when {product.name} becomes available.'})
     except IntegrityError:
-        # This specific exception is caught if unique_together constraint is violated
         logger.info(f"User {request.user.username} already subscribed to notifications for product {product.name} (ID: {product.id}).")
         return JsonResponse({'success': False, 'message': 'You are already subscribed for notifications for this product.'}, status=400)
     except Exception as e:
@@ -2194,7 +1992,6 @@ def notify_me_view(request, product_id):
 @user_login_required
 def wishlist_view(request):
     wishlist_items = Wishlist.objects.filter(user=request.user).select_related('product', 'product__category')
-
     context = {
         'wishlist_items': wishlist_items,
     }
@@ -2263,19 +2060,16 @@ def send_contact_email(request):
         email = data.get('email')
         message = data.get('message')
 
-        # Basic server-side validation
         if not all([name, email, message]):
             return JsonResponse({'success': False, 'message': 'All fields are required.'}, status=400)
-        if '@' not in email or '.' not in email: # More robust validation can be added
+        if '@' not in email or '.' not in email: 
             return JsonResponse({'success': False, 'message': 'Please enter a valid email address.'}, status=400)
 
-        # Compose the email
         subject = f"New Contact Form Submission from {name}"
         email_message = f"Name: {name}\nEmail: {email}\n\nMessage:\n{message}"
-        from_email = settings.EMAIL_HOST_USER # Sender email defined in settings.py
-        recipient_list = [settings.EMAIL_HOST_USER] # Send to your own email address
+        from_email = settings.EMAIL_HOST_USER 
+        recipient_list = [settings.EMAIL_HOST_USER] 
 
-        # Send the email
         send_mail(
             subject,
             email_message,

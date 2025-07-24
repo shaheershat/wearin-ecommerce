@@ -7,7 +7,6 @@ from django.utils.text import slugify
 import random
 import string
 
-# Helper: Generate username if missing
 def generate_username(name_or_email):
     base = slugify(name_or_email.split('@')[0]) if '@' in name_or_email else slugify(name_or_email)
     suffix = ''.join(random.choices(string.digits, k=4))
@@ -21,7 +20,6 @@ class CustomSocialAccountAdapter(DefaultSocialAccountAdapter):
         user = sociallogin.user
         user.email = user.email or sociallogin.account.extra_data.get('email')
 
-        #  Set username if not set
         if not user.username:
             user.username = generate_username(user.email or "user")
 
@@ -29,11 +27,9 @@ class CustomSocialAccountAdapter(DefaultSocialAccountAdapter):
         user.save()
         sociallogin.save(request)
 
-        #  Log the user in
         login(request, user)
         request.session.save()
 
-        #  Set session cookie (for user_sessionid handling)
         response = HttpResponseRedirect('/user-dashboard/')
         response.set_cookie('user_sessionid', request.session.session_key)
 

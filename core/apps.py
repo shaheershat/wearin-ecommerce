@@ -5,7 +5,7 @@ class CoreConfig(AppConfig):
     name = 'core'
 
     def ready(self):
-        import core.patches  # 👈 This triggers the patch on app load
+        import core.patches  
 from django.apps import AppConfig
 
 class CoreConfig(AppConfig):

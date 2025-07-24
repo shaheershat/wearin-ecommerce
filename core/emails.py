@@ -1,4 +1,4 @@
-from core.models import Product, Cart, CartItem, Order, OrderItem, Address, Wallet # Make sure Order is here
+from core.models import Product, Cart, CartItem, Order, OrderItem, Address, Wallet 
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
 from django.conf import settings
@@ -12,31 +12,29 @@ from django.urls import reverse
 import logging
 from django.conf import settings
 
-# Initialize logger at the top
 logger = logging.getLogger(__name__)
 
-User = get_user_model() # Make sure this is defined for tasks that need it
+User = get_user_model() 
 
-# CONSOLIDATED _send_email helper function (removed the duplicate)
+# _send_email helper function 
 def _send_email(subject, template_name, context, recipient_list):
     """Helper function to send HTML emails with enhanced logging."""
     if not recipient_list:
         logger.info(f"No recipients specified for email '{subject}'. Skipping.")
-        return False # Indicate failure due to no recipients
+        return False 
 
     html_message = render_to_string(template_name, context)
     plain_message = strip_tags(html_message)
     
     try:
-        # Using EmailMultiAlternatives is generally better than send_mail directly for HTML
         msg = EmailMultiAlternatives(subject, plain_message, settings.DEFAULT_FROM_EMAIL, recipient_list)
-        msg.attach_alternative(html_message, "text/html") # Attach HTML version
+        msg.attach_alternative(html_message, "text/html")
         msg.send()
         logger.info(f"Email '{subject}' sent successfully to {', '.join(recipient_list)}")
-        return True # Indicate success
+        return True 
     except Exception as e:
         logger.error(f"Error sending email '{subject}' to {', '.join(recipient_list)}: {e}", exc_info=True)
-        return False # Indicate failure
+        return False 
 
 @shared_task
 def send_product_available_email(recipient_email, product_name, product_id):
@@ -45,7 +43,7 @@ def send_product_available_email(recipient_email, product_name, product_id):
     """
     logger.info(f"Attempting to send product available email to {recipient_email} for product {product_name} (ID: {product_id}).")
     
-    product_url = f"{getattr(settings, 'SITE_URL', 'http://127.0.0.1:8000')}/product-detail/{product_id}/" # Adjust URL as per your actual URL patterns
+    product_url = f"{getattr(settings, 'SITE_URL', 'http://127.0.0.1:8000')}/product-detail/{product_id}/" 
     
     subject = f"Good News! '{product_name}' is Now Available on Wearin"
     context = {
@@ -86,7 +84,6 @@ def send_product_sold_email(product_name, product_id, purchaser_email=None):
     Sends an email to users subscribed to know when a product is sold.
     (This is an *alternative* or *additional* notification type).
     """
-    # Local import to prevent potential circular dependency if Product imports emails
     from core.models import NotificationSubscription
     
     logger.info(f"Attempting to send 'product sold' email for product {product_name} (ID: {product_id}).")
@@ -94,12 +91,11 @@ def send_product_sold_email(product_name, product_id, purchaser_email=None):
     try:
         product = Product.objects.get(id=product_id)
         
-        # Filter for subscribers who want to know about 'sold' status or 'availability'
         subscribers = NotificationSubscription.objects.filter(product=product, event_type='available', notified_at__isnull=True)
         
         recipient_emails = []
         for sub in subscribers:
-            if sub.user and sub.user.email and sub.user.email != purchaser_email: # Exclude purchaser if provided
+            if sub.user and sub.user.email and sub.user.email != purchaser_email: 
                 recipient_emails.append(sub.user.email)
         
         if not recipient_emails:
@@ -162,8 +158,7 @@ def send_order_confirmation_email(order_id):
 
     try:
         order = Order.objects.get(id=order_id)
-        # Force refresh to ensure the latest database schema is used
-        order.refresh_from_db() # ADDED THIS LINE
+        order.refresh_from_db() 
         user = order.user
 
         if not user.email:
@@ -203,7 +198,7 @@ def send_order_cancelled_email(order_id):
     logger.info(f"Attempting to send order cancellation email for Order ID: {order_id}.")
     try:
         order = Order.objects.get(id=order_id)
-        order.refresh_from_db() # ADDED THIS LINE
+        order.refresh_from_db() 
         user = order.user
 
         if not user.email:
@@ -213,7 +208,7 @@ def send_order_cancelled_email(order_id):
         context = {
             'order': order,
             'user': user,
-            'order_items': order.items.all(), # Pass order items to the template
+            'order_items': order.items.all(), 
             'site_name': settings.SITE_NAME,
         }
 
@@ -232,13 +227,13 @@ def send_order_cancelled_email(order_id):
 
 
 @shared_task
-def send_return_processed_email(return_request_id, status): # <--- Note argument names
+def send_return_processed_email(return_request_id, status): 
     """
     Sends an email to the user when their return request has been processed (approved/rejected).
     """
     logger.info(f"Attempting to send return processed email for Return Request ID: {return_request_id} with status: {status}.")
     try:
-        from core.models import ReturnRequest # Local import to avoid circular dependency
+        from core.models import ReturnRequest 
         return_request = ReturnRequest.objects.get(id=return_request_id)
         return_request.refresh_from_db()
         order = return_request.order
@@ -252,7 +247,7 @@ def send_return_processed_email(return_request_id, status): # <--- Note argument
             'return_request': return_request,
             'order': order,
             'user': user,
-            'returned_items': return_request.requested_items.all(), # <--- This is the correct way
+            'returned_items': return_request.requested_items.all(),
             'status': status,
             'site_name': settings.SITE_NAME,
         }

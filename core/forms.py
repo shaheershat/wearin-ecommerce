@@ -1,14 +1,12 @@
 from django import forms
-from django.forms.widgets import ClearableFileInput, DateTimeInput # Import DateTimeInput
+from django.forms.widgets import ClearableFileInput, DateTimeInput 
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
-from django.contrib.auth.models import User # You might use get_user_model() instead of direct User import
+from django.contrib.auth.models import User 
 from django.contrib.auth import get_user_model
-from core.models import Product, Coupon, EmailTemplate, NewsletterCampaign # Ensure Coupon is imported
+from core.models import Product, Coupon, EmailTemplate, NewsletterCampaign
 import uuid
-# Import the actual Address model and UserProfile
-from core.models import UserProfile, Address, NewsletterSubscriber # Import NewsletterSubscriber
+from core.models import UserProfile, Address, NewsletterSubscriber 
 from core.models import OfferBanner, Offer, Product, Category
-
 
 class ProfileForm(forms.ModelForm):
     class Meta:
@@ -28,7 +26,7 @@ class AddressForm(forms.ModelForm):
             'state': forms.TextInput(attrs={'class': 'w-full px-3 py-2 border rounded-md'}),
             'pincode': forms.TextInput(attrs={'class': 'w-full px-3 py-2 border rounded-md'}),
             'country': forms.TextInput(attrs={'class': 'w-full px-3 py-2 border rounded-md'}),
-            'is_default': forms.CheckboxInput(attrs={'class': 'mr-2'}), # Added widget for checkbox
+            'is_default': forms.CheckboxInput(attrs={'class': 'mr-2'}), 
         }
 
 class NewsletterForm(forms.ModelForm):
@@ -69,7 +67,7 @@ class UserRegistrationForm(UserCreationForm):
         required=True,
         widget=forms.EmailInput(attrs={'placeholder': 'Email', 'class': 'form-input'})
     )
-    phone_number = forms.CharField( # This field is not saved to User model directly by default
+    phone_number = forms.CharField( 
         max_length=15,
         required=False,
         widget=forms.TextInput(attrs={'placeholder': 'Phone Number', 'class': 'form-input'})
@@ -84,7 +82,7 @@ class UserRegistrationForm(UserCreationForm):
     )
 
     class Meta:
-        model = get_user_model() # Use get_user_model() here
+        model = get_user_model() 
         fields = ['first_name', 'last_name', 'email', 'password1', 'password2']
 
     def clean_email(self):
@@ -99,7 +97,7 @@ class UserRegistrationForm(UserCreationForm):
         user.first_name = self.cleaned_data.get("first_name", "")
         user.last_name = self.cleaned_data.get("last_name", "")
         user.email = self.cleaned_data["email"]
-        user.username = self.cleaned_data["email"] # Use email as username for consistency
+        user.username = self.cleaned_data["email"] 
         if commit:
             user.save()
         return user
@@ -117,7 +115,7 @@ class ProductForm(forms.ModelForm):
             'description': forms.Textarea(attrs={'class': 'w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400', 'rows': 4}),
         }
 
-# UPDATED: Coupon Form with new fields and datetime widgets
+# Coupon Form 
 class CouponForm(forms.ModelForm):
     class Meta:
         model = Coupon
@@ -131,7 +129,6 @@ class CouponForm(forms.ModelForm):
         widgets = {
             'valid_from': forms.DateTimeInput(attrs={'type': 'datetime-local', 'class': 'w-full border border-gray-300 px-3 py-2 rounded'}),
             'valid_to': forms.DateTimeInput(attrs={'type': 'datetime-local', 'class': 'w-full border border-gray-300 px-3 py-2 rounded'}),
-            # Add widgets for new fields if you want specific styling
             'code': forms.TextInput(attrs={'class': 'w-full border border-gray-300 px-3 py-2 rounded'}),
             'discount': forms.NumberInput(attrs={'class': 'w-full border border-gray-300 px-3 py-2 rounded'}),
             'min_purchase': forms.NumberInput(attrs={'class': 'w-full border border-gray-300 px-3 py-2 rounded'}),
@@ -154,14 +151,12 @@ class CouponForm(forms.ModelForm):
         applies_to_new_users_only = cleaned_data.get('applies_to_new_users_only')
         min_orders_for_user = cleaned_data.get('min_orders_for_user')
 
-        # Custom validation: Cannot be for new users AND require minimum orders
         if applies_to_new_users_only and min_orders_for_user and min_orders_for_user > 0:
             self.add_error('min_orders_for_user', "Cannot set 'Minimum Orders for User' if 'Applies to New Users Only' is checked.")
             self.add_error('applies_to_new_users_only', "Cannot apply to new users only if a minimum order count is specified.")
 
         return cleaned_data
 
-# --- MultiFile Input Widget ---
 class MultiFileInput(ClearableFileInput):
     allow_multiple_selected = True
 
@@ -186,9 +181,9 @@ class BatchUploadForm(forms.Form):
 class EmailTemplateForm(forms.ModelForm):
     class Meta:
         model = EmailTemplate
-        fields = ['name', 'subject', 'html_content', 'plain_content'] # Added plain_content back
+        fields = ['name', 'subject', 'html_content', 'plain_content'] 
         widgets = {
-            'html_content': forms.Textarea(attrs={'rows': 20}), # Make textarea larger
+            'html_content': forms.Textarea(attrs={'rows': 20}), 
             'plain_content': forms.Textarea(attrs={'rows': 10}),
         }
 
@@ -208,7 +203,7 @@ class NewsletterCampaignForm(forms.ModelForm):
                 'class': 'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500',
                 'placeholder': 'Enter campaign title'
             }),
-            'email_template': forms.HiddenInput(), # This should remain hidden as it's selected via JS/cards
+            'email_template': forms.HiddenInput(),
             'recipients_type': forms.Select(attrs={
                 'class': 'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500',
             }),
@@ -218,7 +213,7 @@ class NewsletterCampaignForm(forms.ModelForm):
                 'placeholder': 'Comma-separated emails, e.g., email1@example.com, email2@example.com'
             }),
             'scheduled_at': forms.DateTimeInput(attrs={
-                'type': 'datetime-local', # Ensure the HTML input type is datetime-local for native picker
+                'type': 'datetime-local', 
                 'class': 'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500',
             }),
             'status': forms.Select(attrs={
@@ -248,8 +243,6 @@ class OfferBannerForm(forms.ModelForm):
         model = OfferBanner
         fields = ['text_content', 'text_color', 'bg_color', 'is_active']
         widgets = {
-            # Consider using a color picker widget if you integrate one (e.g., django-colorfield)
-            # For now, simple text input for hex codes
             'text_color': forms.TextInput(attrs={'type': 'color', 'class': 'form-control'}),
             'bg_color': forms.TextInput(attrs={'type': 'color', 'class': 'form-control'}),
             'text_content': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Enter banner text'}),
@@ -267,18 +260,18 @@ class OfferForm(forms.ModelForm):
         model = Offer
         fields = [
             'name', 'offer_type', 'tag_text', 'discount_percentage', 'discount_amount',
-            'buy_quantity', 'get_quantity', # Add new fields
+            'buy_quantity', 'get_quantity', 
             'start_date', 'end_date', 'is_active',
             'background_color', 'text_color'
         ]
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g., Summer Sale'}),
-            'offer_type': forms.Select(attrs={'class': 'form-select'}), # New widget
+            'offer_type': forms.Select(attrs={'class': 'form-select'}), 
             'tag_text': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g., SALE, B1G1, FREE SHIP'}),
             'discount_percentage': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0', 'max': '100', 'placeholder': 'e.g., 15.00'}),
             'discount_amount': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0', 'placeholder': 'e.g., 10.00'}),
-            'buy_quantity': forms.NumberInput(attrs={'class': 'form-control', 'min': '1', 'placeholder': 'e.g., 1'}), # New widget
-            'get_quantity': forms.NumberInput(attrs={'class': 'form-control', 'min': '1', 'placeholder': 'e.g., 1'}), # New widget
+            'buy_quantity': forms.NumberInput(attrs={'class': 'form-control', 'min': '1', 'placeholder': 'e.g., 1'}), 
+            'get_quantity': forms.NumberInput(attrs={'class': 'form-control', 'min': '1', 'placeholder': 'e.g., 1'}), 
             'start_date': forms.DateTimeInput(attrs={'type': 'datetime-local', 'class': 'form-control'}),
             'end_date': forms.DateTimeInput(attrs={'type': 'datetime-local', 'class': 'form-control'}),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
@@ -287,12 +280,12 @@ class OfferForm(forms.ModelForm):
         }
         labels = {
             'name': 'Offer Name',
-            'offer_type': 'Offer Type', # New label
+            'offer_type': 'Offer Type',
             'tag_text': 'Product Tag Text',
             'discount_percentage': 'Discount Percentage (%)',
             'discount_amount': 'Discount Amount ($)',
-            'buy_quantity': 'Buy Quantity (for BOGO)', # New label
-            'get_quantity': 'Get Quantity (for BOGO)', # New label
+            'buy_quantity': 'Buy Quantity (for BOGO)', 
+            'get_quantity': 'Get Quantity (for BOGO)', 
             'start_date': 'Start Date & Time',
             'end_date': 'End Date & Time',
             'is_active': 'Offer Active',
@@ -302,9 +295,6 @@ class OfferForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Add JavaScript for conditional display in the admin if possible,
-        # or rely on model's clean method for validation.
-        # For a full JS solution, you'd add this to your admin.py's Media class.
 
     def clean(self):
         cleaned_data = super().clean()
@@ -316,41 +306,32 @@ class OfferForm(forms.ModelForm):
         start_date = cleaned_data.get('start_date')
         end_date = cleaned_data.get('end_date')
 
-        # Combined validation logic:
-        # 1. Discount type exclusivity (percentage vs amount)
         if offer_type in ['PERCENTAGE', 'AMOUNT']:
             if discount_percentage is not None and discount_amount is not None:
                 raise forms.ValidationError("An offer cannot have both a percentage and a fixed amount discount. Choose one.")
             if discount_percentage is None and discount_amount is None:
                 raise forms.ValidationError("An offer must have either a percentage or a fixed amount discount for this type.")
-        else: # If not PERCENTAGE or AMOUNT, clear these fields to avoid saving junk data
             cleaned_data['discount_percentage'] = None
             cleaned_data['discount_amount'] = None
 
-        # 2. Discount value range checks
         if discount_percentage is not None and (discount_percentage < 0 or discount_percentage > 100):
             raise forms.ValidationError("Discount percentage must be between 0 and 100.")
         if discount_amount is not None and discount_amount < 0:
             raise forms.ValidationError("Discount amount cannot be negative.")
 
-        # 3. Date validation
         if start_date and end_date and start_date >= end_date:
             raise forms.ValidationError("End date must be after start date.")
 
-        # 4. BOGO specific validation
         if offer_type in ['BOGO1', 'BOGO2']:
             if not buy_quantity or not get_quantity:
                 raise forms.ValidationError("For 'Buy X Get Y Free' offers, 'Buy Quantity' and 'Get Quantity' must be specified.")
             if buy_quantity <= 0 or get_quantity <= 0:
                 raise forms.ValidationError("Buy quantity and Get quantity must be positive for BOGO offers.")
-            # Set specific values for B1G1, B2G1 for internal consistency if desired
             if offer_type == 'BOGO1' and (buy_quantity != 1 or get_quantity != 1):
-                # Optionally warn or auto-correct, for now just allow for flexibility
                 pass
             if offer_type == 'BOGO2' and (buy_quantity != 2 or get_quantity != 1):
-                # Optionally warn or auto-correct
                 pass
-        else: # If not BOGO, clear these fields
+        else: 
             cleaned_data['buy_quantity'] = None
             cleaned_data['get_quantity'] = None
 
@@ -385,7 +366,6 @@ class ProductFilterForm(forms.Form):
         widget=forms.Select(attrs={'class': 'form-select'}),
         label='Sort By'
     )
-    # Add a field to filter by whether product is currently in an offer
     in_offer = forms.ChoiceField(
         choices=[
             ('', 'All Products'),

@@ -14,7 +14,6 @@ class CustomSessionMiddleware:
     def __call__(self, request):
         logger.debug(f"Middleware: Incoming Request Path: {request.path}")
 
-        #  Bypass paths where session should not interfere
         bypass_paths = [
             "/admin/login/", "/admin/logout/",
             "/forgot-password/", "/forgot-password/verify/",
@@ -25,7 +24,6 @@ class CustomSessionMiddleware:
         if any(request.path.startswith(p) for p in bypass_paths):
             return self.get_response(request)
 
-        #  Let Django/Allauth handle authenticated sessions (important for Google login)
         try:
             if request.session.get('_auth_user_id'):
                 logger.debug("Middleware: Django session already valid. Skipping manual session handling.")
@@ -33,7 +31,6 @@ class CustomSessionMiddleware:
         except Exception as e:
             logger.error(f"Middleware: Error checking session: {e}", exc_info=True)
 
-        # 🧠 Begin manual session management fallback
         request.user = AnonymousUser()
         request._is_admin_session = False
 

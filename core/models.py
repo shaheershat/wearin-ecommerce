@@ -4,14 +4,13 @@ from cloudinary.models import CloudinaryField
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from decimal import Decimal
-from datetime import timedelta # Import timedelta
-from django.urls import reverse # Import reverse for get_absolute_url
+from datetime import timedelta
+from django.urls import reverse 
 import logging
 from django.core.exceptions import ValidationError
-# Import Sum for aggregation in Coupon.is_valid
 from django.db.models import Sum
 
-logger = logging.getLogger(__name__) # Setup logger for models.py
+logger = logging.getLogger(__name__) 
 
 class WalletTransaction(models.Model):
     wallet = models.ForeignKey('Wallet', on_delete=models.CASCADE, related_name='transactions')
@@ -28,7 +27,7 @@ class WalletTransaction(models.Model):
     def __str__(self):
         return f"{self.transaction_type.capitalize()} ₹{self.amount} for {self.wallet.user.username}"
 
-User = get_user_model() # Define User here once
+User = get_user_model()
 
 class EmailOTP(models.Model):
     email = models.EmailField()
@@ -54,7 +53,6 @@ class UserProfile(models.Model):
     def __str__(self):
         return self.user.username
 
-# UPDATED: Coupon Model with new fields and is_valid method
 class Coupon(models.Model):
     code = models.CharField(max_length=50, unique=True, help_text="The unique code users will enter")
     discount = models.DecimalField(max_digits=10, decimal_places=2, help_text="Discount amount")
@@ -66,7 +64,6 @@ class Coupon(models.Model):
     usage_limit = models.PositiveIntegerField(default=0, help_text="Maximum number of times this coupon can be used (0 for unlimited)")
     used_count = models.PositiveIntegerField(default=0, editable=False, help_text="Number of times this coupon has been used")
 
-    # --- NEW FIELDS FOR CONDITIONS ---
     applies_to_new_users_only = models.BooleanField(default=False,
                                                     help_text="If checked, only users with no prior orders can use this coupon.")
     min_orders_for_user = models.PositiveIntegerField(default=0,
@@ -75,7 +72,7 @@ class Coupon(models.Model):
                                                               help_text="Minimum number of different products in the cart to use this coupon. (0 means no minimum).")
     min_total_items_in_cart = models.PositiveIntegerField(default=0,
                                                           help_text="Minimum total quantity of items in the cart to use this coupon. (0 means no minimum).")
-    # --- END NEW FIELDS ---
+    
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -101,31 +98,24 @@ class Coupon(models.Model):
         if cart_total_price < self.min_purchase:
             return False, f"Minimum purchase of ₹{self.min_purchase} required."
 
-        # Apply new conditions
-        if user and user.is_authenticated: # Ensure user is logged in for these checks
-            # Check for 'new user' condition
+        if user and user.is_authenticated: 
             if self.applies_to_new_users_only:
-                # Assuming 'Order' model tracks user orders and 'Delivered' means successful
-                # Import Order locally to avoid circular dependency if Order imports Coupon
-                from core.models import Order  # Import Order from the current models module
+                from core.models import Order  
                 if Order.objects.filter(user=user, status__in=['Delivered', 'Returned', 'Shipped', 'Processing', 'Pending']).exists():
                     return False, "This coupon is for new users only."
 
-            # Check for 'minimum orders' condition
             if self.min_orders_for_user > 0:
-                from core.models import Order  # Absolute import to avoid import error
+                from core.models import Order  
                 user_successful_orders_count = Order.objects.filter(user=user, status__in=['Delivered', 'Returned']).count()
                 if user_successful_orders_count < self.min_orders_for_user:
                     return False, f"You must have at least {self.min_orders_for_user} previous successful orders to use this coupon."
 
-        if cart_items is not None: # Check if cart_items is provided
-            # Check for 'minimum unique products' condition
+        if cart_items is not None: 
             if self.min_unique_products_in_cart > 0:
                 unique_products_count = cart_items.values('product').distinct().count()
                 if unique_products_count < self.min_unique_products_in_cart:
                     return False, f"Your cart must contain at least {self.min_unique_products_in_cart} different products."
 
-            # Check for 'minimum total items' condition
             if self.min_total_items_in_cart > 0:
                 total_items_quantity = cart_items.aggregate(Sum('quantity'))['quantity__sum'] or 0
                 if total_items_quantity < self.min_total_items_in_cart:
@@ -205,7 +195,7 @@ class Product(models.Model):
             logger.info(f"Reservation fields cleared for product {self.name}.")
 
             if previous_reserved_user:
-                from core.models import CartItem # Local import
+                from core.models import CartItem
                 deleted_count, _ = CartItem.objects.filter(
                     user=previous_reserved_user,
                     product=self,
@@ -226,7 +216,7 @@ class Product(models.Model):
                     logger.info(f"Queued reservation expired email for {previous_reserved_user.email}.")
 
             if self.is_available_for_purchase:
-                from core.models import NotificationSubscription # Local import
+                from core.models import NotificationSubscription 
                 subscribers = NotificationSubscription.objects.filter(
                     product=self,
                     event_type='available',
@@ -302,9 +292,9 @@ class Address(models.Model):
 class Order(models.Model):
     STATUS_CHOICES = [
         ('Pending', 'Pending'),
-        ('Placed', 'Placed'), # Added 'Placed' status for initial order after payment/COD
-        ('Confirmed', 'Confirmed'), # Optional: for admin to confirm an order
-        ('Processing', 'Processing'), # Optional: when preparing for shipment
+        ('Placed', 'Placed'), 
+        ('Confirmed', 'Confirmed'),
+        ('Processing', 'Processing'), 
         ('Shipped', 'Shipped'),
         ('Out of delivery', 'Out of delivery'),
         ('Delivered', 'Delivered'),
@@ -312,25 +302,22 @@ class Order(models.Model):
         ('Returned', 'Returned'), 
     ]
     PAYMENT_STATUS_CHOICES = [
-        ('Pending', 'Pending'), # Initial status, or for COD
-        ('Paid', 'Paid'),     # For successful online payments / wallet
-        ('Failed', 'Failed'),   # For failed online payments
-        ('Refunded', 'Refunded'), # For refunds
-        ('Partially Refunded', 'Partially Refunded'), # Optional
+        ('Pending', 'Pending'), 
+        ('Paid', 'Paid'),    
+        ('Failed', 'Failed'),   
+        ('Refunded', 'Refunded'), 
+        ('Partially Refunded', 'Partially Refunded'), 
     ]
     PAYMENT_METHOD_CHOICES = [
         ('COD', 'Cash on Delivery'),
         ('Razorpay', 'Razorpay'),
-        ('Wallet', 'Wallet'), # Added Wallet as a payment method choice
+        ('Wallet', 'Wallet'), 
     ]
 
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='orders') # Added related_name for consistency
-    address = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, blank=True, related_name='orders') # Added related_name
-
-    # Renamed total_price to total_amount to match checkout_view's usage
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='orders') 
+    address = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, blank=True, related_name='orders') 
     total_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00')) 
     
-    # Added these fields as per the checkout_view's usage
     coupon_discount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
     shipping_charge = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
 
@@ -351,35 +338,31 @@ class Order(models.Model):
     def save(self, *args, **kwargs):
         is_new = not self.pk
         old_order_status = None
-        # Retrieve old status only if it's an existing instance being updated
-        if not is_new and self.pk: # Ensure self.pk exists for existing instances
+        if not is_new and self.pk: 
             try:
                 old_order = Order.objects.get(pk=self.pk)
                 old_order_status = old_order.status
             except Order.DoesNotExist:
-                pass # Should not happen for existing instances but good to handle
+                pass 
 
-        # Generate custom_order_id only for new instances
         if is_new and not self.custom_order_id:
             prefix = "WN"
             last_custom_id_num = 0
-            # Order by custom_order_id desc to get the largest number directly
             latest_order_with_custom_id = Order.objects.filter(
                 custom_order_id__startswith=prefix,
-                custom_order_id__regex=r'WN\d{4}' # Ensure it matches the format
-            ).order_by('-custom_order_id').first() # Order by string, largest number will be last
+                custom_order_id__regex=r'WN\d{4}' 
+            ).order_by('-custom_order_id').first() 
 
             if latest_order_with_custom_id and latest_order_with_custom_id.custom_order_id:
                 try:
                     last_custom_id_num = int(latest_order_with_custom_id.custom_order_id[len(prefix):])
                 except ValueError:
-                    # Fallback if a non-numeric custom ID exists, or if prefix is wrong
                     logger.warning(f"Non-numeric part found in custom_order_id: {latest_order_with_custom_id.custom_order_id}. Falling back to PK for next ID generation.")
                     last_custom_id_num = Order.objects.all().order_by('-pk').values_list('pk', flat=True).first() or 0
 
             next_num = last_custom_id_num + 1
 
-            for _ in range(10): # Try up to 10 times to find a unique ID
+            for _ in range(10): 
                 formatted_num = f"{next_num:04d}"
                 new_custom_id = f"{prefix}{formatted_num}"
 
@@ -390,29 +373,17 @@ class Order(models.Model):
 
             if not self.custom_order_id:
                 logger.error("Failed to generate a unique custom_order_id after multiple attempts.")
-                # Consider raising an error here or having a fallback (e.g., using PK if custom ID generation consistently fails)
-                # For now, it will proceed with custom_order_id=None if generation fails
 
         super().save(*args, **kwargs)
 
-        # Post-save logic (stock update, cart clearing)
-        # Ensure 'items' related_name is defined in OrderItem model if not already
-        # Example: order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items') in OrderItem
         if not is_new and old_order_status != 'Delivered' and self.status == 'Delivered':
-            for item in self.items.all(): # Assuming 'items' is the related_name for OrderItem
+            for item in self.items.all(): 
                 if item.product:
-                    # Products are marked as sold only upon final delivery
                     item.product.is_sold = True 
                     item.product.reserved_by_user = None
                     item.product.reservation_expires_at = None
                     item.product.save()
 
-                    # It's better to clear the cart when the order is *placed* (after successful payment)
-                    # not when it's delivered, as the cart might contain other items.
-                    # The cart clearing logic is already in checkout_view POST request.
-                    # This line below might be redundant or problematic here if you clear carts earlier.
-                    # If `CartItem` directly points to `Product`, then this is fine.
-                    from core.models import CartItem # Ensure CartItem is imported
                     CartItem.objects.filter(product=item.product).delete()
 
 
@@ -422,49 +393,36 @@ class Order(models.Model):
 
 class OrderItem(models.Model):
     order = models.ForeignKey('Order', on_delete=models.CASCADE, related_name='items')
-    product = models.ForeignKey('Product', on_delete=models.SET_NULL, null=True, blank=True) # Added blank=True for consistency with null=True
+    product = models.ForeignKey('Product', on_delete=models.SET_NULL, null=True, blank=True) 
     quantity = models.PositiveIntegerField(default=1)
     price_at_purchase = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
 
-    # --- ADD THESE NEW FIELDS ---
     original_total_price = models.DecimalField(
         max_digits=10,
         decimal_places=2,
-        default=Decimal('0.00'), # Default to 0.00
+        default=Decimal('0.00'), 
         help_text="Original price (unit price * quantity) before item-level discounts."
     )
     discount_amount = models.DecimalField(
         max_digits=10,
         decimal_places=2,
-        default=Decimal('0.00'), # Default to 0.00
+        default=Decimal('0.00'), 
         help_text="Discount applied specifically to this item (e.g., product offers, BOGO)."
     )
-    # --- END NEW FIELDS ---
 
     def __str__(self):
         product_name = self.product.name if self.product else "N/A"
-        # Using self.order.id as custom_order_id might not be available immediately for new orders
         return f"{product_name} (x{self.quantity}) in Order #{self.order.custom_order_id or self.order.id}"
 
     def save(self, *args, **kwargs):
-        # Only set price_at_purchase, original_total_price, and discount_amount
-        # if it's a new instance and product is available.
-        # These values should ideally be passed from your checkout view
-        # based on the calculated values after applying offers/discounts.
-        # This provides a fallback or initial value.
         if not self.pk and self.product:
-            if self.price_at_purchase is None: # Ensure price_at_purchase isn't already set
+            if self.price_at_purchase is None:
                 self.price_at_purchase = self.product.price
 
-            # Recalculate based on newly added fields for new items if not set
             if self.original_total_price == Decimal('0.00'):
                 self.original_total_price = self.product.price * self.quantity
             
-            # The discount_amount should really come from your view's calculation
-            # during checkout, as it's complex (offers, BOGO).
-            # This is a very basic placeholder.
             if self.discount_amount == Decimal('0.00'):
-                # Simple calculation: original_total - (actual price * quantity)
                 self.discount_amount = self.original_total_price - (self.price_at_purchase * self.quantity)
 
         super().save(*args, **kwargs)
@@ -625,7 +583,7 @@ class NewsletterSubscription(models.Model):
         verbose_name = "Newsletter Subscriber"
         verbose_name_plural = "Newsletter Subscribers"
 
-# NEW: ReturnReason Model
+# ReturnReason Model
 class ReturnReason(models.Model):
     reason_text = models.CharField(max_length=255, unique=True)
     requires_custom_input = models.BooleanField(default=False)
@@ -633,7 +591,7 @@ class ReturnReason(models.Model):
     def __str__(self):
         return self.reason_text
 
-# UPDATED: ReturnRequest Model
+# ReturnRequest Model
 class ReturnRequest(models.Model):
     STATUS_CHOICES = [
         ('Requested', 'Requested'),
@@ -646,7 +604,6 @@ class ReturnRequest(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     order = models.ForeignKey(Order, on_delete=models.CASCADE)
     
-    # Link to the new ReturnReason model
     reason = models.ForeignKey(ReturnReason, on_delete=models.SET_NULL, null=True, blank=True)
     custom_reason = models.TextField(blank=True, null=True, help_text="User's custom reason if 'Other' was selected.")
     
@@ -658,11 +615,9 @@ class ReturnRequest(models.Model):
     def __str__(self):
         return f"Return Request #{self.pk} for Order #{self.order.custom_order_id} ({self.status})"
 
-    # NEW: Through model for ReturnRequest and OrderItem to store return quantity
 class ReturnItem(models.Model):
     return_request = models.ForeignKey(ReturnRequest, on_delete=models.CASCADE, related_name='requested_items')
     order_item = models.ForeignKey(OrderItem, on_delete=models.CASCADE)
-    # The quantity of this specific order_item being returned
     quantity = models.PositiveIntegerField(default=1)
 
     class Meta:
@@ -671,22 +626,6 @@ class ReturnItem(models.Model):
     def __str__(self):
         product_name = self.order_item.product.name if self.order_item.product else "N/A"
         return f"{self.quantity} x {product_name} for Return Request #{self.return_request.pk}"
-
-# Update ReturnRequest to use the through model for items
-# IMPORTANT: This line should be outside the class definition if it's adding to an existing class
-# It's better to define the ManyToManyField directly within the ReturnRequest class
-# using `through='ReturnItem'` if ReturnItem is defined before it.
-
-# Correct way to define the M2M with a through model:
-# class ReturnRequest(models.Model):
-#     ...
-#     items = models.ManyToManyField(OrderItem, through='ReturnItem', related_name='return_requests')
-#     ...
-
-# If you have `ReturnRequest.add_to_class` at the end, it should be removed.
-# The M2M field should be defined directly in the ReturnRequest class.
-# Assuming you want to keep the M2M field to OrderItem as 'items',
-# I'll update the ReturnRequest model directly.
 
 class OfferBanner(models.Model):
     """
@@ -717,10 +656,9 @@ class OfferBanner(models.Model):
     class Meta:
         verbose_name = "Offer Banner"
         verbose_name_plural = "Offer Banners"
-        ordering = ['-updated_at']  # Optional: show recent ones first in admin
+        ordering = ['-updated_at'] 
 
     def save(self, *args, **kwargs):
-        # Enforce singleton active banner
         if self.is_active:
             OfferBanner.objects.exclude(pk=self.pk).update(is_active=False)
         super().save(*args, **kwargs)
@@ -732,14 +670,12 @@ class Offer(models.Model):
     """
     Model to define a specific offer that can be applied to multiple products.
     """
-    # Define your offer types as choices
     OFFER_TYPE_CHOICES = [
         ('PERCENTAGE', 'Percentage Discount'),
         ('AMOUNT', 'Fixed Amount Discount'),
-        ('BOGO1', 'Buy One Get One Free (B1G1)'), # Buy X Get Y Free (X=1, Y=1)
-        ('BOGO2', 'Buy Two Get One Free (B2G1)'), # Buy X Get Y Free (X=2, Y=1)
+        ('BOGO1', 'Buy One Get One Free (B1G1)'), 
+        ('BOGO2', 'Buy Two Get One Free (B2G1)'), 
         ('FREESHIP', 'Free Shipping (FS)'),
-        # You can add more complex BOGO types if needed, e.g., ('BOGO_X_Y', 'Buy X Get Y')
     ]
 
     name = models.CharField(
@@ -747,11 +683,10 @@ class Offer(models.Model):
         unique=True,
         help_text="Name of the offer (e.g., 'Summer Sale', 'Flash Deal')."
     )
-    # NEW FIELD: To define the type of offer logic
     offer_type = models.CharField(
         max_length=10,
         choices=OFFER_TYPE_CHOICES,
-        default='PERCENTAGE', # Default to existing percentage behavior
+        default='PERCENTAGE', 
         help_text="Select the type of discount or offer."
     )
 
@@ -762,12 +697,12 @@ class Offer(models.Model):
     )
     background_color = models.CharField(
         max_length=7,
-        default='#FF0000', # Default to red if not specified
+        default='#FF0000', 
         help_text="Hex color code for tag background (e.g., #FF0000 or a named color like 'red')"
     )
     text_color = models.CharField(
         max_length=7,
-        default='#FFFFFF', # Default to white if not specified
+        default='#FFFFFF', 
         help_text="Hex color code for tag text (e.g., #FFFFFF or a named color like 'white')"
     )
 
@@ -783,9 +718,6 @@ class Offer(models.Model):
         null=True, blank=True,
         help_text="Applicable for Fixed Amount Discount. Fixed discount amount (e.g., 50.00 for $50 off)."
     )
-
-    # NEW FIELDS for BOGO logic (optional, but good for flexibility)
-    # These would only be used if offer_type is 'BOGO_X_Y'
     buy_quantity = models.PositiveIntegerField(
         null=True, blank=True,
         help_text="For 'Buy X Get Y Free' offers: quantity of products to buy."
@@ -794,7 +726,6 @@ class Offer(models.Model):
         null=True, blank=True,
         help_text="For 'Buy X Get Y Free' offers: quantity of products to get free."
     )
-
     start_date = models.DateTimeField(
         default=timezone.now,
         help_text="Date and time when the offer becomes active."
@@ -807,7 +738,7 @@ class Offer(models.Model):
         help_text="Overall status of the offer. Set to False to disable."
     )
     products = models.ManyToManyField(
-        'Product', # Make sure 'Product' is correctly defined/imported
+        'Product', 
         related_name='offers',
         blank=True,
         help_text="Select products to apply this offer to."
@@ -829,9 +760,6 @@ class Offer(models.Model):
         now = timezone.now()
         return self.is_active and self.start_date <= now and self.end_date >= now
 
-    # The get_discounted_price method will become less relevant for complex offers
-    # as the discount logic will move to the checkout view for cart-wide application.
-    # However, for simple percentage/amount, it can still be useful for single product display.
     def get_discounted_price(self, original_price):
         """Calculates the discounted price for a given original price based on PERCENTAGE/AMOUNT."""
         original_price = Decimal(original_price)
@@ -840,14 +768,12 @@ class Offer(models.Model):
             return max(Decimal('0.00'), original_price - discount_value)
         elif self.offer_type == 'AMOUNT' and self.discount_amount:
             return max(Decimal('0.00'), original_price - self.discount_amount)
-        return original_price # No discount applied by this method for other offer types
+        return original_price 
 
     def clean(self):
-        # Existing clean logic from your provided code
         if self.discount_percentage is not None and self.discount_amount is not None:
             raise ValidationError("An offer cannot have both a percentage and a fixed amount discount. Choose one.")
         if self.discount_percentage is None and self.discount_amount is None and self.offer_type not in ['BOGO1', 'BOGO2', 'FREESHIP']:
-            # Allow BOGO/FREESHIP to not have percentage/amount
             raise ValidationError("An offer must have either a percentage or a fixed amount discount unless it's a BOGO or Free Shipping offer.")
 
         if self.discount_percentage is not None and (self.discount_percentage < 0 or self.discount_percentage > 100):
@@ -858,23 +784,19 @@ class Offer(models.Model):
         if self.start_date and self.end_date and self.start_date >= self.end_date:
             raise ValidationError("End date must be after start date.")
 
-        # NEW VALIDATION FOR BOGO:
         if self.offer_type in ['BOGO1', 'BOGO2']:
             if not self.buy_quantity or not self.get_quantity:
                 raise ValidationError(f"For '{self.get_offer_type_display()}' offer, 'Buy Quantity' and 'Get Quantity' must be specified.")
             if self.buy_quantity <= 0 or self.get_quantity <= 0:
                 raise ValidationError("Buy quantity and Get quantity must be positive for BOGO offers.")
-            # Set default BOGO values if specific for B1G1/B2G1 and not set by user
             if self.offer_type == 'BOGO1' and (self.buy_quantity != 1 or self.get_quantity != 1):
-                # Optionally enforce this or just warn
-                pass # Allow custom BOGO_X_Y even if type is 'BOGO1'
+                pass 
             if self.offer_type == 'BOGO2' and (self.buy_quantity != 2 or self.get_quantity != 1):
-                pass # Allow custom BOGO_X_Y even if type is 'BOGO2'
-        else: # Clear BOGO fields if not a BOGO offer
+                pass 
+        else: 
             self.buy_quantity = None
             self.get_quantity = None
 
-        # Clear discount percentage/amount if BOGO/FREESHIP
         if self.offer_type in ['BOGO1', 'BOGO2', 'FREESHIP']:
             self.discount_percentage = None
             self.discount_amount = None

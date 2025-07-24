@@ -4,20 +4,14 @@ from datetime import timedelta
 from django.db import transaction
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
-from django.contrib import messages # Needed if you want messages inside utils
+from django.contrib import messages 
 from django.conf import settings
-from django.core.mail import send_mail # New import for OTP email
+from django.core.mail import send_mail
+from .models import Cart, CartItem, Product, Offer, Coupon, EmailOTP, Order 
 
-# Import your models used within this utility function
-from .models import Cart, CartItem, Product, Offer, Coupon, EmailOTP, Order # Ensure EmailOTP, Order are imported if used in utils
-
-
-# Define constants if they are not in settings.py
-# If they are in settings.py, remove these and use settings.CONSTANT_NAME
 DEFAULT_SHIPPING_CHARGE = Decimal('50.00')
 MIN_PURCHASE_FOR_FREE_SHIPPING = Decimal('1000.00')
 CART_RESERVATION_TIME_MINUTES = 15
-
 
 # --- OTP Related Functions ---
 def generate_otp():
@@ -34,10 +28,7 @@ def send_otp_email(email, otp):
     try:
         send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, [email])
     except Exception as e:
-        # Log the error if email sending fails
-        # You might want to use Django's logging system here
         print(f"Error sending OTP email to {email}: {e}")
-        # Optionally re-raise or handle as needed
         raise
 
 
@@ -52,12 +43,11 @@ def get_cart_items_data(request):
     cart_items_for_order_display = []
     total_cart_items_original_price = Decimal('0.00')
     offer_level_discount = Decimal('0.00')
-    is_free_shipping = False # Determined by product offers or site-wide offers
+    is_free_shipping = False 
 
     products_grouped_by_bogo_offer = {}
     items_for_standard_pricing = []
 
-    # First, try to get the regular cart items
     user_cart_obj = None
     try:
         user_cart_obj = Cart.objects.get(user=request.user)
@@ -127,9 +117,8 @@ def get_cart_items_data(request):
             CartItem.objects.filter(id__in=cart_item_ids_to_delete).delete()
 
     except Cart.DoesNotExist:
-        pass # No regular cart found for the user
+        pass 
 
-    # Handle 'Buy Now' item if no regular cart items or it's specifically a 'buy now' flow
     buy_now_active = request.session.get('buy_now_active', False)
     if buy_now_active and not (products_grouped_by_bogo_offer or items_for_standard_pricing):
         buy_now_product_id = request.session.get('buy_now_item_id')
@@ -205,7 +194,7 @@ def get_cart_items_data(request):
                 request.session.modified = True
                 return { 'items': [], 'subtotal_original': Decimal('0.00'), 'discount_from_offers': Decimal('0.00'), 'subtotal_after_offers': Decimal('0.00'), 'is_free_shipping': False, 'cart_obj': None,}
     
-    # --- Step 1: Calculate discounts from BOGO offers ---
+    # --- Calculate discounts from BOGO offers ---
     for offer_key, offer_data in products_grouped_by_bogo_offer.items():
         offer = offer_data['offer']
         items_under_bogo = offer_data['items']
@@ -256,7 +245,7 @@ def get_cart_items_data(request):
                 'offer_tag': offer.tag_text,
             })
 
-    # --- Step 2: Calculate discounts from Percentage/Amount offers and add regular items ---
+    # --- Calculate discounts from Percentage/Amount offers and add regular items ---
     for item_data in items_for_standard_pricing:
         product = item_data['product']
         quantity = item_data['quantity']
@@ -287,7 +276,7 @@ def get_cart_items_data(request):
             'offer_tag': offer_tag,
         })
     
-    # --- Final check: If no items remain after all checks, return empty data ---
+    # --- If no items remain after all checks, return empty data ---
     if not cart_items_for_order_display:
         return {
             'items': [],
@@ -298,7 +287,7 @@ def get_cart_items_data(request):
             'cart_obj': user_cart_obj,
         }
 
-    # --- Step 3: Determine Subtotal (after product-level offers) ---
+    # --- Determine Subtotal (after product-level offers) ---
     subtotal_after_offers = sum(item['total_price'] for item in cart_items_for_order_display)
 
     return {
@@ -329,8 +318,6 @@ def validate_coupon(coupon, user, subtotal_after_offers, cart_items_list):
     if coupon.usage_limit is not None and coupon.used_count >= coupon.usage_limit:
         return False, "Coupon usage limit reached."
 
-    # User-specific conditions
-    # Assuming 'Order' is the model used to track user orders
     user_orders_count = Order.objects.filter(user=user, payment_status='Paid').count()
 
     if coupon.applies_to_new_users_only:
@@ -340,11 +327,9 @@ def validate_coupon(coupon, user, subtotal_after_offers, cart_items_list):
         if user_orders_count < coupon.min_orders_for_user:
             return False, f"You need at least {coupon.min_orders_for_user} previous orders to use this coupon."
 
-    # Cart conditions
     if subtotal_after_offers < coupon.min_purchase:
         return False, f"Minimum purchase of ₹{coupon.min_purchase:.2f} required."
 
-    # Assuming cart_items_list contains dictionaries with 'product' (Product model) and 'quantity'
     if coupon.min_unique_products_in_cart is not None:
         unique_products = set()
         for item in cart_items_list:

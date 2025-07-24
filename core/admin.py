@@ -4,7 +4,6 @@ from django.db.models import Sum
 from decimal import Decimal
 from django.contrib import messages
 
-# Import ALL your models
 from .models import (
     Product, Order, OrderItem, Address, Category, ProductImage,
     NewsletterSubscriber, EmailOTP, OTP, UserProfile, Coupon,
@@ -12,7 +11,6 @@ from .models import (
     ReturnRequest, ReturnReason, ReturnItem, Wallet, WalletTransaction
 )
 
-# Import forms
 from .forms import ProductForm, CouponForm, EmailTemplateForm, NewsletterCampaignForm
 
 
@@ -27,7 +25,6 @@ class OrderItemInline(admin.TabularInline):
     model = OrderItem
     extra = 1
     autocomplete_fields = ['product']
-    # Ensure these fields match your OrderItem model
     fields = ('product', 'quantity', 'price_at_purchase', 'original_total_price', 'discount_amount') 
     readonly_fields = ('price_at_purchase', 'original_total_price', 'discount_amount',)
 
@@ -125,20 +122,17 @@ class WishlistAdmin(admin.ModelAdmin):
 
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
-    # --- FIX 1: Rename 'total_price' to 'total_amount' ---
     list_display = ('custom_order_id', 'user', 'status', 'total_amount', 'payment_status', 'payment_method', 'created_at')
     list_filter = ('status', 'payment_status', 'payment_method', 'created_at')
     search_fields = ('custom_order_id', 'user__username', 'user__email')
     inlines = [OrderItemInline]
-    # --- FIX 2: Rename 'total_price' to 'total_amount' and add new fields ---
     readonly_fields = (
-        'user', 'address', # Make user and address readonly for existing orders in admin
-        'total_amount', 'coupon_discount', 'shipping_charge', # Added new fields here
+        'user', 'address', 
+        'total_amount', 'coupon_discount', 'shipping_charge', 
         'razorpay_order_id', 'razorpay_payment_id', 'razorpay_signature',
         'created_at', 'updated_at', 'custom_order_id'
     )
 
-    # --- FIX 3: Update fieldsets to include new fields and 'total_amount' ---
     fieldsets = (
         (None, {
             'fields': ('user', 'address', 'custom_order_id',),
@@ -157,18 +151,13 @@ class OrderAdmin(admin.ModelAdmin):
 
 
     def save_model(self, request, obj, form, change):
-        # This part of the logic (marking product as sold on delivery) is also in Order.save()
-        # You might want to consolidate it in one place (e.g., only in Order.save())
-        # to avoid redundancy and potential double processing.
-        # For now, keeping it here but noting the redundancy.
         if change and 'status' in form.changed_data and obj.status == 'Delivered':
             for item in obj.items.all():
                 if item.product and not item.product.is_sold:
                     item.product.is_sold = True
                     item.product.save()
 
-                    # This line is also in Order.save(). Be careful about clearing carts here.
-                    from core.models import CartItem # Ensure this import is needed and correct
+                    from core.models import CartItem 
                     CartItem.objects.filter(product=item.product).delete()
         
         super().save_model(request, obj, form, change)
@@ -178,18 +167,10 @@ class OrderAdmin(admin.ModelAdmin):
         super().save_formset(request, form, formset, change)
         order = form.instance
         order.refresh_from_db()
-        # --- FIX 4: Update total calculation for 'total_amount' ---
-        # Assuming order.items is the related_name for OrderItem to Order
         total_price_agg = order.items.aggregate(
             calculated_total=Sum(models.F('quantity') * models.F('price_at_purchase'))
         )['calculated_total']
         
-        # We should only update total_amount based on order items if it's not
-        # already set by the checkout process (which includes shipping/coupon).
-        # For admin edits, this recalculation might override coupon/shipping logic.
-        # Consider if you *always* want total_amount to reflect just item prices here.
-        # If it should reflect the final payable amount, you'd need coupon_discount and shipping_charge here too.
-        # For now, I'm just correcting the field name.
         order.total_amount = total_price_agg if total_price_agg is not None else Decimal('0.00')
         order.save()
 
