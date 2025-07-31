@@ -1,5 +1,3 @@
-# settings.py
-print("Loading settings.py...")
 from pathlib import Path
 import os
 import cloudinary
@@ -72,16 +70,7 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'config.wsgi.application'
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'wearin_db',
-        'USER': 'wearin_user',
-        'PASSWORD': 'wearin@123',
-        'HOST': 'localhost',
-        'PORT': '5432',
-    }
-}
+# DATABASE SETTINGS HERE
 
 # Session Settings
 SESSION_COOKIE_AGE = 86400 # 24 hours
@@ -112,11 +101,7 @@ DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Cloudinary Configuration
-CLOUDINARY_STORAGE = {
-    'CLOUD_NAME': 'dzpksiomk',
-    'API_KEY': '632675563128142',
-    'API_SECRET': 'UEND0Y8VjyLI9uNA9CWAC4DkcZM' 
-}
+
 cloudinary.config(
     cloud_name=CLOUDINARY_STORAGE['CLOUD_NAME'],
     api_key=CLOUDINARY_STORAGE['API_KEY'],
@@ -137,7 +122,7 @@ LOGIN_URL = '/login/'
 LOGIN_REDIRECT_URL = '/my-home/' 
 LOGOUT_REDIRECT_URL = 'home' 
 
-# Django-allauth Updated Settings
+# Django-allauth Settings
 ACCOUNT_LOGOUT_ON_GET = True 
 ACCOUNT_LOGIN_METHODS = ['email'] 
 ACCOUNT_SIGNUP_FIELDS = ['email'] 
@@ -174,20 +159,20 @@ LOGGING = {
         'console': {
             'level': 'DEBUG', 
             'class': 'logging.StreamHandler',
-            'formatter': 'verbose', # Changed to verbose to see module and process info
+            'formatter': 'verbose', 
         },
     },
     'root': {
         'handlers': ['console'],
-        'level': 'DEBUG', # Set root logger to DEBUG to catch everything by default
+        'level': 'DEBUG', 
     },
     'loggers': {
-        'core': { # Target your 'core' app's logs
+        'core': { 
             'handlers': ['console'],
-            'level': 'DEBUG', # Set to DEBUG for detailed logs from your app
+            'level': 'DEBUG', 
             'propagate': False,
         },
-        'core.middlewares': { # If you have a specific middleware logger
+        'core.middlewares': { 
             'handlers': ['console'],
             'level': 'DEBUG',
             'propagate': False,
@@ -199,12 +184,12 @@ LOGGING = {
         },
         'django': {
             'handlers': ['console'],
-            'level': 'INFO', # Keep Django's own logs at INFO or higher if too verbose
+            'level': 'INFO', 
             'propagate': False,
         },
-        'django.db.backends': { # Good for seeing database queries in DEBUG
+        'django.db.backends': { 
             'handlers': ['console'],
-            'level': 'INFO', # Keep at INFO unless you need to debug SQL queries
+            'level': 'INFO', 
             'propagate': False,
         },
     },
@@ -217,19 +202,14 @@ CELERY_IMPORTS = (
 # Email Settings
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 
-EMAIL_HOST = 'smtp.gmail.com'
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'infoatwearin@gmail.com' 
-EMAIL_HOST_PASSWORD = 'xlbp ouqt keab nsod' 
+
 
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER 
 
 ACCOUNT_EMAIL_VERIFICATION = "none" 
 
 # Razorpay API Keys 
-RAZORPAY_KEY_ID = 'rzp_test_eJqlkY9BUkrY9k'
-RAZORPAY_KEY_SECRET = 'ewDtwYuzfMwBDfjNFiV8bDOk'
+
 
 # CRISPY FORMS SETTINGS
 CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
@@ -261,7 +241,7 @@ CELERY_BEAT_SCHEDULE = {
 }
 
 SESSION_SAVE_EVERY_REQUEST = True
-SITE_URL = 'http://127.0.0.1:8000' # Change to your actual domain in production!
+SITE_URL = 'http://127.0.0.1:8000' 
 
 SITE_NAME = "WEARIN"
 
