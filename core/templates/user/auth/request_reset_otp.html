@@ -3,13 +3,7 @@
 <div class="max-w-md mx-auto mt-10">
     <h2 class="text-2xl font-bold mb-4">Reset Password - Request OTP</h2>
 
-    {% if messages %}
-      <ul class="mb-4">
-        {% for message in messages %}
-          <li class="text-sm text-red-500">{{ message }}</li>
-        {% endfor %}
-      </ul>
-    {% endif %}
+
 
     <form method="post" action="{% url 'forgot_password' %}">
         {% csrf_token %}

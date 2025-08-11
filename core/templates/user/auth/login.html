@@ -35,18 +35,7 @@
             </div>
 
             <!-- Django Messages -->
-            {% if messages %}
-                <ul class="mb-4 space-y-2">
-                    {% for message in messages %}
-                        <li class="p-3 rounded-lg text-sm 
-                            {% if message.tags == 'error' %}bg-red-100 text-red-700
-                            {% elif message.tags == 'success' %}bg-green-100 text-green-700
-                            {% else %}bg-blue-100 text-blue-700{% endif %}">
-                            {{ message }}
-                        </li>
-                    {% endfor %}
-                </ul>
-            {% endif %}
+   
 
             <!-- Login Form -->
             <form method="post" class="space-y-5">
